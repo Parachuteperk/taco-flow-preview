@@ -1,0 +1,371 @@
+// Stand tiers + crew: what each tier and hire changes in the station timings (Sim.mods), who is
+// available when, where the crew stand, how they're drawn, and the one small menu panel.
+(function (TF) {
+  var C = TF.C, World = TF.World, Sim = TF.Sim, R = TF.Render;
+
+  // The stand grows in visible pieces on its 2x2 footprint. Tier 0 = folding table + cooler.
+  var TIERS = [
+    { tier: 1, id: 'grill', name: 'Grill', effect: 'Hot tacos: cooking is much faster and ingredients last far longer', price: 25, unlock: 4 },
+    { tier: 2, id: 'banner', name: 'Banner', effect: 'Wider draw zone (+2.5 tiles)', price: 35, unlock: 8 },
+    { tier: 3, id: 'serving', name: 'Serving station', effect: 'Dedicated pickup spot + faster hand-off; the table keeps taking orders', price: 45, unlock: 12 },
+    { tier: 4, id: 'canopy', name: 'Canopy', effect: 'Shade: more passers-by stop to buy', price: 60, unlock: 18 }
+  ];
+  var ROSTER = [
+    { id: 'jared', name: 'Jared', role: 'Register + cooler', effect: 'Sells from the cooler and makes the restock runs', price: 0, tier: 0, spot: 'in' },
+    { id: 'ali', name: 'Ali', role: 'Grill', effect: 'Cooks 40% faster and adds a grill slot', price: 20, tier: 1, spot: 'in' },
+    { id: 'antonio', name: 'Antonio', role: 'Laptop + stream', effect: 'Hype: bigger zone, more buyers, more students', price: 40, tier: 2, spot: 'out' },
+    { id: 'phillip', name: 'Phillip', role: 'Prep', effect: 'Prepped fillings: cooking 20% faster', price: 30, tier: 2, spot: 'out' },
+    { id: 'matt', name: 'Matt', role: 'Hand-off', effect: 'Hands tacos over almost instantly', price: 25, tier: 3, spot: 'in' },
+    { id: 'aaron', name: 'Aaron', role: 'Manager', effect: 'Everyone works 15% faster', price: 50, tier: 4, spot: 'out' }
+  ];
+
+  var EXTRAS = [
+    { id: 'aiali', name: 'AI Ali', effect: 'A holo-clone of Ali chats with Mrs. West so the real Ali keeps cooking', price: 80, needs: function () { return Crew.hiredSet.ali && Sim.stand.tier >= 4; }, needsText: 'Needs Ali + Canopy' },
+    { id: 'cannon', name: 'Phillip\u2019s Tortilla Cannon', effect: 'Fires tacos to the pickup spot: hand-off twice as fast', price: 40, needs: function () { return Crew.hiredSet.phillip && Sim.stand.tier >= 3; }, needsText: 'Needs Phillip + Serving station' }
+  ];
+
+  var Crew = { hiredSet: { jared: true }, extras: {}, EXTRAS: EXTRAS, lastDrawn: [], spots: {}, spotKey: '', t: 0, flash: {}, TIERS: TIERS };
+
+  Crew.hired = function () { return ROSTER.filter(function (r) { return Crew.hiredSet[r.id]; }).map(function (r) { return r.id; }); };
+  Crew.tier = function () { return Sim.stand.tier; };
+
+  // ---- Effects --------------------------------------------------------------
+  Crew.applyMods = function () {
+    var h = Crew.hiredSet, m = Sim.mods, t = Sim.stand.tier;
+    m.orderT = C.ORDER_T; m.cookT = C.COOK_T; m.grill = C.GRILL; m.handT = C.HAND_T;
+    m.zoneR = C.ZONE_R; m.buyP = C.BUY_P; m.spawnMul = 1; m.priceAdd = 0; m.serving = false; m.stockMax = C.STOCK_T0;
+    if (t >= 1) { m.cookT = 2.4; m.stockMax = C.STOCK_GRILL; }
+    if (t >= 2) m.zoneR += 2.5;
+    if (t >= 3) { m.serving = true; m.handT = 0.6; }
+    if (t >= 4) m.buyP = Math.min(0.95, m.buyP + 0.1);
+    if (h.ali) { m.cookT *= 0.6; m.grill += 1; }
+    if (h.phillip) m.cookT *= 0.8;
+    if (h.matt) m.handT = 0.25;
+    if (h.antonio) { m.zoneR += 2; m.buyP = Math.min(0.95, m.buyP + 0.1); m.spawnMul *= 1.3; }
+    if (h.aaron) { m.orderT *= 0.85; m.cookT *= 0.85; m.handT *= 0.85; }
+    m.cannon = !!(Crew.extras.cannon && h.phillip && t >= 3);
+    if (m.cannon) m.handT *= 0.5;
+  };
+
+  Crew.buyExtra = function (id) {
+    var x = EXTRAS.filter(function (e) { return e.id === id; })[0];
+    if (!x || Crew.extras[id] || !x.needs() || Sim.stats.money < x.price) return false;
+    Sim.stats.money -= x.price;
+    Crew.extras[id] = true;
+    Crew.applyMods();
+    if (Sim.stand.placed) Sim.floaters.push({ x: Sim.stand.geom.cx, y: Sim.stand.geom.cy, text: x.name + '!', t: 0 });
+    Crew.refresh();
+    return true;
+  };
+
+  Crew.hire = function (id) {
+    var r = ROSTER.filter(function (x) { return x.id === id; })[0];
+    if (!r || Crew.hiredSet[id] || Sim.stand.tier < r.tier || Sim.stats.money < r.price) return false;
+    Sim.stats.money -= r.price;
+    Crew.hiredSet[id] = true;
+    Crew.applyMods();
+    Crew.spotKey = '';
+    Crew.flash[id] = 1.5;
+    if (Sim.stand.placed) Sim.floaters.push({ x: Sim.stand.geom.cx, y: Sim.stand.geom.cy, text: r.name + ' hired!', t: 0 });
+    Crew.refresh();
+    return true;
+  };
+  Crew.buyTier = function (id) {
+    var u = TIERS.filter(function (x) { return x.id === id; })[0];
+    if (!u || Sim.stand.tier !== u.tier - 1 || Sim.stats.money < u.price || Sim.stats.served < u.unlock) return false;
+    Sim.stats.money -= u.price;
+    Sim.setTier(u.tier);
+    Crew.spotKey = '';
+    if (Sim.stand.placed) Sim.floaters.push({ x: Sim.stand.geom.cx, y: Sim.stand.geom.cy, text: u.name + '!', t: 0 });
+    Crew.refresh();
+    return true;
+  };
+
+  Crew.step = function (dt) {
+    Crew.t += dt;
+    Object.keys(Crew.flash).forEach(function (k) { Crew.flash[k] -= dt; if (Crew.flash[k] <= 0) delete Crew.flash[k]; });
+  };
+
+  // ---- Where the crew stand ---------------------------------------------------
+  // Stand-local frame: n = order-side normal, p = pickup-side normal, origin = footprint centre.
+  Crew.local = function (a, b) {   // a along the pickup normal, b along the order normal
+    var g = Sim.stand.geom;
+    return { x: g.cx + g.np[0] * a + g.n[0] * b, y: g.cy + g.np[1] * a + g.n[1] * b };
+  };
+  // Each in-stand crew member works a station piece and stands on the camera side of it
+  // (bigger x + y = nearer the camera), so the table / grill / counter never hides them.
+  var STATION = { jared: ['tablecooler', 'table'], ali: ['grill'], matt: ['counter'] };
+  // Candidate offsets around a station: camera side only (dx + dy > 0.2), nearest first.
+  var OFFS = [];
+  for (var oy = -1.25; oy <= 1.26; oy += 0.25) for (var ox = -1.25; ox <= 1.26; ox += 0.25) if (ox + oy > 0.2 && Math.hypot(ox, oy) >= 0.4) OFFS.push([ox, oy]);
+  OFFS.sort(function (a, b) { return Math.hypot(a[0], a[1]) - Math.hypot(b[0], b[1]); });
+  var HALF_W = { table: 32, tablecooler: 32, grill: 16, counter: 25, banner: 12 };   // screen px at zoom 1
+  // True if a tree / lamp / bench / planter nearer the camera would cover someone standing at c
+  // (in screen units at zoom 1).
+  function propCovers(c) {
+    var cs = (c.x - c.y) * (C.TW / 2), cy = (c.x + c.y) * (C.TH / 2), T = World.T;
+    for (var y = Math.floor(c.y) - 1; y <= Math.floor(c.y) + 3; y++) for (var x = Math.floor(c.x) - 1; x <= Math.floor(c.x) + 3; x++) {
+      var t = World.get(x, y);
+      if (t !== T.TREE && t !== T.LAMP && t !== T.BENCH && t !== T.PLANTER) continue;
+      if (x + y + 1 <= c.x + c.y) continue;   // behind
+      var px = (x - y) * (C.TW / 2), py = (x + y + 1) * (C.TH / 2), b = R.propBox(t, 1);
+      if (cs + 12 > px + b.l && cs - 12 < px + b.r && cy - 36 < py + b.b && cy > py + b.t) return true;
+    }
+    return false;
+  }
+  Crew.propCovers = propCovers;
+
+  // True if a piece nearer the camera would be drawn over someone standing at c.
+  function hiddenBy(c, pieces) {
+    var ck = c.x + c.y, cs = (c.x - c.y) * (C.TW / 2);
+    return pieces.some(function (p) {
+      return p.x + p.y > ck && Math.abs((p.x - p.y) * (C.TW / 2) - cs) < (HALF_W[p.piece] || 20) + 8;
+    });
+  }
+  function stationSpots() {
+    var st = Sim.stand, out = {};
+    if (!st.placed) return out;
+    var pieces = R.standPieces(st.sx, st.sy, st.rot, st.tier, false).filter(function (p) { return p.piece !== 'canopy'; });
+    var avoid = [Sim.windowPos()];
+    for (var k = 0; k < 4; k++) avoid.push(Sim.pickupPos(k));
+    if (st.poly.length > 1) avoid.push(st.poly[1]);
+    Object.keys(STATION).forEach(function (id) {
+      if (!Crew.hiredSet[id] || (id === 'jared' && Sim.runner)) return;
+      var piece = pieces.filter(function (p) { return STATION[id].indexOf(p.piece) >= 0; })[0];
+      if (!piece) return;
+      var best = null, loose = null;
+      for (var i = 0; i < OFFS.length && !best; i++) {
+        var c = { x: piece.x + OFFS[i][0], y: piece.y + OFFS[i][1] };
+        if (World.isLine(Math.floor(c.x), Math.floor(c.y)) || hiddenBy(c, pieces) || propCovers(c) || !World.inside(Math.floor(c.x), Math.floor(c.y))) continue;
+        if (!loose) loose = c;
+        var ok = pieces.every(function (p) { return p === piece || Math.hypot(p.x - c.x, p.y - c.y) > 0.5; }) &&
+          avoid.every(function (a) { return Math.hypot(a.x - c.x, a.y - c.y) > 0.38; }) &&
+          Object.keys(out).every(function (o) { return Math.hypot(out[o].x - c.x, out[o].y - c.y) > 0.45; });
+        if (ok) best = c;
+      }
+      out[id] = best || loose || { x: piece.x + 0.45, y: piece.y + 0.45 };
+    });
+    return out;
+  }
+  Crew.spotOf = function (id) {
+    if (Crew.spots[id]) return Crew.spots[id];
+    return stationSpots()[id] || null;
+  };
+
+  // Everyone without a station inside the stand gets a lawn tile next to it, camera side first.
+  function computeSpots() {
+    var st = Sim.stand, key = st.placed ? [st.sx, st.sy, st.rot, st.line.length, Crew.hired().join()].join('|') : '';
+    if (key === Crew.spotKey) return;
+    Crew.spotKey = key; Crew.spots = {};
+    if (!st.placed) return;
+    var g = st.geom, taken = {};
+    var mark = function (t) { taken[t[0] + ',' + t[1]] = 1; };
+    g.pickup.forEach(mark); mark(g.order);
+    mark([Math.floor(g.cx + (g.n[0] + g.np[0]) * 1.25), Math.floor(g.cy + (g.n[1] + g.np[1]) * 1.25)]);
+    st.line.forEach(function (t) { mark([t.x, t.y]); });
+    var pieces = R.standPieces(st.sx, st.sy, st.rot, st.tier, false).filter(function (p) { return p.piece !== 'canopy'; });
+    var inside = stationSpots();
+    Object.keys(inside).forEach(function (id) { mark([Math.floor(inside[id].x), Math.floor(inside[id].y)]); });
+    var cands = [];
+    for (var y = st.sy - 2; y <= st.sy + 3; y++) for (var x = st.sx - 2; x <= st.sx + 3; x++) {
+      var tt = World.get(x, y);
+      if (World.isStand(x, y) || taken[x + ',' + y] || (tt !== World.T.GRASS && tt !== World.T.PLAZA)) continue;
+      // Camera side of the stand and not behind any piece (nor under the canopy) scores best.
+      var front = y >= st.sy + 2 || x >= st.sx + 2;
+      var hid = hiddenBy({ x: x + 0.5, y: y + 0.5 }, pieces) || propCovers({ x: x + 0.5, y: y + 0.5 }) || (!front && st.tier >= 4);
+      cands.push({ x: x, y: y, score: (front ? 0 : 10) + (hid ? 20 : 0) + (tt === World.T.PLAZA ? 1 : 0) + Math.max(Math.abs(x + 0.5 - g.cx), Math.abs(y + 0.5 - g.cy)) });
+    }
+    cands.sort(function (a, b) { return a.score - b.score; });
+    ROSTER.forEach(function (r) {
+      if (!Crew.hiredSet[r.id] || r.spot !== 'out') return;
+      var c = cands.shift();
+      if (c) Crew.spots[r.id] = { x: c.x + 0.5, y: c.y + 0.5 };
+    });
+  }
+
+  function frameFor(id) {
+    var st = Sim.stand, t = Crew.t;
+    switch (id) {
+      case 'jared': return st.window && !st.window.paid ? 1 : 0;
+      case 'ali': return st.cook.grill.length ? (Math.floor(t * 3) % 2 ? 2 : 0) : 0;
+      case 'matt': return st.pickup.some(function (g) { return g && g.order && g.order.ready; }) ? 1 : 0;
+      case 'antonio': return 1;
+      case 'phillip': return st.cook.grill.length || st.cook.pending.length ? 1 : 0;
+      case 'west': return Math.floor(t / 0.8) % 2;
+      case 'aaron': return Math.floor(t / 0.7) % 3;
+    }
+    return 0;
+  }
+  function busy(id) {
+    var st = Sim.stand;
+    if (id === 'jared') return !!st.window;
+    if (id === 'ali' || id === 'phillip') return st.cook.grill.length > 0;
+    if (id === 'matt') return st.pickup.some(Boolean);
+    return true;
+  }
+
+  Crew.items = function (items) {
+    Crew.lastDrawn = [];
+    var st = Sim.stand;
+    if (Sim.runner) {
+      var r = Sim.runner, a = R.lastAlpha || 1;
+      items.push({ kind: 'crew', id: 'jared', where: 'run', x: r.px + (r.x - r.px) * a, y: r.py + (r.y - r.py) * a, k: 0 });
+      items[items.length - 1].k = items[items.length - 1].x + items[items.length - 1].y;
+    }
+    if (!st.placed) return;
+    computeSpots();
+    var ins = stationSpots();
+    Object.keys(ins).forEach(function (id) {
+      var p = ins[id];
+      items.push({ kind: 'crew', id: id, where: 'in', x: p.x, y: p.y, k: p.x + p.y });
+    });
+    Object.keys(Crew.spots).forEach(function (id) {
+      var p = Crew.spots[id];
+      items.push({ kind: 'crew', id: id, where: 'out', x: p.x, y: p.y, k: p.x + p.y });
+    });
+  };
+
+  Crew.draw = function (ctx, it, z) {
+    var st = Sim.stand, P = TF.ArtPeople, painted = TF.Art.painted() && P && P.crew[it.id];
+    var p = R.toScreen(it.x, it.y);
+    if (it.where === 'run') {
+      var r = Sim.runner;
+      if (!r) return;
+      var mirror = r.facing === 1 || r.facing === 2, swing = r.moving ? Math.sin(r.anim / 0.16 * Math.PI / 2) : 0;
+      if (painted) P.drawWalker(ctx, 'jared', p.x, p.y, z, mirror, swing, TF.Art.img.cooler);
+      else { drawPlaceholderCrew(ctx, 'jared', p.x, p.y, z, mirror, r); ctx.fillStyle = '#c62f2f'; ctx.fillRect(p.x - 6 * z, p.y - 17 * z, 12 * z, 8 * z); ctx.fillStyle = '#fff'; ctx.fillRect(p.x - 6 * z, p.y - 18 * z, 12 * z, 2.5 * z); }
+      R.text('restocking', p.x, p.y - 40 * z, 7 * z, '#fff5d6', 'rgba(60,30,20,0.85)');
+      Crew.lastDrawn.push('jared');
+      return;
+    }
+    var hacking = it.id === 'antonio' && TF.Events && TF.Events.hack.phase === 'typing';
+    var fr = frameFor(it.id), bob = hacking ? Math.abs(Math.sin(Crew.t * 30)) * 1.6 * z : busy(it.id) ? Math.abs(Math.sin(Crew.t * 7)) * 1.2 * z : 0;
+    // Crew inside the stand face its order side; crew outside face the stand.
+    var face = it.where === 'in' ? R.toScreen(it.x + st.geom.n[0], it.y + st.geom.n[1]) : R.toScreen(st.geom.cx, st.geom.cy);
+    var mir = face.x < p.x;
+    if (painted) P.drawCrew(ctx, it.id, fr, p.x, p.y - bob, z, mir);
+    else drawPlaceholderCrew(ctx, it.id, p.x, p.y - bob, z, mir);
+    if (hacking) {   // furious typing: green code pixels flying off the laptop
+      for (var c = 0; c < 10; c++) {
+        var ph = (Crew.t * 3 + c * 0.37) % 1;
+        ctx.fillStyle = 'rgba(80,255,120,' + (1 - ph).toFixed(2) + ')';
+        ctx.fillRect(p.x + (mir ? -1 : 1) * (6 + (c * 7) % 14) * z, p.y - (14 + ph * 26) * z, 2 * z, 2 * z);
+      }
+      R.text('> hack_agenda.exe', p.x, p.y - 46 * z, 7 * z, '#50ff78', 'rgba(0,0,0,0.75)');
+    }
+    var raiding = it.id === 'antonio' && TF.Events && TF.Events.raidActive();
+    if (raiding) {   // LIVE marker pulses big during a raid
+      var pulse = 1 + 0.35 * Math.abs(Math.sin(Crew.t * 9));
+      R.text('\u25CF LIVE', p.x, p.y - 40 * z, 8 * z * pulse, '#ff3355', 'rgba(0,0,0,0.7)');
+      R.text('RAID!', p.x, p.y - 52 * z, 9 * z * pulse, '#c58aff', 'rgba(40,0,60,0.85)');
+    } else if (it.id === 'antonio' && Math.floor(Crew.t * (hacking ? 8 : 2)) % 2) R.text('\u25CF LIVE', p.x, p.y - 38 * z, 7 * z, '#ff4a4a', 'rgba(0,0,0,0.6)');
+    if (it.id === 'matt' && TF.Events && TF.Events.shooing()) R.text('SHOO!', p.x, p.y - 44 * z + Math.sin(Crew.t * 20) * 2 * z, 10 * z, '#fff', 'rgba(120,20,20,0.9)');
+    if (Crew.flash[it.id]) R.text('★', p.x, p.y - 44 * z, 12 * z, '#ffd23a', 'rgba(0,0,0,0.5)');
+    Crew.lastDrawn.push(it.id);
+  };
+
+  var LOOK = {
+    jared: { shirt: '#7a1e2c', skin: '#e8b48f', hair: '#5a3a1e', pants: '#2d3a5a' },
+    ali: { shirt: '#f4f1e8', skin: '#7c4f31', hair: '#111', pants: '#2d3a5a' },
+    matt: { shirt: '#d9a62a', skin: '#b07a50', hair: '#2a1b12', pants: '#2d3a5a' },
+    phillip: { shirt: '#2f6b3a', skin: '#7c4f31', hair: '#2a1b12', pants: '#2d3a5a' },
+    antonio: { shirt: '#2f2f3a', skin: '#b07a50', hair: '#111', pants: '#3a3a3a' },
+    aaron: { shirt: '#e6dcc4', skin: '#f1c9a5', hair: '#d8b46a', pants: '#2d3a5a' },
+    west: { shirt: '#8e5ba8', skin: '#f1c9a5', hair: '#c9c9c9', pants: '#8e5ba8' }
+  };
+  Crew.drawPlaceholder = function (ctx, id, x, y, z, mirror, walker) { drawPlaceholderCrew(ctx, id, x, y, z, mirror, walker); };
+  function drawPlaceholderCrew(ctx, id, x, y, z, mirror, walker) {
+    var l = LOOK[id];
+    R.drawPerson({ facing: walker ? walker.facing : (mirror ? 1 : 0), moving: !!(walker && walker.moving), anim: walker ? walker.anim : 0,
+      shirt: l.shirt, skin: l.skin, hair: l.hair, pants: l.pants, tall: 1.05 }, x, y, z);
+    if (id === 'antonio') { ctx.fillStyle = '#9ab'; ctx.fillRect(x + (mirror ? -14 : 5) * z, y - 16 * z, 8 * z, 5 * z); }
+  }
+
+  // ---- Menu: stand upgrades + hire crew, one small panel ------------------------
+  var panel = document.getElementById('crewPanel');
+  var list = document.getElementById('crewList');
+  Crew.buildMenu = function () {
+    if (!panel) return;
+    var html = '<h3>Stand upgrades</h3>';
+    TIERS.forEach(function (u) {
+      html += '<div class="card up"><div class="info"><b>' + u.tier + '. ' + u.name + '</b><div class="fx">' + u.effect + '</div></div><button data-tier="' + u.id + '"></button></div>';
+    });
+    html += '<h3>Extras</h3>';
+    EXTRAS.forEach(function (x) {
+      html += '<div class="card up"><div class="info"><b>' + x.name + '</b><div class="fx">' + x.effect + '</div></div><button data-extra="' + x.id + '"></button></div>';
+    });
+    html += '<h3>Jared\u2019s coin flip</h3><div class="card up"><div class="info"><div class="fx">Now and then at closing Jared offers double-or-nothing on a quarter of the day\u2019s take.</div></div>' +
+      '<select id="flipPolicy" aria-label="Coin flip policy"><option value="always">Always flip</option><option value="ask">Ask me</option><option value="never">Never</option></select></div>';
+    html += '<h3>Hire crew</h3>';
+    ROSTER.forEach(function (r) {
+      html += '<div class="card"><canvas class="portrait" data-portrait="' + r.id + '" width="44" height="64"></canvas>' +
+        '<div class="info"><b>' + r.name + '</b> <small>' + r.role + '</small><div class="fx">' + r.effect + '</div></div>' +
+        '<button data-hire="' + r.id + '"></button></div>';
+    });
+    list.innerHTML = html;
+    list.querySelectorAll('[data-hire]').forEach(function (b) { b.addEventListener('click', function () { Crew.hire(b.getAttribute('data-hire')); }); });
+    list.querySelectorAll('[data-tier]').forEach(function (b) { b.addEventListener('click', function () { Crew.buyTier(b.getAttribute('data-tier')); }); });
+    list.querySelectorAll('[data-extra]').forEach(function (b) { b.addEventListener('click', function () { Crew.buyExtra(b.getAttribute('data-extra')); }); });
+    var pol = document.getElementById('flipPolicy');
+    pol.value = TF.Bets ? TF.Bets.policy : 'ask';
+    pol.addEventListener('change', function () { if (TF.Bets) TF.Bets.setPolicy(pol.value); });
+    Crew.drawPortraits();
+    Crew.refresh();
+  };
+  Crew.drawPortraits = function () {
+    if (!list) return;
+    list.querySelectorAll('[data-portrait]').forEach(function (cv) {
+      var id = cv.getAttribute('data-portrait'), c = cv.getContext('2d'), img = TF.ArtPeople && TF.ArtPeople.crewPortrait(id);
+      c.clearRect(0, 0, cv.width, cv.height);
+      if (img && TF.Art.painted()) {
+        var s = Math.min(cv.width / img.width, (cv.height - 2) / img.height);
+        c.drawImage(img, (cv.width - img.width * s) / 2, cv.height - img.height * s - 1, img.width * s, img.height * s);
+      } else {
+        var l = LOOK[id];
+        c.fillStyle = l.shirt; c.fillRect(14, 28, 16, 22);
+        c.fillStyle = l.skin; c.beginPath(); c.arc(22, 20, 8, 0, Math.PI * 2); c.fill();
+        c.fillStyle = l.hair; c.fillRect(14, 10, 16, 5);
+        c.fillStyle = l.pants; c.fillRect(15, 50, 14, 12);
+      }
+    });
+  };
+  var TIER_NAME = ['the start', 'Grill', 'Banner', 'Serving station', 'Canopy'];
+  Crew.refresh = function () {
+    var btn = document.getElementById('btnCrew');
+    if (btn) btn.textContent = 'Stand & crew';
+    if (!list || panel.hidden) return;
+    var st = Sim.stand, money = Sim.stats.money, sold = Sim.stats.served;
+    list.querySelectorAll('[data-tier]').forEach(function (b) {
+      var u = TIERS.filter(function (x) { return x.id === b.getAttribute('data-tier'); })[0];
+      var owned = st.tier >= u.tier, next = st.tier === u.tier - 1, locked = sold < u.unlock;
+      b.textContent = owned ? 'Built' : !next ? 'After ' + TIER_NAME[u.tier - 1] : locked ? 'At ' + u.unlock + ' sold' : 'Build $' + u.price;
+      b.disabled = owned || !next || locked || money < u.price || !st.placed;
+    });
+    list.querySelectorAll('[data-extra]').forEach(function (b) {
+      var x = EXTRAS.filter(function (e) { return e.id === b.getAttribute('data-extra'); })[0];
+      var ok = x.needs();
+      b.textContent = Crew.extras[x.id] ? 'Owned' : !ok ? x.needsText : 'Buy $' + x.price;
+      b.disabled = !!Crew.extras[x.id] || !ok || money < x.price;
+    });
+    list.querySelectorAll('[data-hire]').forEach(function (b) {
+      var r = ROSTER.filter(function (x) { return x.id === b.getAttribute('data-hire'); })[0];
+      var h = Crew.hiredSet[r.id], locked = st.tier < r.tier;
+      b.textContent = h ? 'Hired' : locked ? 'Needs ' + TIER_NAME[r.tier] : 'Hire $' + r.price;
+      b.disabled = h || locked || money < r.price;
+    });
+  };
+  Crew.open = function (on) {
+    panel.hidden = !on;
+    if (on) { Crew.drawPortraits(); Crew.refresh(); }
+  };
+
+  if (panel) {
+    document.getElementById('btnCrew').addEventListener('click', function () { TF.Audio.unlock(); Crew.open(panel.hidden); });
+    document.getElementById('btnCrewClose').addEventListener('click', function () { Crew.open(false); });
+    setInterval(function () { if (!panel.hidden) Crew.refresh(); }, 250);
+  }
+  Crew.applyMods();
+  Crew.buildMenu();
+
+  TF.Crew = Crew;
+})(window.TF);

@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Taco Flow — TXST Quad Taco Tycoon prototype</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #3f6f35; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  #c { position: fixed; inset: 0; display: block; touch-action: none; cursor: grab; }
+  #hud { position: fixed; top: max(8px, env(safe-area-inset-top)); left: 8px; right: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; pointer-events: none; z-index: 2; }
+  #hud > * { pointer-events: auto; }
+  button { font: 600 14px/1 inherit; font-family: inherit; padding: 9px 12px; border-radius: 8px; border: 2px solid #501214; background: #fff5d6; color: #501214; box-shadow: 0 2px 0 #501214; cursor: pointer; touch-action: manipulation; }
+  button:active { transform: translateY(2px); box-shadow: none; }
+  button.active { background: #c9a227; }
+  button:disabled { opacity: .55; cursor: default; }
+  .chip { font: 700 14px/1 inherit; font-family: inherit; padding: 9px 11px; border-radius: 8px; background: rgba(40,20,15,0.82); color: #fff5d6; }
+  #money { color: #b6ff8f; min-width: 3.5em; text-align: right; }
+  #served { font-size: 12px; font-weight: 600; }
+  #hint { position: fixed; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); background: rgba(40,20,15,0.85); color: #fff5d6; padding: 8px 12px; border-radius: 8px; font-size: 13px; max-width: calc(100% - 32px); text-align: center; transition: opacity .3s; pointer-events: none; z-index: 2; }
+  #crewPanel { position: fixed; right: 8px; top: 64px; width: 340px; max-height: calc(100% - 90px); overflow: auto; background: #fff5d6; border: 2px solid #501214; border-radius: 10px; box-shadow: 0 4px 0 #501214; z-index: 3; padding: 8px; color: #2a1810; }
+  #crewPanel .head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-bottom: 6px; }
+  #crewPanel .head span { font-size: 11px; flex: 1 1 100%; order: 3; color: #6a4a3a; }
+  #crewPanel .head button { margin-left: auto; padding: 4px 9px; }
+  #crewPanel h3 { font-size: 13px; margin: 10px 0 4px; }
+  .card { display: flex; align-items: center; gap: 8px; padding: 6px; border-top: 1px solid #e3cfa5; }
+  .card .portrait { width: 44px; height: 64px; background: #f2e4c0; border-radius: 6px; image-rendering: pixelated; flex: none; }
+  .card .info { flex: 1; font-size: 13px; }
+  .card small { color: #7a1e2c; font-weight: 600; }
+  .card .fx { font-size: 11px; color: #5a4030; margin-top: 2px; }
+  .card button { padding: 7px 9px; font-size: 12px; white-space: nowrap; }
+  #btnHack { background: #1b2a1b; color: #50ff78; border-color: #0a140a; box-shadow: 0 2px 0 #0a140a; }
+  #btnHack:disabled { opacity: .7; }
+  #betCard { position: fixed; left: 8px; bottom: max(56px, calc(env(safe-area-inset-bottom) + 48px)); width: 250px; background: #fff5d6; border: 2px solid #501214; border-radius: 10px; box-shadow: 0 3px 0 #501214; padding: 8px; z-index: 4; font-size: 13px; color: #2a1810; }
+  #betCard .btns { display: flex; gap: 6px; margin-top: 6px; }
+  #betCard button { padding: 6px 10px; font-size: 13px; }
+  #btnRaid { background: #2a1640; color: #d8b4ff; border-color: #120820; box-shadow: 0 2px 0 #120820; }
+  #btnRaid:disabled { opacity: .7; }
+  #toast { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); background: #7a1e2c; color: #ffd23a; font-weight: 800; padding: 8px 14px; border-radius: 8px; border: 2px solid #ffd23a; z-index: 4; pointer-events: none; max-width: calc(100% - 32px); text-align: center; font-size: 14px; }
+  #hackPopup { position: fixed; top: 110px; left: 50%; width: 260px; margin-left: -130px; background: #c0c0c0; border: 2px solid; border-color: #fff #404040 #404040 #fff; z-index: 4; pointer-events: none; font-family: monospace; box-shadow: 4px 4px 0 rgba(0,0,0,.4); }
+  #hackPopup .bar { display: flex; justify-content: space-between; background: #501214; color: #fff; padding: 3px 6px; font-size: 12px; font-weight: bold; }
+  #hackPopup .body { padding: 12px 10px; display: flex; flex-direction: column; gap: 6px; color: #111; background: repeating-linear-gradient(0deg, rgba(0,0,0,.06) 0 2px, transparent 2px 4px); }
+  #hackPopup .body b { font-size: 16px; color: #7a1e2c; }
+  #hackPopup.glitch { animation: glitch .5s steps(2) 0s 3, fadeout 3s linear forwards; }
+  @keyframes glitch { 0% { transform: translate(0,0) skewX(0); filter: none; } 20% { transform: translate(-6px,2px) skewX(-8deg); filter: hue-rotate(90deg); clip-path: inset(10% 0 40% 0); } 40% { transform: translate(5px,-3px) skewX(6deg); clip-path: inset(50% 0 5% 0); } 60% { transform: translate(-3px,1px); filter: invert(1); clip-path: none; } 100% { transform: none; filter: none; } }
+  @keyframes fadeout { 0%, 85% { opacity: 1; } 100% { opacity: 0; } }
+  @media (max-width: 480px) { #crewPanel { left: 8px; right: 8px; width: auto; top: auto; bottom: 8px; max-height: 55%; } }
+  @media (max-width: 480px) { button, .chip { font-size: 13px; padding: 8px 9px; } }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <button id="btnPlace">Place stand</button>
+  <button id="btnRotate" title="Rotate (R)">&#8635;</button>
+  <button id="btnLine" disabled>Build line</button>
+  <button id="btnPlay">&#9654; Play</button>
+  <button id="btnSpeed">1&times;</button>
+  <button id="btnCrew">Crew</button>
+  <button id="btnHack" hidden>Hack agenda</button>
+  <button id="btnRaid" hidden>Raid</button>
+  <button id="btnCrowd">Crowd: Normal</button>
+  <button id="btnZoomOut" aria-label="Zoom out">&minus;</button>
+  <button id="btnZoomIn" aria-label="Zoom in">+</button>
+  <button id="btnArt" disabled>Art: placeholder</button>
+  <span class="chip" id="money">$0</span>
+  <span class="chip" id="served">0 served</span>
+</div>
+<div id="hint"></div>
+<div id="toast" hidden></div>
+<div id="betCard" hidden><div class="txt"></div><div class="btns"></div></div>
+<div id="hackPopup" hidden>
+  <div class="bar"><span>TXST Campus Schedule</span><span>_ &#9633; &times;</span></div>
+  <div class="body"><b>Classes dismissed early!</b><small>All afternoon sections cancelled. Enjoy the Quad :)</small></div>
+</div>
+<div id="crewPanel" hidden>
+  <div class="head"><b>Hire crew</b><span>Each hire shows up at the stand and speeds a station.</span><button id="btnCrewClose" aria-label="Close">&times;</button></div>
+  <div id="crewList"></div>
+</div>
+<script src="src/config.js"></script>
+<script src="assets/gemini/rct_sheet_v1.js"></script>
+<script src="assets/gemini/quad_tiles_v1.js"></script>
+<script src="assets/gemini/stand_stages_v1.js"></script>
+<script src="assets/gemini/oldmain_iso_v1.js"></script>
+<script src="assets/gemini/crew_rct_v1.js"></script>
+<script src="assets/gemini/crew_rct_v1b.js"></script>
+<script src="assets/gemini/customers_rct_v1.js"></script>
+<script src="assets/gemini/west_rct_v1.js"></script>
+<script src="src/world.js"></script>
+<script src="src/sim.js"></script>
+<script src="src/audio.js"></script>
+<script src="src/art.js"></script>
+<script src="src/people.js"></script>
+<script src="src/render.js"></script>
+<script src="src/crew.js"></script>
+<script src="src/events.js"></script>
+<script src="src/ambient.js"></script>
+<script src="src/bets.js"></script>
+<script src="src/main.js"></script>
+</body>
+</html>
