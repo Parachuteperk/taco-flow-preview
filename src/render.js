@@ -45,6 +45,8 @@
     ctx.fillStyle = color; ctx.fillText(str, x, y);
   }
   R.text = function (str, x, y, size, color, stroke) { text(str, x, y, size, color, stroke); };
+  R.diamondFill = function (tx, ty, fill, stroke) { poly(diamond(tx, ty), fill, stroke, 1.5); };
+  R.pill = function (str, x, y, size, bg) { pill(str, x, y, size, bg); };
   // A label on a solid rounded-ish plate (readable over trees and crowds).
   function pill(str, x, y, size, bg) {
     ctx.font = 'bold ' + Math.round(size) + 'px system-ui, sans-serif';
@@ -569,14 +571,17 @@
       shields.push({ l: Math.min(c[0].x, c[3].x) - 6 * z, r: Math.max(c[1].x, c[2].x) + 6 * z, t: c[0].y - 95 * z, b: c[2].y, k: st.sx + st.sy + 0.2 });
     });
     items.forEach(function (it) {
-      if (it.kind !== 'crew') return;
+      // crew, people eating at the picnic tables, and the tables themselves stay visible
+      var eater = it.g && it.g.state === 'EAT', table = it.o && it.o.kind === 'picnic';
+      if (it.kind !== 'crew' && !eater && !table) return;
       var p = R.toScreen(it.x, it.y);
-      shields.push({ l: p.x - 12 * z, r: p.x + 12 * z, t: p.y - 36 * z, b: p.y + 2 * z, k: it.k });
+      if (table) shields.push({ l: p.x - 40 * z, r: p.x + 40 * z, t: p.y - 30 * z, b: p.y + 20 * z, k: it.k + 1.2 });
+      else shields.push({ l: p.x - 12 * z, r: p.x + 12 * z, t: p.y - 36 * z, b: p.y + 2 * z, k: it.k });
     });
     if (!shields.length) return;
     items.forEach(function (it) {
-      if (it.kind !== 'prop') return;
-      var p = R.toScreen(it.x, it.y), b = R.propBox(it.t, z);
+      if (it.kind !== 'prop' && !it.fadeBox) return;
+      var p = R.toScreen(it.x, it.y), b = it.fadeBox ? { l: it.fadeBox.l * z, r: it.fadeBox.r * z, t: it.fadeBox.t * z, b: it.fadeBox.b * z } : R.propBox(it.t, z);
       var l = p.x + b.l, r = p.x + b.r, t = p.y + b.t, bt = p.y + b.b;
       for (var i = 0; i < shields.length; i++) {
         var s = shields[i];
@@ -637,6 +642,15 @@
       late.push(function () { pill(msg, pv.x, pv.y, 10 * z, inf.blocked || !inf.pickupClear ? 'rgba(180,70,10,0.95)' : 'rgba(30,110,50,0.95)'); });
       R.lastLinePreview = msg;
     }
+    // A rejected line tap: the exact tile flashes red for 2 s with the reason on it.
+    var lb = ui.lineBad;
+    if (lb && performance.now() - lb.t < 2000) {
+      var la = 0.5 + 0.4 * Math.sin(performance.now() / 90);
+      poly(diamond(lb.x, lb.y), 'rgba(230,30,30,' + la.toFixed(2) + ')', '#ff2b2b', 2.5);
+      var lq = R.toScreen(lb.x + 0.5, lb.y + 0.5, 26);
+      late.push(function () { pill(lb.reason, lq.x, lq.y, 10 * z, 'rgba(150,20,20,0.95)'); });
+      R.lastLineBad = lb.reason;
+    }
     if (ui.building && ui.hover && World.inside(ui.hover.x, ui.hover.y)) {
       var hcol = ui.hover.del ? 'rgba(240,150,40,A)' : ui.hover.ok ? 'rgba(40,200,80,A)' : 'rgba(230,50,50,A)';
       poly(diamond(ui.hover.x, ui.hover.y), hcol.replace('A', '0.4'), hcol.replace('A', '0.95'), 1.5);
@@ -668,6 +682,7 @@
     if (TF.Events && !ui.noGuests && !only) TF.Events.items(items, alpha);
     if (TF.Ambient && !ui.noGuests && !only) TF.Ambient.items(items, alpha);
     if (TF.Supply && !only && !ui.onlyPieces) TF.Supply.items(items, alpha);
+    if (!only && !ui.onlyPieces) TF.plugins.forEach(function (p) { if (p.items) p.items(items, alpha, ui); });
     if (only) items = items.filter(function (it) { return it.kind === 'crew' && it.id === only; });
     if (ui.onlyPieces) items = items.filter(function (it) { return it.kind === 'piece' && !it.ghost; });
     fadeProps(items, z);
@@ -680,6 +695,7 @@
       else if (it.kind === 'event') TF.Events.draw(ctx, it, z);
       else if (it.kind === 'ambient') TF.Ambient.draw(ctx, it, z);
       else if (it.kind === 'supply') TF.Supply.draw(ctx, it, z);
+      else if (it.plugin) it.plugin.draw(ctx, it, z);
       else {
         var p = R.toScreen(it.x, it.y);
         if (p.x < -40 || p.x > R.vw + 40 || p.y < -60 || p.y > R.vh + 40) continue;
@@ -690,6 +706,7 @@
 
     if (bare) return;
     Sim.stands.forEach(function (s2) { R.drawLineHints(ui, s2); });
+    if (TF.Objects) TF.Objects.drawOverlay(ctx, z);
     late.forEach(function (f) { f(); });
     // Tortillas in flight: a quick arc from the cannon to the pickup spot.
     Sim.flyers.forEach(function (f) {

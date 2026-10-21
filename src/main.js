@@ -63,7 +63,8 @@
     el.line.classList.toggle('active', state.mode === 'build');
     el.line.disabled = !Sim.selected().placed;
     el.play.textContent = state.running ? '\u275A\u275A' : '\u25B6';
-    var bo = state.mode !== 'idle' || state.buildOpen;
+    var bo = (state.mode !== 'idle' && state.mode !== 'object') || state.buildOpen;
+    el.build.textContent = state.mode === 'object' ? '\u2715 Cancel' : '\uD83D\uDD28 Build';
     el.buildBar.hidden = !bo;
     el.build.classList.toggle('active', bo);
     var wk = TF.Week && TF.Week.active();
@@ -75,7 +76,7 @@
   }
   function setMode(m) {
     state.mode = m;
-    if (m !== 'idle') state.buildOpen = true;
+    if (m !== 'idle' && m !== 'object') state.buildOpen = true;
     state.ghost = null; state.hover = null;
     if (m === 'place') setHint('Tap open ground to place the stand. R / ↻ rotates. Green = OK.');
     else if (m === 'build') setHint('Tap or drag tile by tile from the ORDER window to a footpath. Tap a line tile to remove it and the rest.');
@@ -85,6 +86,7 @@
   // Slim HUD: Move / Rotate / Build line live behind Build; Crowd / zoom / Art behind the gear.
   el.build.addEventListener('click', function () {
     Audio.unlock();
+    if (state.mode === 'object') { TF.Objects.cancel(); state.buildOpen = false; setMode('idle'); setHint('Placement cancelled (nothing spent).', 2); return; }
     state.buildOpen = !(state.buildOpen || state.mode !== 'idle');
     if (!state.buildOpen) setMode('idle'); else refreshButtons();
   });
@@ -164,7 +166,7 @@
   }
   function lineAt(cx, cy) {
     var t = tileAt(cx, cy), r = Sim.addLineTile(t.x, t.y);
-    if (!r.ok) setHint(r.reason, 2);
+    if (!r.ok) { setHint(r.reason, 2); state.lineBad = { x: t.x, y: t.y, reason: r.reason, t: performance.now() }; }   // flashed on that exact tile
     else setHint(Sim.selected().connected ? 'Connected! Guests can queue now.' : 'Line not connected to a path yet.', 2);
     return r.ok;
   }
@@ -224,6 +226,7 @@
     var d = drag; drag = null;
     if (cancelled) return;
     if (state.mode === 'place' && (!d.moved || d.type !== 'mouse')) tryPlace(e.clientX, e.clientY);
+    if (state.mode === 'object' && !d.moved) { var ot = tileAt(e.clientX, e.clientY); TF.Objects.tap(ot.x, ot.y); }
     if (state.mode === 'idle' && !d.moved && Sim.stands.length > 1) {   // tap a stand to work on it
       var tt = tileAt(e.clientX, e.clientY), hit = Sim.stands.filter(function (o) { return o.placed && tt.x >= o.sx && tt.x <= o.sx + 1 && tt.y >= o.sy && tt.y <= o.sy + 1; })[0];
       if (hit && hit.idx !== Sim.sel) { Sim.sel = hit.idx; setHint('Stand ' + (hit.idx + 1) + ' selected (Move / Build line / upgrades apply to it).', 2.5); refreshButtons(); }
@@ -267,7 +270,7 @@
       if (steps >= 40) state.acc = 0;
       handleEvents();
     }
-    R.draw(state.running ? state.acc / C.DT : 1, { placing: state.mode === 'place', building: state.mode === 'build', ghost: state.ghost, hover: state.hover });
+    R.draw(state.running ? state.acc / C.DT : 1, { placing: state.mode === 'place', building: state.mode === 'build', ghost: state.ghost, hover: state.hover, lineBad: state.lineBad });
 
     var target = Sim.stats.money;
     state.shownMoney += (target - state.shownMoney) * Math.min(1, real * 8);
@@ -388,6 +391,10 @@
         raids: TF.Events.raid.raids, raidPhase: TF.Events.raid.phase, lastRaidSpawned: TF.Events.raid.lastSpawned, raidFromEdges: TF.Events.raid.fromEdges,
         hacks: TF.Events.hack.hacks, hackTimed: TF.Events.hack.timed || 0, congestT: Math.round(Sim.stats.congestT * 10) / 10, ghostLoc: state.ghost && state.ghost.loc ? state.ghost.loc.grade : null, hackPhase: TF.Events.hack.phase, lastHackSpawned: TF.Events.hack.lastSpawned,
         fromHackAlive: Sim.guests.filter(function (g) { return g.fromHack; }).length,
+        build: TF.Build ? { started: TF.Build.started, finished: TF.Build.finished, jobs: TF.Build.jobs.map(function (j) { return { id: j.id, phase: j.phase, t: Math.round(j.t * 10) / 10 }; }), log: TF.Build.log.slice() } : null,
+        permit: TF.Week ? { majorUsed: TF.Week.majorUsed, openMinorUsed: TF.Week.openMinorUsed } : null, confirmId: TF.Crew ? TF.Crew.confirmId : null,
+        objects: TF.Objects ? { list: TF.Objects.list.map(function (o) { return { kind: o.kind, x: o.x, y: o.y, st: o.st ? o.st.idx : null, ready: o.ready }; }), day: TF.Objects.day, totals: TF.Objects.totals, placing: TF.Objects.placing ? TF.Objects.placing.kind : null, shade: TF.Objects.shadeStats, litter: TF.Objects.litter.length, litterStats: TF.Objects.litterStats, litterMul: Sim.stands.map(function (st) { return Math.round((st.litterMul || 1) * 100) / 100; }), eating: Sim.guests.filter(function (g) { return g.state === 'EAT'; }).length, spots: TF.Objects.placing ? TF.Objects.placing.spots.length : 0 } : null,
+        lost: JSON.parse(JSON.stringify(Sim.lost)), lostTotal: Sim.lostTotal(), lostThenServed: Sim.stats.lostThenServed, lostHud: document.getElementById('lostHud').textContent, noline: Sim.stats.noline, closedTurnaway: Sim.stats.closedTurnaway,
         week: TF.Week ? { mode: TF.Week.mode, day: TF.Week.day, phase: TF.Week.phase, t: Math.round(TF.Week.t * 10) / 10, soldToday: TF.Week.soldToday(), goal: TF.Week.goal(),
           majorUsed: TF.Week.majorUsed, eventsToday: TF.Week.eventsToday, bellsRung: TF.Week.bellsRung || 0, bellCountdown: TF.Week.bellCountdown(), bellSpawned: TF.Week.bellSpawned || 0, hud: document.getElementById('dayHud').textContent, results: TF.Week.results, won: TF.Week.won } : null
       };
@@ -432,6 +439,11 @@
     hire: function (id) { return TF.Crew.hire(id); },
     buyTier: function (id) { return TF.Crew.buyTier(id); },
     grantMoney: function (n) { Sim.stats.money += n; },   // test helper only
+    // Test helper: fast-forward the sim synchronously (deterministic A/B comparisons).
+    simFor: function (secs) { for (var i = 0, n = Math.round(secs / C.DT); i < n; i++) Sim.step(C.DT); return Sim.t; },
+    // Taco Week test helpers: jump to day n's PREP (unlocks), or move the OPEN clock to t seconds.
+    weekDay: function (n) { if (TF.Week.phase === 'prep') { TF.Week.day = n; TF.Week.refresh(); if (TF.Crew) TF.Crew.refresh(); } return TF.Week.day; },
+    weekTime: function (t) { if (TF.Week.phase === 'open') TF.Week.t = t; return TF.Week.t; },
     setCrowd: function (c) {
       Sim.crowd = C.CROWD[c] ? c : 'normal';
       el.crowd.textContent = 'Crowd: ' + Sim.crowd[0].toUpperCase() + Sim.crowd.slice(1);

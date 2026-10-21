@@ -25,7 +25,7 @@
     events: [],             // drained by main.js each frame (sounds etc.)
     nextId: 1,
     spawnT: 0.5,
-    stats: { spawned: 0, served: 0, completedLoop: 0, money: 0, balked: 0, gaveUp: 0, grillWork: 0, tortillaShots: 0, noline: 0, closedTurnaway: 0, congestT: 0 },
+    stats: { spawned: 0, served: 0, completedLoop: 0, money: 0, balked: 0, gaveUp: 0, grillWork: 0, tortillaShots: 0, noline: 0, closedTurnaway: 0, congestT: 0, lostThenServed: 0 },
     closing: false,         // Taco Week CLOSE phase: nobody new joins
     flyers: [],             // tortillas in flight (cannon), purely visual
     thoughts: { longline: 0, tasty: 0, pricey: 0, slow: 0, where: 0 },
@@ -345,21 +345,22 @@
     g.path = pts;
   }
   Sim.routeToExit = routeToExit;
+  Sim.pathTo = pathTo;
 
   // Taco Week closing: people still walking over turn back; at the end of overtime anyone still
   // in line leaves, and anyone who already paid gets their taco on the way out.
   Sim.closeStand = function () {
-    Sim.guests.forEach(function (g) { if (g.state === 'TO_QUEUE') { Sim.stats.closedTurnaway++; leavePolitely(g); } });
+    Sim.guests.forEach(function (g) { if (g.state === 'TO_QUEUE') { Sim.stats.closedTurnaway++; loseSale(g, g.st, 'closing time'); leavePolitely(g); } });
   };
   Sim.flushQueue = function () {
     Sim.guests.forEach(function (g) {
       var st = g.st;
       if (g.state === 'QUEUE' || (g.state === 'ORDER' && !g.paid) || g.state === 'TO_QUEUE') {
-        Sim.stats.closedTurnaway++;
+        Sim.stats.closedTurnaway++; loseSale(g, st, 'closing time');
         if (st) { var i = st.queue.indexOf(g); if (i >= 0) st.queue.splice(i, 1); if (st.window === g) st.window = null; }
         leavePolitely(g);
       } else if (g.paid && !g.hasTaco && st) {
-        g.hasTaco = true; Sim.stats.served++;
+        g.hasTaco = true; if (g.lostWhy) Sim.stats.lostThenServed++; Sim.stats.served++;
         var j = st.queue.indexOf(g); if (j >= 0) st.queue.splice(j, 1);
         if (st.window === g) st.window = null;
         if (g.spot >= 0) { st.pickup[g.spot] = null; g.spot = -1; }
@@ -405,6 +406,7 @@
     g.path = g.path.slice(0, 1);
     var entry = st.poly[st.poly.length - 1];
     if (!pathTo(g, st.link, { x: entry.x, y: entry.y })) { g.state = 'WANDER'; g.path = []; return false; }
+    unloseSale(g);   // walked away from the other stand, but buys here after all
     return true;
   }
 
@@ -419,7 +421,7 @@
   function chooseStand(g) {
     var best = null;
     placedStands().forEach(function (st) {
-      if (g.seen[st.idx]) return;
+      if (g.seen[st.idx] || st.constructing) return;   // a stand still being built isn't open yet
       var d = Math.hypot(g.x - st.geom.cx, g.y - st.geom.cy);
       if (d > st.mods.zoneR) return;
       g.seen[st.idx] = true;
@@ -434,13 +436,13 @@
     if (!g.considered) {
       var st = chooseStand(g);
       if (st) {
-        if (Sim.rand() < st.mods.buyP) {
+        if (Sim.rand() < st.mods.buyP * (TF.Objects ? TF.Objects.litterMul(st) : 1)) {   // litter puts people off
           if (Sim.closing) { /* closing time: no new joiners */ }
-          else if (!st.connected) { g.emote = 'noline'; g.emoteT = 1.6; Sim.stats.noline++; }
-          else if (g.maxPay < Sim.menuPrice(st)) think(g, 'pricey');
+          else if (!st.connected) { g.emote = 'noline'; g.emoteT = 1.6; Sim.stats.noline++; loseSale(g, st, 'no line'); }
+          else if (g.maxPay < Sim.menuPrice(st)) { think(g, 'pricey'); loseSale(g, st, 'too pricey'); }
           else if (st.queue.length + enrouteCount(st) < st.cap) { if (goToQueue(g, st)) return; }
           else {
-            Sim.stats.balked++; noteBalk(st, 'longline');
+            Sim.stats.balked++; noteBalk(st, 'longline'); loseSale(g, st, 'line full');
             if (Sim.recentBalks(st, 'longline') <= 1) think(g, 'longline'); else Sim.thoughts.longline++;   // grouped: one bubble, then the stand's warning
           }
         }
@@ -464,6 +466,28 @@
     g.lastTile = t;
     g.path.push(center(next));
   }
+
+  // Lost-sales ledger (Pass 5 item 1): every student who walks away without a taco is counted
+  // once, with the reason, the moment it happens. If they later join another stand's line the
+  // entry is taken back, so a customer is never both lost and served.
+  Sim.LOST_REASONS = ['line full', 'gave up waiting', 'too pricey', 'no line', 'closing time'];
+  Sim.lost = {};
+  Sim.LOST_REASONS.forEach(function (k) { Sim.lost[k] = 0; });
+  Sim.lostTotal = function () { return Sim.LOST_REASONS.reduce(function (s, k) { return s + Sim.lost[k]; }, 0); };
+  function loseSale(g, st, why) {
+    if (g.lostWhy) return;
+    g.lostWhy = why; g.lostSt = st;
+    Sim.lost[why]++;
+    if (st) { st.lost = st.lost || {}; st.lost[why] = (st.lost[why] || 0) + 1; }
+    Sim.lostFlash = { t: Sim.t, why: why };
+  }
+  function unloseSale(g) {
+    if (!g.lostWhy) return;
+    Sim.lost[g.lostWhy]--;
+    if (g.lostSt && g.lostSt.lost) g.lostSt.lost[g.lostWhy]--;
+    g.lostWhy = null; g.lostSt = null;
+  }
+  Sim.loseSale = loseSale;
 
   // How many students walked away from a stand for a reason in the last 10 s.
   Sim.recentBalks = function (st, why) {
@@ -509,6 +533,8 @@
     if (Sim.priceBoostT > 0) price += Math.max(1, Math.round(price * 0.1));
     g.paid = true;
     g.paidAt = Sim.t;
+    var drink = TF.Objects ? TF.Objects.onPay(g, st) : 0;   // + a $2 agua fresca
+    if (drink) { Sim.stats.money += drink; if (TF.Week) TF.Week.earn(drink); var wp = Sim.windowPos(st); Sim.floaters.push({ x: wp.x + 0.3, y: wp.y - 0.4, text: '+$' + drink + ' \uD83E\uDD64', t: 0 }); }
     Sim.stats.money += price;
     st.sold = (st.sold || 0) + 1;
     if (TF.Bets) TF.Bets.earn(price);
@@ -590,8 +616,8 @@
         if (!g.hasTaco && g.waitT > 8 && !g.thoughtSlow) { g.thoughtSlow = true; think(g, 'slow'); }
         if (!g.hasTaco && g.order && g.order.ready) {
           g.order.handT += dt / slow / (st.info && !st.info.pickupClear ? 1.35 : 1);
-          if (g.order.handT >= st.mods.handT) {
-            g.hasTaco = true;
+          if (g.order.handT >= st.mods.handT + (TF.Objects ? TF.Objects.handExtra(g, st) : 0)) {
+            g.hasTaco = true; if (g.lostWhy) Sim.stats.lostThenServed++;
             g.timer = C.GOT_IT_T;
             Sim.stats.served++;
             st.served = (st.served || 0) + 1;
@@ -610,13 +636,21 @@
           if (g.timer <= 0) {
             if (g.atWindow) { var wi = st.queue.indexOf(g); if (wi >= 0) st.queue.splice(wi, 1); if (st.window === g) st.window = null; g.atWindow = false; }
             else { st.pickup[g.spot] = null; g.spot = -1; }
-            startLeave(g);
+            if (!(TF.Objects && TF.Objects.trySeat(g))) startLeave(g);   // or sit and eat in the shade
           }
         }
+        break;
+      case 'TO_SEAT':
+        if (walk(g, dt, true)) { g.state = 'EAT'; g.eatT = 6; g.moving = false; think(g, 'tasty'); g.thoughtTasty = true; }
+        break;
+      case 'EAT':   // seated at the picnic table
+        g.moving = false; g.eatT -= dt;
+        if (g.eatT <= 0) { TF.Objects.freeSeat(g); startLeave(g); }
         break;
       case 'LEAVE':
         laneOn = g.path.length > 1;
         if (g.hasTaco && !g.thoughtTasty) { g.leaveT = (g.leaveT || 0) + dt; if (g.leaveT > 2) { g.thoughtTasty = true; think(g, 'tasty'); } }
+        if (g.hasTaco && !g.littered && TF.Objects) { g.litT = (g.litT || 0) + dt; if (g.litT > 3.5) TF.Objects.maybeLitter(g); }   // done eating: wrapper
         if (walk(g, dt, true)) {
           g.gone = true;
           if (g.hasTaco) Sim.stats.completedLoop++;
@@ -650,19 +684,21 @@
   // Open = the stand's cashier is there and there is stock. When the cooler empties (and no
   // Freshman Runner is hired) the cashier finishes the orders in hand, walks the paths off the
   // map with the cooler and comes back refilled.
-  Sim.isOpen = function (st) { st = st || Sim.stand; return st.placed && !st.trip && st.stock > 0; };
+  Sim.isOpen = function (st) { st = st || Sim.stand; return st.placed && !st.trip && st.stock > 0 && !st.constructing; };
 
   function impatience(g, dt) {
     var st = g.st;
     if (Sim.isOpen(st)) { g.closedT = 0; return; }
     g.closedT = (g.closedT || 0) + dt;
     if (g.closedT > 8 && !g.thoughtSlow) { g.thoughtSlow = true; think(g, 'slow'); }
-    if (g.closedT > C.PATIENCE + (g.variant % 7)) {
+    var shade = TF.Objects ? TF.Objects.patienceBonus(g) : 0;   // picnic shade: +8 s for 4 nearby
+    if (shade && !g.shadeKept && g.closedT > C.PATIENCE + (g.variant % 7)) { g.shadeKept = true; TF.Objects.shadeStats.kept++; }
+    if (g.closedT > C.PATIENCE + (g.variant % 7) + shade) {
       var i = st.queue.indexOf(g);
       if (i >= 0) st.queue.splice(i, 1);
       if (st.window === g) st.window = null;
       Sim.stats.gaveUp++;
-      noteBalk(st, 'slow');
+      noteBalk(st, 'slow'); loseSale(g, st, 'gave up waiting');
       leavePolitely(g);
       g.emote = 'slow'; g.emoteT = 1.8;
     }
@@ -740,6 +776,7 @@
     if (TF.Week) TF.Week.step(dt);
     Sim.stands.forEach(function (st) { if (st.placed) { updateCook(st, dt); updateRestock(st, dt); } });
     if (TF.Supply) TF.Supply.step(dt);
+    TF.plugins.forEach(function (p) { if (p.step) p.step(dt); });   // Pass 5 systems (build, drinks, ...)
     buildGrid();
     for (var i = 0; i < Sim.guests.length; i++) updateGuest(Sim.guests[i], dt);
     Sim.guests = Sim.guests.filter(function (g) { return !g.gone; });
@@ -772,6 +809,13 @@
     if (!v.ok) return v;
     var wasPlaced = st.placed;
     var oldQueue = st.queue.slice();
+    if (st.needsBuild && TF.Build) {   // second stand bought during OPEN: construction starts once it's placed
+      st.needsBuild = false;
+      st.constructing = true;
+      Sim.afterPlace = function () {
+        TF.Build.start({ st: st, id: 'stand2', name: 'Stand 2', apply: function () { st.constructing = false; }, at: { x: st.geom.cx, y: st.geom.cy + 0.6 } });
+      };
+    }
     st.placed = true; st.sx = sx; st.sy = sy; st.rot = rot;
     st.geom = World.standGeom(sx, sy, rot);
     syncWorld();
@@ -810,6 +854,7 @@
         if (nt && World.isStand(Math.floor(nt.x), Math.floor(nt.y))) { g.path = []; ensureOnWalk(g); }
       }
     });
+    if (Sim.afterPlace) { var ap = Sim.afterPlace; Sim.afterPlace = null; ap(); }
     return v;
   };
 

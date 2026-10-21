@@ -1,5 +1,6 @@
 // Shared namespace + tuning constants. Classic script: no modules, works from file://.
 window.TF = window.TF || {};
+window.TF.plugins = [];   // Pass 5 systems: { step(dt), items(items, alpha, ui), draw(ctx, it, z) }
 (function (TF) {
   TF.C = {
     MAP_W: 26,

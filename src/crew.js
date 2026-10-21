@@ -26,7 +26,7 @@
     { id: 'cannon', name: 'Phillip\u2019s Tortilla Cannon', effect: 'Hand-off 2x faster', price: 40, needs: function () { return Crew.hiredSet.phillip && Sim.stand.tier >= 3; }, needsText: 'Needs Phillip + Serving station' }
   ];
 
-  var Crew = { hiredSet: { jared: true }, extras: {}, EXTRAS: EXTRAS, lastDrawn: [], spots: {}, spotKey: '', t: 0, flash: {}, TIERS: TIERS };
+  var Crew = { hiredSet: { jared: true }, extras: {}, EXTRAS: EXTRAS, ROSTER: ROSTER, lastDrawn: [], spots: {}, spotKey: '', t: 0, flash: {}, TIERS: TIERS };
 
   Crew.hired = function () { return ROSTER.filter(function (r) { return Crew.hiredSet[r.id]; }).map(function (r) { return r.id; }); };
   Crew.tier = function () { return Sim.stand.tier; };
@@ -59,9 +59,11 @@
   Crew.STAND2_PRICE = 125;
   Crew.buyStand2 = function () {
     if (Sim.stands.length >= Sim.MAX_STANDS || Sim.stats.money < Crew.STAND2_PRICE || blocked('stand2') || !Sim.stand.placed) return false;
+    if (!reserveOk('stand2', Crew.STAND2_PRICE)) return false;
     Sim.stats.money -= Crew.STAND2_PRICE;
     if (TF.Week) TF.Week.bought('stand2');
     var st = Sim.addStand();
+    st.needsBuild = !!(TF.Build && TF.Build.live());   // built (12 s) once it's placed
     Sim.sel = st.idx;
     Crew.applyMods();
     if (TF.Onboard) TF.Onboard.computeSpots();
@@ -81,9 +83,29 @@
     return true;
   };
 
+  // Placed buildings: the button starts placement; the money (and permit / OPEN buy) is spent
+  // when the player taps a valid tile (TF.Objects.tap -> Crew.buyObject).
+  Crew.startObject = function (id) {
+    var k = TF.Objects.KINDS[id];
+    if (TF.Objects.blockReason(id) || blocked(id) || Sim.stats.money < k.price) return false;
+    if (!reserveOk(id, k.price)) return false;
+    Crew.preConfirmed = id;   // the reserve was confirmed (or not needed) at the button
+    Crew.open(false);
+    return TF.Objects.begin(id);
+  };
+  Crew.buyObject = function (id, price) {
+    if (blocked(id) || Sim.stats.money < price) return false;
+    Sim.stats.money -= price;
+    if (TF.Week) TF.Week.bought(id);
+    Crew.preConfirmed = null;
+    Crew.refresh();
+    return true;
+  };
+
   Crew.buyExtra = function (id) {
     var x = EXTRAS.filter(function (e) { return e.id === id; })[0];
     if (!x || Crew.extras[id] || !x.needs() || Sim.stats.money < x.price || blocked(id)) return false;
+    if (!reserveOk(id, x.price)) return false;
     Sim.stats.money -= x.price;
     Crew.extras[id] = true;
     if (TF.Week) TF.Week.bought(id);
@@ -97,6 +119,7 @@
   Crew.hire = function (id) {
     var r = ROSTER.filter(function (x) { return x.id === id; })[0];
     if (!r || Crew.hiredSet[id] || Sim.stand.tier < r.tier || Sim.stats.money < r.price || blocked(id)) return false;
+    if (!reserveOk(id, r.price)) return false;
     Sim.stats.money -= r.price;
     if (TF.Week) TF.Week.bought(id);
     Crew.hiredSet[id] = true;
@@ -111,18 +134,38 @@
     var u = TIERS.filter(function (x) { return x.id === id; })[0];
     var week = TF.Week && TF.Week.active();
     var st = Sim.selected();
-    if (!u || st.tier !== u.tier - 1 || Sim.stats.money < u.price || (!week && Sim.stats.served < u.unlock) || blocked(id)) return false;
+    if (!u || st.tier !== u.tier - 1 || st.building || Sim.stats.money < u.price || (!week && Sim.stats.served < u.unlock) || blocked(id)) return false;
+    if (!reserveOk(id, u.price)) return false;
     Sim.stats.money -= u.price;
     if (TF.Week) TF.Week.bought(id);
-    Sim.setTier(u.tier, st);
-    Crew.spotKey = '';
-    if (st.placed) Sim.floaters.push({ x: st.geom.cx, y: st.geom.cy, text: u.name + '!', t: 0 });
+    st.building = u.id;
+    var done = function () {
+      st.building = null;
+      Sim.setTier(u.tier, st);
+      Crew.spotKey = '';
+      if (st.placed) Sim.floaters.push({ x: st.geom.cx, y: st.geom.cy, text: u.name + '!', t: 0 });
+      Crew.refresh();
+    };
+    // during OPEN a freshman builds it (6-12 s, the stand keeps selling); otherwise it's instant
+    if (TF.Build && st.placed) TF.Build.start({ st: st, id: u.id, name: u.name, apply: done }); else done();
     Crew.refresh();
     return true;
   };
 
   // Taco Week shop rules (PREP only, unlocked by day, one big buy per day); null when allowed.
   function blocked(id) { return TF.Week ? TF.Week.shopBlock(id) : null; }
+  // $20 operating reserve (Taco Week): a buy that would leave less asks for a second tap.
+  Crew.confirmId = null;
+  function reserveOk(id, price) {
+    if (!(TF.Week && TF.Week.active())) return true;
+    var left = Sim.stats.money - price;
+    if (left >= TF.Week.RESERVE || Crew.confirmId === id) { Crew.confirmId = null; return true; }
+    Crew.confirmId = id;
+    Sim.events.push({ type: 'toast', text: 'That leaves $' + left + ', under the $' + TF.Week.RESERVE + ' reserve. Tap again to confirm.' });
+    Crew.refresh();
+    return false;
+  }
+  function label(id, normal) { return Crew.confirmId === id ? 'Confirm?' : normal; }
   Crew.blocked = blocked;
   // Closing-time moment: everyone at the stand cheers.
   Crew.cheer = function () { Crew.hired().forEach(function (id) { Crew.flash[id] = 2.5; }); };
@@ -378,12 +421,16 @@
   var list = document.getElementById('crewList');
   Crew.buildMenu = function () {
     if (!panel) return;
-    var html = '<div id="soonLine" class="soon" hidden></div><details open class="sec"><summary>Stand upgrades <button id="btnSelStand" class="mini" hidden></button></summary>';
+    var html = '<div id="permitLine" class="soon permit" hidden></div><div id="soonLine" class="soon" hidden></div><details open class="sec"><summary>Stand upgrades <button id="btnSelStand" class="mini" hidden></button></summary>';
     TIERS.forEach(function (u) {
       html += '<div class="card up"><div class="info"><b>' + u.tier + '. ' + u.name + '</b><div class="fx">' + u.effect + '</div></div><button data-tier="' + u.id + '"></button></div>';
     });
     html += '<div class="card up"><div class="info"><b>Second stand</b><div class="fx">Own stock, line and tiers. A Freshman Cashier runs it.</div></div><button id="btnBuyStand2"></button></div>';
     html += '</details><details open class="sec"><summary>Extras</summary>';
+    if (TF.Objects) Object.keys(TF.Objects.KINDS).forEach(function (id) {
+      var k = TF.Objects.KINDS[id];
+      html += '<div class="card up"><div class="info"><b>' + k.name + '</b><div class="fx">' + k.effect + ' \u00B7 $' + k.upkeep + '/day</div></div><button data-obj="' + id + '"></button></div>';
+    });
     EXTRAS.forEach(function (x) {
       html += '<div class="card up"><div class="info"><b>' + x.name + '</b><div class="fx">' + x.effect + '</div></div><button data-extra="' + x.id + '"></button></div>';
     });
@@ -401,6 +448,7 @@
     document.getElementById('btnBuyStand2').addEventListener('click', function () { Crew.buyStand2(); });
     document.getElementById('btnSelStand').addEventListener('click', function (e) { e.preventDefault(); Sim.sel = (Sim.sel + 1) % Sim.stands.length; Crew.refresh(); });
     list.querySelectorAll('[data-extra]').forEach(function (b) { b.addEventListener('click', function () { Crew.buyExtra(b.getAttribute('data-extra')); }); });
+    list.querySelectorAll('[data-obj]').forEach(function (b) { b.addEventListener('click', function () { Crew.startObject(b.getAttribute('data-obj')); }); });
     var pol = document.getElementById('flipPolicy');
     pol.value = TF.Bets ? TF.Bets.policy : 'ask';
     pol.addEventListener('change', function () { if (TF.Bets) TF.Bets.setPolicy(pol.value); });
@@ -439,7 +487,7 @@
       if (!on && why) (soon[why] = soon[why] || []).push(name);
     };
     var b2 = document.getElementById('btnBuyStand2'), blk2 = blocked('stand2');
-    b2.textContent = Sim.stands.length >= 2 ? 'Bought' : blk2 ? blk2 : 'Buy $' + Crew.STAND2_PRICE;
+    b2.textContent = Sim.stands.length >= 2 ? 'Bought' : blk2 ? blk2 : label('stand2', 'Buy $' + Crew.STAND2_PRICE);
     b2.disabled = Sim.stands.length >= 2 || !!blk2 || money < Crew.STAND2_PRICE || !Sim.stand.placed;
     show(b2, Sim.stands.length < 2 && !dayLock(blk2), 'Second stand', Sim.stands.length < 2 && blk2);
     list.querySelectorAll('[data-tier]').forEach(function (b) {
@@ -447,26 +495,34 @@
       var owned = st.tier >= u.tier, next = st.tier === u.tier - 1, locked = sold < u.unlock;
       var wk = TF.Week && TF.Week.active(), blk = blocked(u.id);
       if (wk) locked = false;
-      b.textContent = owned ? 'Built' : !next ? 'After ' + TIER_NAME[u.tier - 1] : blk ? blk : locked ? 'At ' + u.unlock + ' sold' : 'Build $' + u.price;
-      b.disabled = owned || !next || locked || !!blk || money < u.price || !st.placed;
+      b.textContent = st.building === u.id ? 'Building\u2026' : owned ? 'Built' : !next ? 'After ' + TIER_NAME[u.tier - 1] : blk ? blk : locked ? 'At ' + u.unlock + ' sold' : label(u.id, 'Build $' + u.price);
+      b.disabled = owned || !next || locked || !!blk || money < u.price || !st.placed || !!st.building;
       show(b, next && !dayLock(blk), u.name, next && blk);
     });
     list.querySelectorAll('[data-extra]').forEach(function (b) {
       var x = EXTRAS.filter(function (e) { return e.id === b.getAttribute('data-extra'); })[0];
       var ok = x.needs();
       var xb = blocked(x.id);
-      b.textContent = Crew.extras[x.id] ? 'Owned' : xb ? xb : !ok ? x.needsText : 'Buy $' + x.price;
+      b.textContent = Crew.extras[x.id] ? 'Owned' : xb ? xb : !ok ? x.needsText : label(x.id, 'Buy $' + x.price);
       b.disabled = !!Crew.extras[x.id] || !ok || !!xb || money < x.price;
       show(b, !Crew.extras[x.id] && ok && !dayLock(xb), x.name, !Crew.extras[x.id] && dayLock(xb) && xb);
+    });
+    list.querySelectorAll('[data-obj]').forEach(function (b) {
+      var id = b.getAttribute('data-obj'), k = TF.Objects.KINDS[id], ob = TF.Objects.blockReason(id), bl = blocked(id);
+      b.textContent = ob === 'Owned' ? 'Owned' : bl ? bl : ob ? ob : label(id, 'Place $' + k.price);
+      b.disabled = !!ob || !!bl || money < k.price;
+      show(b, ob !== 'Owned' && !dayLock(bl), k.name, ob !== 'Owned' && dayLock(bl) && bl);
     });
     list.querySelectorAll('[data-hire]').forEach(function (b) {
       var r = ROSTER.filter(function (x) { return x.id === b.getAttribute('data-hire'); })[0];
       var h = Crew.hiredSet[r.id], locked = st.tier < r.tier;
       var hb = blocked(r.id);
-      b.textContent = h ? 'Hired' : hb ? hb : locked ? 'Needs ' + TIER_NAME[r.tier] : 'Hire $' + r.price;
+      b.textContent = h ? 'Hired' : hb ? hb : locked ? 'Needs ' + TIER_NAME[r.tier] : label(r.id, 'Hire $' + r.price);
       b.disabled = h || locked || !!hb || money < r.price;
       show(b, !h && !locked && !dayLock(hb), r.name, !h && (dayLock(hb) ? hb : locked && 'needs ' + TIER_NAME[r.tier]));
     });
+    var pl = document.getElementById('permitLine'), pt = TF.Week ? TF.Week.permitLine() : '';
+    pl.hidden = !pt; if (pl.textContent !== pt) pl.textContent = pt;
     var line = document.getElementById('soonLine'), keys = Object.keys(soon);
     line.hidden = !keys.length;
     var parts = keys.map(function (k) { return dayLock(k) ? k + ': ' + soon[k].join(', ') : soon[k].join(', ') + ' (' + k + ')'; });

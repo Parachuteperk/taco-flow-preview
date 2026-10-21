@@ -25,6 +25,7 @@
   #crewPanel h3, #crewPanel summary { font-size: 13px; margin: 8px 0 4px; font-weight: 800; color: #7a1e2c; cursor: pointer; }
   #crewPanel details { border-top: 1px solid #e3cfa5; }
   #crewPanel .card[hidden] { display: none; }
+  #crewPanel .permit { background: #fde8a6; border-radius: 6px; color: #5a3a10; font-weight: 700; }
   #crewPanel .soon { font-size: 11px; color: #7a5a4a; padding: 4px 6px 6px; }
   .bar { display: contents; }
   .bar[hidden] { display: none; }
@@ -56,6 +57,9 @@
   #btnAcceptLine { position: fixed; left: 50%; bottom: max(64px, calc(env(safe-area-inset-bottom) + 56px)); transform: translateX(-50%); z-index: 3; background: #ffd23a; font-size: 16px; padding: 12px 18px; }
   #btnOpen { position: fixed; left: 50%; bottom: max(64px, calc(env(safe-area-inset-bottom) + 56px)); transform: translateX(-50%); z-index: 3; background: #2fbf5c; color: #fff; border-color: #155c2b; box-shadow: 0 3px 0 #155c2b; font-size: 22px; font-weight: 900; padding: 14px 34px; letter-spacing: 1px; animation: pinPulse 1.2s ease-in-out infinite; }
   #dayHud { background: #7a1e2c; color: #ffd23a; font-weight: 800; box-shadow: 0 2px 0 #3a0c14; }
+  #lostHud { background: #3a1a14; color: #ffb4a4; font-weight: 800; }
+  #lostHud.bump { background: #b8283a; color: #fff; }
+  .card2 .brief { margin-top: 8px; padding: 8px; background: #fde8a6; border: 2px dashed #c9a227; border-radius: 8px; font-size: 13px; }
   #dayHud.bell { background: #c9a227; color: #3a0c14; animation: bellPulse 0.6s ease-in-out infinite alternate; }
   @keyframes bellPulse { to { transform: scale(1.08); box-shadow: 0 0 14px #ffd23a; } }
   .card2 { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(360px, calc(100% - 32px)); background: #fff5d6; border: 3px solid #501214; border-radius: 12px; box-shadow: 0 6px 0 #501214; padding: 14px; z-index: 6; color: #2a1810; }
@@ -76,6 +80,7 @@
 <canvas id="c"></canvas>
 <div id="hud">
   <span class="chip" id="dayHud" hidden></span>
+  <span class="chip" id="lostHud" hidden title="Customers who walked away without a taco"></span>
   <span class="chip" id="money">$0</span>
   <button id="btnPlay" title="Play / pause (space)">&#9654;</button>
   <button id="btnSpeed">1&times;</button>
@@ -132,6 +137,8 @@
 <script src="src/crew.js"></script>
 <script src="src/events.js"></script>
 <script src="src/supply.js"></script>
+<script src="src/build.js"></script>
+<script src="src/objects.js"></script>
 <script src="src/ambient.js"></script>
 <script src="src/bets.js"></script>
 <script src="src/week.js"></script>

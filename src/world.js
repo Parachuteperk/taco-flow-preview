@@ -173,12 +173,12 @@
   // Footpaths and plaza that everyone may walk (line tiles and the stand are excluded).
   World.isWalkway = function (x, y) {
     var t = World.get(x, y);
-    return (t === T.PATH || t === T.PLAZA) && !World.isStand(x, y) && !World.isLine(x, y);
+    return (t === T.PATH || t === T.PLAZA) && !World.isStand(x, y) && !World.isLine(x, y) && !(World.isObject && World.isObject(x, y));
   };
 
   World.walkable = function (x, y) {
     var t = World.get(x, y);
-    return (t === T.GRASS || t === T.PATH || t === T.PLAZA) && !World.isStand(x, y);
+    return (t === T.GRASS || t === T.PATH || t === T.PLAZA) && !World.isStand(x, y) && !(World.isObject && World.isObject(x, y));
   };
 
   // Guests keep to walks: grass is a last resort, line tiles are for queuers only.
