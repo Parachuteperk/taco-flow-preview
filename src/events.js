@@ -51,7 +51,10 @@
     if (!Ev.west) {
       if (TF.Crew && TF.Crew.hiredSet.ali && Sim.stand.placed) {
         if (Ev.nextWest === Infinity) Ev.nextWest = Sim.t + rnd(60, 120);
-        if (Sim.t >= Ev.nextWest) startWest();
+        if (Sim.t >= Ev.nextWest && (!TF.Week || TF.Week.eventAllowed('west', true))) {
+          startWest();
+          if (TF.Week && TF.Week.active()) { TF.Week.eventUsed(); Sim.events.push({ type: 'toast', text: 'Mrs. West spotted Ali from across the quad\u2026' }); }
+        }
       }
       Sim.cookRate = 1;
       return;
@@ -60,11 +63,19 @@
     w.px = w.x; w.py = w.y;
     if (w.phase === 'chat') {
       w.moving = false;
-      w.t -= dt;
+      w.t -= dt; w.ct += dt;
+      // 2 s in: queued students start wondering where their tacos are (only if Ali really stalls)
+      if (!w.whereDone && w.ct >= 2 && !(TF.Crew && TF.Crew.extras.aiali)) {
+        w.whereDone = true;
+        Sim.stand.queue.slice(0, 3).forEach(function (g) { Sim.think(g, 'where', 6); });
+      }
       // Ali stops cooking to chat -- unless AI Ali takes the conversation for him.
       if (TF.Crew && TF.Crew.extras.aiali) { Sim.cookRate = 1; Ev.aiAliChats += dt; }
       else { Sim.cookRate = 0; Ev.aliPausedSeconds += dt; }
       if (w.t <= 0) {
+        // the $5 tip and a wave; Ali snaps back, flustered for a moment
+        Sim.stats.money += 5; Sim.floaters.push({ x: w.x, y: w.y, text: '+$5 tip', t: 0 });
+        Ev.flustered = TF.Crew && TF.Crew.extras.aiali ? 0 : 2.5;
         w.phase = 'out'; Sim.cookRate = 1;
         var tiles = World.exitPath(Math.floor(w.x), Math.floor(w.y), w.exit);
         w.path = (tiles || []).slice(1).map(function (t) { return { x: t.x + 0.5, y: t.y + 0.5 }; });
@@ -72,11 +83,9 @@
       }
     } else if (Sim.walkEntity(w, dt, false)) {
       if (w.phase === 'in') {
-        w.phase = 'chat'; w.t = rnd(10, 15);
+        w.phase = 'chat'; w.t = 10; w.ct = 0; w.whereDone = false;
         var tip = w.tip = TIPS[Math.floor(Sim.rand() * TIPS.length)];
-        if (tip.money) { Sim.stats.money += tip.money; Sim.floaters.push({ x: w.x, y: w.y, text: '+$' + tip.money, t: 0 }); }
         if (tip.boost) Sim.priceBoostT = tip.boost;
-        Sim.events.push({ type: 'toast', text: 'Mrs. West: “' + tip.text + '”' });
       } else {
         Ev.west = null;
         Ev.nextWest = Sim.t + rnd(60, 120);
@@ -88,7 +97,7 @@
   // ---- Antonio hacks the class agenda -------------------------------------------
   // Button (90 s cooldown) or now and then on its own: Antonio types ~2 s, a glitchy campus
   // schedule popup says classes are out, and ~50 students pour out of Old Main over ~10 s.
-  Ev.canHack = function () { return !!(TF.Crew && TF.Crew.hiredSet.antonio) && Ev.hack.phase === 'idle' && Ev.hack.cooldown <= 0; };
+  Ev.canHack = function () { return !!(TF.Crew && TF.Crew.hiredSet.antonio) && Ev.hack.phase === 'idle' && Ev.hack.cooldown <= 0 && (!TF.Week || TF.Week.eventAllowed('hack', false)); };
   Ev.startHack = function (auto) {
     if (!Ev.canHack()) return false;
     var h = Ev.hack;
@@ -101,11 +110,21 @@
     if (h.cooldown > 0) h.cooldown -= dt;
     var hasAntonio = TF.Crew && TF.Crew.hiredSet.antonio;
     if (hasAntonio && h.next === Infinity) h.next = Sim.t + rnd(150, 240);
-    if (hasAntonio && h.phase === 'idle' && Sim.t >= h.next) { Ev.startHack(true); h.next = Sim.t + rnd(150, 240); }
+    if (hasAntonio && h.phase === 'idle' && Sim.t >= h.next) {
+      // Never on Day 1; on its own it always says why it happened.
+      if ((!TF.Week || TF.Week.eventAllowed('hack', true)) && Ev.startHack(true)) {
+        if (TF.Week && TF.Week.active()) TF.Week.eventUsed();
+        Sim.events.push({ type: 'toast', text: 'Antonio couldn\u2019t resist hacking the class schedule\u2026' });
+      }
+      h.next = Sim.t + rnd(150, 240);
+    }
     if (h.phase === 'typing') {
       h.t -= dt;
       if (h.t <= 0) {
-        h.phase = 'wave'; h.spawnLeft = 50; h.spawnT = 0; h.lastSpawned = 0;
+        // Antonio's hype timed into a class bell rides the wave: half again as many students.
+        var timed = !!(TF.Week && TF.Week.bellHot && TF.Week.bellHot());
+        h.phase = 'wave'; h.spawnLeft = timed ? 75 : 50; h.spawnT = 0; h.lastSpawned = 0;
+        if (timed) { h.timed = (h.timed || 0) + 1; Sim.events.push({ type: 'toast', text: 'Perfect timing! Antonio\u2019s hype rides the bell' }); }
         Sim.capExtra = 70;
         Sim.events.push({ type: 'hack' });
       }
@@ -129,7 +148,7 @@
   // and ~36 students arrive from the map edges (not Old Main, unlike the agenda hack).
   Ev.raid = { phase: 'idle', t: 0, cooldown: 0, next: Infinity, spawnLeft: 0, spawnT: 0, raids: 0, lastSpawned: 0, fromEdges: 0 };
   var RAIDERS = ['TacoTuesdayTV', 'BobcatGamer', 'QuadSquad', 'xX_Salsa_Xx', 'RoundRockRaids'];
-  Ev.canRaid = function () { return !!(TF.Crew && TF.Crew.hiredSet.antonio) && Ev.raid.phase === 'idle' && Ev.raid.cooldown <= 0; };
+  Ev.canRaid = function () { return !!(TF.Crew && TF.Crew.hiredSet.antonio) && Ev.raid.phase === 'idle' && Ev.raid.cooldown <= 0 && (!TF.Week || TF.Week.eventAllowed('raid', false)); };
   Ev.startRaid = function () {
     if (!Ev.canRaid()) return false;
     var r = Ev.raid;
@@ -143,7 +162,13 @@
     if (r.cooldown > 0) r.cooldown -= dt;
     var has = TF.Crew && TF.Crew.hiredSet.antonio;
     if (has && r.next === Infinity) r.next = Sim.t + rnd(200, 320);
-    if (has && r.phase === 'idle' && Sim.t >= r.next) { Ev.startRaid(); r.next = Sim.t + rnd(200, 320); }
+    if (has && r.phase === 'idle' && Sim.t >= r.next) {
+      if ((!TF.Week || TF.Week.eventAllowed('raid', true)) && Ev.startRaid()) {
+        if (TF.Week && TF.Week.active()) TF.Week.eventUsed();
+        Sim.events.push({ type: 'toast', text: 'Antonio\u2019s stream went viral: a raid is coming!' });
+      }
+      r.next = Sim.t + rnd(200, 320);
+    }
     if (r.phase === 'incoming') {
       r.t -= dt;
       if (r.t <= 0) { r.phase = 'wave'; r.spawnLeft = 36; r.spawnT = 0; r.lastSpawned = 0; r.fromEdges = 0; }
@@ -179,7 +204,16 @@
   function stepGrackles(dt) {
     var g = Ev.grackle, st = Sim.stand;
     if (st.placed && g.next === Infinity) g.next = Sim.t + rnd(70, 130);
-    if (g.phase === 'idle') { Sim.serviceSlow = 1; if (st.placed && Sim.t >= g.next) { Ev.startGrackles(); g.next = Sim.t + rnd(70, 130); } return; }
+    if (g.phase === 'idle') {
+      Sim.serviceSlow = 1;
+      if (st.placed && Sim.t >= g.next) {
+        if ((!TF.Week || TF.Week.eventAllowed('grackles', true)) && Ev.startGrackles()) {
+          if (TF.Week && TF.Week.active()) { TF.Week.eventUsed(); Sim.events.push({ type: 'toast', text: 'The grackle squad smelled warm tortillas\u2026' }); }
+        }
+        g.next = Sim.t + rnd(70, 130);
+      }
+      return;
+    }
     g.t -= dt;
     g.birds.forEach(function (b) {
       b.flap += dt * 18;
@@ -200,7 +234,13 @@
   }
   Ev.shooing = function () { return Ev.grackle.phase === 'peck' && TF.Crew && TF.Crew.hiredSet.matt; };
 
-  Ev.step = function (dt) { stepWest(dt); stepHack(dt); stepRaid(dt); stepGrackles(dt); };
+  // Staging helpers for the renderer / crew drawing.
+  Ev.westChat = function () { return Ev.west && Ev.west.phase === 'chat' ? Ev.west : null; };
+  Ev.grillStalled = function () { var w = Ev.westChat(); return !!w && w.ct >= 1 && !(TF.Crew && TF.Crew.extras.aiali); };
+  Ev.flustered = 0;
+
+  Ev.step = function (dt) {
+    if (Ev.flustered > 0) Ev.flustered -= dt; stepWest(dt); stepHack(dt); stepRaid(dt); stepGrackles(dt); };
 
   // ---- Drawing ------------------------------------------------------------------
   Ev.items = function (items, alpha) {
@@ -231,10 +271,16 @@
         if (painted) P.drawCrew(ctx, 'west', Math.floor(Sim.t * 1.5) % 2, p.x, p.y, z, mirror);
         else TF.Crew.drawPlaceholder(ctx, 'west', p.x, p.y, z, mirror);
       }
-      // Speech bubble with her tip, heart over Ali.
-      if (w.tip) bubble(ctx, w.tip.text, p.x, p.y - 44 * z, z);
-      R.text('♥', a.x, a.y - 42 * z + Math.sin(Sim.t * 5) * 2 * z, 12 * z, '#e0406a', 'rgba(255,255,255,0.8)');
+      // Staged gag: a big heart pops over Ali at once, bubbles over both from 1.5 s, her tip
+      // line in the last seconds.
+      var ct = w.ct || 0, pop = Math.min(1, ct / 0.25), hs = (22 + 6 * Math.sin(Sim.t * 6)) * pop;
+      R.text('\u2665', a.x, a.y - 46 * z - (1 - pop) * 10 * z, hs * z, '#ff3d7f', 'rgba(255,255,255,0.9)');
+      if (ct >= 1.5) {
+        bubble(ctx, w.t > 1.5 ? 'Darling, these tacos!' : (w.tip ? w.tip.text : 'Toodle-oo!'), p.x, p.y - 46 * z, z);
+        bubble(ctx, '\uD83D\uDE33 uh\u2026 hi Mrs. West!', a.x - 10 * z, a.y - 84 * z, z);
+      }
     } else {
+      if (w.phase === 'out' && w.path.length > 6) R.text('\uD83D\uDC4B', p.x + 10 * z, p.y - 40 * z, 12 * z, '#fff');
       var swing = w.moving ? Math.sin(w.anim / 0.16 * Math.PI / 2) : 0;
       if (!(TF.Art.painted() && P && P.drawWest(ctx, w, p.x, p.y, z)) && !(painted && P.drawWalker(ctx, 'west', p.x, p.y, z, mirror, swing, null))) TF.Crew.drawPlaceholder(ctx, 'west', p.x, p.y, z, mirror, w);
     }
@@ -256,8 +302,8 @@
   }
 
   function bubble(ctx, str, x, y, z) {
-    ctx.font = 'bold ' + Math.round(8 * z) + 'px system-ui, sans-serif';
-    var w = ctx.measureText(str).width + 10 * z, h = 13 * z;
+    ctx.font = 'bold ' + Math.round(10 * z) + 'px system-ui, sans-serif';
+    var w = ctx.measureText(str).width + 12 * z, h = 16 * z;
     ctx.fillStyle = 'rgba(255,255,255,0.95)'; ctx.strokeStyle = '#8e5ba8'; ctx.lineWidth = 1.2 * z;
     ctx.beginPath();
     if (ctx.roundRect) ctx.roundRect(x - w / 2, y - h, w, h, 4 * z); else ctx.rect(x - w / 2, y - h, w, h);

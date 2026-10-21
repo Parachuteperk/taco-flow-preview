@@ -91,8 +91,9 @@
   B.step = function (dt) {
     if (B.card) { B.cardT -= dt; if (B.cardT <= 0) { if (B.card === 'flip') B.flips.skipped++; hideCard(); } }
     if (!Sim.stand.placed) { B.dayStart = Sim.t; return; }
-    if (!B.offeredToday && Sim.t - B.dayStart >= B.betAt && B.dayEarn >= 20 && !B.card) B.offerBet();
-    if (Sim.t - B.dayStart >= DAY) B.endDay();
+    var week = TF.Week && TF.Week.active();
+    if (!B.offeredToday && Sim.t - B.dayStart >= B.betAt && B.dayEarn >= 20 && !B.card && (!week || TF.Week.eventAllowed('bets', true))) B.offerBet();
+    if (!week && Sim.t - B.dayStart >= DAY) B.endDay();   // in Taco Week, closing time ends the day
   };
 
   B.setPolicy = function (p) { if (p === 'always' || p === 'ask' || p === 'never') B.policy = p; };

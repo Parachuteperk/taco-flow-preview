@@ -20,6 +20,9 @@
     exits: [],
     stand: null,          // {sx, sy, rot} when placed (set by Sim)
     lineSet: {},          // "x,y" -> chain index (set by Sim)
+    lineOwner: {},        // "x,y" -> index of the stand whose line it is
+    stands: [],           // placed stands {sx, sy, rot, idx} (set by Sim)
+    validating: null,
     rng: rng
   };
 
@@ -112,39 +115,59 @@
     };
   };
 
+  var OBSTACLE = {};
+  OBSTACLE[T.TREE] = 'A live oak'; OBSTACLE[T.BENCH] = 'A bench'; OBSTACLE[T.LAMP] = 'A lamp post'; OBSTACLE[T.PLANTER] = 'A planter';
+  // ok, or the reason + the offending tile + a how-to-fix line for the player.
   World.validateStand = function (sx, sy, rot) {
-    var g = World.standGeom(sx, sy, rot), i, t;
+    var g = World.standGeom(sx, sy, rot), i, t, tl;
     for (i = 0; i < 4; i++) {
-      t = World.get(g.tiles[i][0], g.tiles[i][1]);
-      if (t === -1) return { ok: false, reason: 'Off the map' };
-      if (t === T.PATH) return { ok: false, reason: 'Can’t build on a footpath' };
-      if (t !== T.GRASS && t !== T.PLAZA) return { ok: false, reason: 'Something is in the way' };
+      tl = g.tiles[i]; t = World.get(tl[0], tl[1]);
+      if (t === -1) return { ok: false, reason: 'Off the map', tile: tl, fix: 'Move it inward: all 4 tiles must be on the quad.' };
+      if (t === T.PATH) return { ok: false, reason: 'Can\u2019t build on a footpath', tile: tl, fix: 'Stands sit on grass or brick. Move it one tile off the walk.' };
+      if (t !== T.GRASS && t !== T.PLAZA) return { ok: false, reason: 'Something is in the way', tile: tl, fix: (OBSTACLE[t] || 'Something') + ' is in the way. Try a clearer patch of lawn.' };
+      if ((World.blockedForStand && World.blockedForStand(tl[0], tl[1])) || World.isStand(tl[0], tl[1]) || World.isPickup(tl[0], tl[1]) || World.isLine(tl[0], tl[1])) return { ok: false, reason: 'Something is in the way', tile: tl, fix: 'That spot is taken by the other stand or its line. Pick open ground.' };
     }
-    t = World.get(g.order[0], g.order[1]);
-    if (t !== T.GRASS && t !== T.PLAZA) return { ok: false, reason: 'Order window needs open ground in front (rotate with R)' };
+    tl = g.order; t = World.get(tl[0], tl[1]);
+    if (World.isStand(tl[0], tl[1]) || World.isPickup(tl[0], tl[1]) || World.isLine(tl[0], tl[1])) return { ok: false, reason: 'Order window is blocked', tile: tl, fix: 'The other stand is in the way of the ORDER window. Press R or move.' };
+    if (t !== T.GRASS && t !== T.PLAZA) return { ok: false, reason: 'Order window needs open ground in front', tile: tl, fix: 'The ORDER window needs grass or brick in front. Press R to turn the stand.' };
     for (i = 0; i < 2; i++) {
-      t = World.get(g.pickup[i][0], g.pickup[i][1]);
-      if (t !== T.GRASS && t !== T.PLAZA && t !== T.PATH) return { ok: false, reason: 'Pickup hatch is blocked (rotate with R)' };
+      tl = g.pickup[i]; t = World.get(tl[0], tl[1]);
+      if (t !== T.GRASS && t !== T.PLAZA && t !== T.PATH || World.isStand(tl[0], tl[1]) || World.isLine(tl[0], tl[1])) return { ok: false, reason: 'Pickup hatch is blocked', tile: tl, fix: 'The pickup hatch needs open ground in front. Press R or move one tile.' };
     }
     return { ok: true, reason: '' };
   };
+  // First rotation (starting from the preferred one) that is valid here, or null.
+  World.bestRotation = function (sx, sy, pref) {
+    for (var k = 0; k < 4; k++) { var r = ((pref || 0) + k) % 4; if (World.validateStand(sx, sy, r).ok) return r; }
+    return null;
+  };
 
+  // Every placed stand (World.stands, kept by Sim). While a stand is being re-placed
+  // (World.validating = its index) its own old footprint doesn't count.
+  function eachStand(fn) {
+    var list = World.stands || (World.stand ? [World.stand] : []);
+    for (var i = 0; i < list.length; i++) {
+      var s = list[i];
+      if (!s || (World.validating !== null && World.validating !== undefined && s.idx === World.validating)) continue;
+      if (fn(s)) return true;
+    }
+    return !!World.planning && fn(World.planning);   // a not-yet-placed stand a line is planned for
+  }
   World.isStand = function (x, y) {
-    var s = World.stand;
-    return !!s && x >= s.sx && x <= s.sx + 1 && y >= s.sy && y <= s.sy + 1;
+    return eachStand(function (s) { return x >= s.sx && x <= s.sx + 1 && y >= s.sy && y <= s.sy + 1; });
   };
   World.isLine = function (x, y) { return World.lineSet[x + ',' + y] !== undefined; };
   World.isPickup = function (x, y) {
-    var s = World.stand;
-    if (!s) return false;
-    var g = World.standGeom(s.sx, s.sy, s.rot);
-    return (g.pickup[0][0] === x && g.pickup[0][1] === y) || (g.pickup[1][0] === x && g.pickup[1][1] === y);
+    return eachStand(function (s) {
+      var g = World.standGeom(s.sx, s.sy, s.rot);
+      return (g.pickup[0][0] === x && g.pickup[0][1] === y) || (g.pickup[1][0] === x && g.pickup[1][1] === y);
+    });
   };
 
   // Line tiles go on grass or plaza (never on a footpath: the line must END at one).
   World.lineGround = function (x, y) {
     var t = World.get(x, y);
-    return (t === T.GRASS || t === T.PLAZA) && !World.isStand(x, y) && !World.isPickup(x, y);
+    return (t === T.GRASS || t === T.PLAZA) && !World.isStand(x, y) && !World.isPickup(x, y) && !(World.blockedForStand && World.blockedForStand(x, y));
   };
 
   // Footpaths and plaza that everyone may walk (line tiles and the stand are excluded).

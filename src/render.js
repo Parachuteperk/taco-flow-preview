@@ -45,6 +45,14 @@
     ctx.fillStyle = color; ctx.fillText(str, x, y);
   }
   R.text = function (str, x, y, size, color, stroke) { text(str, x, y, size, color, stroke); };
+  // A label on a solid rounded-ish plate (readable over trees and crowds).
+  function pill(str, x, y, size, bg) {
+    ctx.font = 'bold ' + Math.round(size) + 'px system-ui, sans-serif';
+    var w = ctx.measureText(str).width + size * 1.2, h = size * 1.7;
+    ctx.fillStyle = bg; ctx.fillRect(x - w / 2, y - h / 2, w, h);
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = 1.5; ctx.strokeRect(x - w / 2, y - h / 2, w, h);
+    text(str, x, y, size, '#fff');
+  }
 
   // ---- Ground ------------------------------------------------------------
   var PAINT_KEY = {};
@@ -229,22 +237,24 @@
   // its own depth-sorted item at a foot point in the stand's local frame (a: toward the pickup
   // side, b: toward the order side, from the footprint centre).
   var PIECE = {   // target size in screen px at zoom 1 (one world scale for every piece)
-    table: { a: -0.35, b: 0.6, w: 60 }, tablecooler: { a: -0.35, b: 0.6, w: 60 },
+    table: { a: -0.35, b: 0.6, w: 60 }, tablecooler: { a: -0.35, b: 0.6, w: 60 }, cooler: { a: -1.0, b: 0.25, w: 24 },
     grill: { a: 0.5, b: 0.55, w: 30 }, banner: { a: -1.15, b: -0.4, h: 64 },
     counter: { a: 0.75, b: -0.45, w: 46 }, canopy: { w: 140 }
   };
-  R.standPieces = function (sx, sy, rot, tier, away) {
+  R.standPieces = function (sx, sy, rot, tier, away, st) {
+    st = st || Sim.stand;
     var g = World.standGeom(sx, sy, rot), out = [];
     function at(name, extra) {
       var d = PIECE[name], x = g.cx + g.np[0] * d.a + g.n[0] * d.b, y = g.cy + g.np[1] * d.a + g.n[1] * d.b;
-      out.push({ kind: 'piece', piece: name, x: x, y: y, k: x + y, geom: g, mirror: extra });
+      out.push({ kind: 'piece', piece: name, x: x, y: y, k: x + y, geom: g, mirror: extra, st: st });
     }
     at(away ? 'table' : 'tablecooler', g.n[1] !== 0);
+    if (TF.Crew && TF.Crew.extras.cooler2 && tier === 0 && st.idx === 0) at('cooler', g.n[1] !== 0);   // the second cooler
     if (tier >= 1) at('grill', false);
     if (tier >= 2) at('banner', g.n[1] !== 0);
     if (tier >= 3) at('counter', g.np[1] !== 0);
     // The canopy is drawn behind everything at the stand so the crew under it stay visible.
-    if (tier >= 4) out.unshift({ kind: 'piece', piece: 'canopy', x: sx + 2, y: sy + 2, k: sx + sy + 0.2, geom: g });
+    if (tier >= 4) out.unshift({ kind: 'piece', piece: 'canopy', x: sx + 2, y: sy + 2, k: sx + sy + 0.2, geom: g, st: st });
     return out;
   };
 
@@ -258,8 +268,21 @@
       ctx.drawImage(im, -im.ax * sc, -im.ay * sc, im.width * sc, im.height * sc);
       ctx.restore();
     } else placeholderPiece(it, p, z);
-    if (!ghost && it.piece === 'grill') drawSteam(p);
-    if (!ghost && (it.piece === 'tablecooler' || it.piece === 'table')) drawStock(p, z);
+    if (!ghost && it.piece === 'grill') {
+      drawSteam(p, it.st);
+      if (it.st === Sim.stand && TF.Events && TF.Events.grillStalled && TF.Events.grillStalled()) {
+        var tt = performance.now() / 1000;
+        for (var sp = 0; sp < 4; sp++) {
+          var kk = (tt * 0.8 + sp * 0.25) % 1;
+          ctx.fillStyle = 'rgba(80,80,80,' + (0.55 * (1 - kk)).toFixed(3) + ')';
+          ctx.beginPath(); ctx.arc(p.x + (sp - 1.5) * 5 * z, p.y - 28 * z - kk * 26 * z, (4 + kk * 8) * z, 0, Math.PI * 2); ctx.fill();
+        }
+        var pul = 1 + 0.12 * Math.sin(tt * 9);
+        ctx.fillStyle = '#ff8a1a'; ctx.fillRect(p.x - 38 * z * pul, p.y - 50 * z, 76 * z * pul, 16 * z);
+        text('\u26A0 GRILL STALLED', p.x, p.y - 42 * z, 10 * z * pul, '#fff');
+      }
+    }
+    if (!ghost && (it.piece === 'tablecooler' || it.piece === 'table')) drawStock(p, z, it.st);
     if (!ghost && it.piece === 'banner') { var b = R.toScreen(it.x, it.y, 40); text('TACOS', b.x, b.y, 9 * z, '#ffd23a', 'rgba(80,10,20,0.9)'); }
     ctx.globalAlpha = 1;
   };
@@ -285,7 +308,7 @@
       poly([P(-0.1, 0.4, 0), P(-0.1, -0.4, 0), P(-0.1, -0.4, 16), P(-0.1, 0.4, 16)], '#8a6a44');
       poly([P(-0.3, 0.4, 16), P(-0.1, 0.4, 16), P(-0.1, -0.4, 16), P(-0.3, -0.4, 16)], '#b08a5a');
     } else if (it.piece === 'canopy') {
-      var sx = Sim.stand.sx, sy = Sim.stand.sy;
+      var sx = (it.st || Sim.stand).sx, sy = (it.st || Sim.stand).sy;
       if (it.geom) { sx = it.geom.sx; sy = it.geom.sy; }
       ctx.strokeStyle = '#999'; ctx.lineWidth = 1.5 * z;
       [[0, 0], [2, 0], [2, 2], [0, 2]].forEach(function (c) { var a = R.toScreen(sx + c[0], sy + c[1]), b2 = R.toScreen(sx + c[0], sy + c[1], 50); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b2.x, b2.y); ctx.stroke(); });
@@ -295,20 +318,20 @@
     }
   }
 
-  function drawStock(p, z) {
-    var st = Sim.stand;
+  function drawStock(p, z, st) {
+    st = st || Sim.stand;
     if (!st.placed) return;
-    var max = Sim.mods.stockMax, f = Math.max(0, st.stock) / max, y = p.y - 34 * z;
+    var max = st.mods.stockMax, f = Math.max(0, st.stock) / max, y = p.y - 34 * z;
     var w = 26 * z;
     ctx.fillStyle = 'rgba(30,20,10,0.75)'; ctx.fillRect(p.x - w / 2 - z, y - z, w + 2 * z, 5 * z);
     ctx.fillStyle = f > 0.25 ? '#6cd06c' : f > 0 ? '#f0b030' : '#e04040';
     ctx.fillRect(p.x - w / 2, y, w * f, 3 * z);
-    var label = Sim.runner ? 'RESTOCKING' : st.stock <= 0 ? 'SOLD OUT' : st.tier === 0 ? st.stock + '/' + max + ' tacos' : '';
+    var label = st.trip ? 'RESTOCKING' : st.stock <= 0 ? 'SOLD OUT' : st.tier === 0 ? st.stock + '/' + max + ' tacos' : '';
     if (label) text(label, p.x, y - 6 * z, 7 * z, '#fff5d6', 'rgba(60,30,20,0.85)');
   }
 
-  function drawSteam(p0) {
-    var n = Sim.stand.cook.grill.length, z = R.cam.z;
+  function drawSteam(p0, st) {
+    var n = (st || Sim.stand).cook.grill.length, z = R.cam.z;
     for (var i = 0; i < n; i++) {
       var k = (Sim.t * 1.3 + i * 0.5) % 1;
       ctx.fillStyle = 'rgba(255,255,255,' + (0.5 * (1 - k)).toFixed(3) + ')';
@@ -326,8 +349,9 @@
     ctx.quadraticCurveTo((a.x + b.x) / 2, (a.y + b.y) / 2 - 3 * z, b.x, b.y - 7 * z); ctx.stroke();
   }
 
-  R.drawLine = function () {
-    var st = Sim.stand, z = R.cam.z;
+  R.drawLine = function (st) {
+    st = st || Sim.stand;
+    var z = R.cam.z;
     if (!st.placed) return;
     var L = st.line, geom = st.geom;
     // pickup mats
@@ -357,10 +381,37 @@
   };
 
   // In-world hints drawn over everything: no line yet / line not connected / queue entry.
-  R.drawLineHints = function (ui) {
-    var st = Sim.stand, z = R.cam.z;
-    R.lastLineHint = !st.placed ? 'none' : !st.line.length ? 'noline' : st.connected ? 'connected' : 'disconnected';
+  R.drawLineHints = function (ui, st) {
+    st = st || Sim.stand;
+    var z = R.cam.z;
+    if (st === Sim.selected()) R.lastLineHint = !st.placed ? 'none' : !st.line.length ? 'noline' : st.connected ? 'connected' : 'disconnected';
     if (!st.placed || ui.placing) return;
+    if (Sim.stands.length > 1) {   // which stand is which
+      var tg = R.toScreen(st.sx + 1, st.sy + 1, 78);
+      text('Stand ' + (st.idx + 1) + (st === Sim.selected() && (ui.building) ? ' \u270E' : ''), tg.x, tg.y, 9 * z, '#fff5d6', st === Sim.selected() ? 'rgba(122,30,44,0.95)' : 'rgba(60,30,20,0.7)');
+    }
+    // One bottleneck label per stand, and one grouped warning instead of a bubble per balk.
+    var neck = TF.bottleneckOf(st);
+    if (neck && neck !== 'SLOW KITCHEN' && !(neck === 'NO STOCK' && st.stock <= 0)) {
+      var nk = R.toScreen(st.sx + 1, st.sy + 1, 96), np = 1 + 0.06 * Math.sin(performance.now() / 180);
+      ctx.font = 'bold ' + Math.round(10 * z) + 'px system-ui, sans-serif';
+      var nw = ctx.measureText('\u26A0 ' + neck).width + 12 * z;
+      ctx.fillStyle = '#ff8a1a'; ctx.fillRect(nk.x - nw / 2 * np, nk.y - 8 * z, nw * np, 16 * z);
+      text('\u26A0 ' + neck, nk.x, nk.y, 10 * z * np, '#fff');
+      R.lastNeck = neck;
+    }
+    var nb = Sim.recentBalks(st, 'longline');
+    if (nb >= 2 && st.poly.length) {
+      var ent = st.poly[st.poly.length - 1], ep = R.toScreen(ent.x, ent.y, 34);
+      text('\u26A0 ' + nb + ' walked away: line too long', ep.x, ep.y, 9 * z, '#fff', 'rgba(150,20,20,0.9)');
+      R.lastGroupedBalk = nb;
+    }
+    if (st.stock <= 0) {   // SOLD OUT sign at the window
+      var so = R.toScreen(st.geom.order[0] + 0.5, st.geom.order[1] + 0.5, 46), pz = 1 + 0.08 * Math.sin(performance.now() / 150);
+      ctx.fillStyle = '#c62f2f'; ctx.fillRect(so.x - 34 * z * pz, so.y - 9 * z * pz, 68 * z * pz, 18 * z * pz);
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2 * z; ctx.strokeRect(so.x - 34 * z * pz, so.y - 9 * z * pz, 68 * z * pz, 18 * z * pz);
+      text('SOLD OUT', so.x, so.y, 11 * z * pz, '#fff');
+    }
     var L = st.line;
     if (!L.length) {
       var o = R.toScreen(st.geom.order[0] + 0.5, st.geom.order[1] + 0.5, 20);
@@ -474,6 +525,11 @@
       ctx.beginPath(); ctx.arc(sx, ry, rr - 0.6 * z, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0.02, prog)); ctx.stroke();
     } else if (g.state === 'WAIT_PICKUP' && g.hasTaco) {
       text('✓', sx, sy - 36 * z, 10 * z, '#3a9d4a');
+    } else if (g.thought === 'where') {
+      ctx.font = 'bold ' + Math.round(8 * z) + 'px system-ui, sans-serif';
+      var ww = ctx.measureText('Where\u2019s my taco?').width + 8 * z;
+      ctx.fillStyle = 'rgba(255,255,255,0.95)'; ctx.fillRect(sx - ww / 2, sy - 46 * z, ww, 11 * z);
+      text('Where\u2019s my taco?', sx, sy - 40.5 * z, 8 * z, '#b8283a');
     } else if (g.thought) {
       thoughtBubble(g.thought, sx, sy - 40 * z, z);
     } else if (g.emote) {
@@ -506,11 +562,12 @@
   // member and overlapping them on screen is faded, so it never hides the stand or the crew.
   R.propFade = 0.22;
   function fadeProps(items, z) {
-    var shields = [], st = Sim.stand;
-    if (st.placed) {
+    var shields = [];
+    Sim.stands.forEach(function (st) {
+      if (!st.placed) return;
       var c = [R.toScreen(st.sx, st.sy), R.toScreen(st.sx + 2, st.sy), R.toScreen(st.sx + 2, st.sy + 2), R.toScreen(st.sx, st.sy + 2)];
       shields.push({ l: Math.min(c[0].x, c[3].x) - 6 * z, r: Math.max(c[1].x, c[2].x) + 6 * z, t: c[0].y - 95 * z, b: c[2].y, k: st.sx + st.sy + 0.2 });
-    }
+    });
     items.forEach(function (it) {
       if (it.kind !== 'crew') return;
       var p = R.toScreen(it.x, it.y);
@@ -544,15 +601,41 @@
       R.drawOldMain();
     }
 
-    var st = Sim.stand, ghost = ui.ghost;
-    if (!bare && st.placed && !(ghost && ui.placing)) R.drawZone(st.geom.cx, st.geom.cy, Sim.mods.zoneR, 0.14, 'rgba(255,240,180,A)');
-    if (!bare) R.drawLine();
+    var st = Sim.stand, ghost = ui.ghost, late = [];   // late: labels drawn over the props
+    if (!bare) Sim.stands.forEach(function (s2) {
+      if (s2.placed && !(ghost && ui.placing && s2 === Sim.selected())) R.drawZone(s2.geom.cx, s2.geom.cy, s2.mods.zoneR, 0.14, 'rgba(255,240,180,A)');
+      R.drawLine(s2);
+    });
+    if (!bare && TF.Onboard) TF.Onboard.drawWorld(z);
     if (ghost && ui.placing) {
       var col = ghost.ok ? 'rgba(40,200,80,A)' : 'rgba(230,50,50,A)', gg = World.standGeom(ghost.sx, ghost.sy, ghost.rot);
-      R.drawZone(gg.cx, gg.cy, Sim.mods.zoneR, 0.5, col);
+      // Location tint (item 7): the draw zone shows how much foot traffic this spot gets.
+      var LOC = { GOOD: 'rgba(40,200,80,A)', OKAY: 'rgba(240,200,40,A)', SLOW: 'rgba(240,120,40,A)' };
+      R.drawZone(gg.cx, gg.cy, Sim.selected().mods.zoneR, 0.5, ghost.loc ? LOC[ghost.loc.grade] : col);
+      if (ghost.loc) {
+        var lp = R.toScreen(gg.cx, gg.cy, 70);
+        var lmsg = ghost.loc.grade + (ghost.loc.grade === 'GOOD' ? ' spot: busy footpaths' : ghost.loc.grade === 'OKAY' ? ' spot: some foot traffic' : ' spot: quiet corner'), lbg = LOC[ghost.loc.grade].replace('A', '0.92');
+        late.push(function () { pill(lmsg, lp.x, lp.y, 11 * z, lbg); });
+        R.lastLocGrade = ghost.loc.grade;
+      }
       gg.tiles.forEach(function (t) { if (World.inside(t[0], t[1])) poly(diamond(t[0], t[1]), col.replace('A', '0.45'), col.replace('A', '0.9'), 1); });
       poly(diamond(gg.order[0], gg.order[1]), 'rgba(255,220,90,0.45)', 'rgba(200,150,20,0.95)', 1.5);
       gg.pickup.forEach(function (t) { poly(diamond(t[0], t[1]), 'rgba(201,162,39,0.3)', 'rgba(201,162,39,0.9)', 1); });
+      if (!ghost.ok && ghost.bad) {   // the tile that makes it invalid, with how to fix it
+        var pb = 0.5 + 0.35 * Math.sin(performance.now() / 120);
+        poly(diamond(ghost.bad[0], ghost.bad[1]), 'rgba(230,30,30,' + pb.toFixed(2) + ')', '#ff2b2b', 2.5);
+        var bp = R.toScreen(ghost.bad[0] + 0.5, ghost.bad[1] + 0.5, 30);
+        text(ghost.fix, bp.x, bp.y, 10 * z, '#fff', 'rgba(150,20,20,0.92)');
+      }
+    }
+    // Line preview while building (item 7): capacity, crossing, pickup lane.
+    var bst = Sim.selected();
+    if (ui.building && bst.placed && bst.info) {
+      bst.info.crossings.forEach(function (t) { poly(diamond(t.x, t.y), 'rgba(255,138,26,0.35)', '#ff8a1a', 2); });
+      var inf = bst.info, pv = R.toScreen(bst.geom.cx, bst.geom.cy, 120);
+      var msg = 'Capacity ' + inf.cap + ' / path blocked: ' + (inf.blocked ? 'YES' : 'no') + ' / pickup clear: ' + (inf.pickupClear ? 'yes' : 'NO');
+      late.push(function () { pill(msg, pv.x, pv.y, 10 * z, inf.blocked || !inf.pickupClear ? 'rgba(180,70,10,0.95)' : 'rgba(30,110,50,0.95)'); });
+      R.lastLinePreview = msg;
     }
     if (ui.building && ui.hover && World.inside(ui.hover.x, ui.hover.y)) {
       var hcol = ui.hover.del ? 'rgba(240,150,40,A)' : ui.hover.ok ? 'rgba(40,200,80,A)' : 'rgba(230,50,50,A)';
@@ -569,8 +652,10 @@
       if (pp.x < -60 || pp.x > R.vw + 60 || pp.y < -20 || pp.y > R.vh + 90) continue;   // cull
       items.push({ k: tx + ty + 1, kind: 'prop', t: t, x: tx + 0.5, y: ty + 0.5 });
     }
-    if (st.placed && !ui.noPieces && !only) R.standPieces(st.sx, st.sy, st.rot, st.tier, !!Sim.runner).forEach(function (it) { items.push(it); });
-    if (ghost && ui.placing) R.standPieces(ghost.sx, ghost.sy, ghost.rot, st.tier, false).forEach(function (it) { it.ghost = true; items.push(it); });
+    if (!ui.noPieces && !only) Sim.stands.forEach(function (s2) {
+      if (s2.placed && !(ghost && ui.placing && s2 === Sim.selected())) R.standPieces(s2.sx, s2.sy, s2.rot, s2.tier, !!s2.trip, s2).forEach(function (it) { items.push(it); });
+    });
+    if (ghost && ui.placing) R.standPieces(ghost.sx, ghost.sy, ghost.rot, Sim.selected().tier, false, Sim.selected()).forEach(function (it) { it.ghost = true; items.push(it); });
     var gs = (ui.noGuests || only) ? [] : Sim.guests;
     for (var i = 0; i < gs.length; i++) {
       var g = gs[i];
@@ -582,6 +667,7 @@
     if (TF.Crew) TF.Crew.items(items);
     if (TF.Events && !ui.noGuests && !only) TF.Events.items(items, alpha);
     if (TF.Ambient && !ui.noGuests && !only) TF.Ambient.items(items, alpha);
+    if (TF.Supply && !only && !ui.onlyPieces) TF.Supply.items(items, alpha);
     if (only) items = items.filter(function (it) { return it.kind === 'crew' && it.id === only; });
     if (ui.onlyPieces) items = items.filter(function (it) { return it.kind === 'piece' && !it.ghost; });
     fadeProps(items, z);
@@ -593,6 +679,7 @@
       else if (it.kind === 'crew') TF.Crew.draw(ctx, it, z);
       else if (it.kind === 'event') TF.Events.draw(ctx, it, z);
       else if (it.kind === 'ambient') TF.Ambient.draw(ctx, it, z);
+      else if (it.kind === 'supply') TF.Supply.draw(ctx, it, z);
       else {
         var p = R.toScreen(it.x, it.y);
         if (p.x < -40 || p.x > R.vw + 40 || p.y < -60 || p.y > R.vh + 40) continue;
@@ -602,7 +689,8 @@
     }
 
     if (bare) return;
-    R.drawLineHints(ui);
+    Sim.stands.forEach(function (s2) { R.drawLineHints(ui, s2); });
+    late.forEach(function (f) { f(); });
     // Tortillas in flight: a quick arc from the cannon to the pickup spot.
     Sim.flyers.forEach(function (f) {
       var k = f.t / f.T, wx = f.x0 + (f.x1 - f.x0) * k, wy = f.y0 + (f.y1 - f.y0) * k;

@@ -25,7 +25,7 @@ window.TF = window.TF || {};
     COOK_T: 4.0,          // tier 0: cold-assembling a pre-made taco from the cooler
     GRILL: 1,
     HAND_T: 1.6,
-    STOCK_T0: 8,          // pre-made tacos in the tier-0 cooler
+    STOCK_T0: 10,         // pre-made tacos in the tier-0 cooler (x2 with the second cooler)
     STOCK_GRILL: 40,      // ingredients once there is a grill
     RESTOCK_AWAY: 5,      // seconds off-map buying more
     PATIENCE: 22,         // seconds a queued guest waits while the stand is closed

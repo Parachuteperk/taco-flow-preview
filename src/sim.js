@@ -1,7 +1,22 @@
-// Fixed-step simulation: spawning, the customer state machine, the stand, its painted queue
-// line, the cook and pickup.
+// Fixed-step simulation: spawning, the customer state machine, the stands (a list: each with its
+// own painted queue line, stock, cook, pickup, tier and station timings) and restock walks.
 (function (TF) {
   var C = TF.C, World = TF.World;
+
+  function mkMods() {
+    return { orderT: C.ORDER_T, cookT: C.COOK_T, grill: C.GRILL, handT: C.HAND_T, zoneR: C.ZONE_R, buyP: C.BUY_P, spawnMul: 1, priceAdd: 0, serving: false, stockMax: C.STOCK_T0 };
+  }
+  function mkStand(idx) {
+    return {
+      idx: idx, placed: false, sx: 0, sy: 0, rot: 0, geom: null,
+      line: [], poly: [], polyLen: 0, cap: 0, connected: false, link: null,
+      queue: [], window: null, pickup: [null, null, null, null],
+      cook: { pending: [], grill: [] },
+      tier: 0, stock: C.STOCK_T0, restocks: 0, needRestock: false,
+      trip: null,           // the stand's own cashier on a restock walk (Jared at stand 1)
+      mods: mkMods()        // station timings; TF.Crew.applyMods rewrites them
+    };
+  }
 
   var Sim = {
     t: 0,
@@ -10,64 +25,91 @@
     events: [],             // drained by main.js each frame (sounds etc.)
     nextId: 1,
     spawnT: 0.5,
-    stats: { spawned: 0, served: 0, completedLoop: 0, money: 0, balked: 0, gaveUp: 0, grillWork: 0, tortillaShots: 0 },
+    stats: { spawned: 0, served: 0, completedLoop: 0, money: 0, balked: 0, gaveUp: 0, grillWork: 0, tortillaShots: 0, noline: 0, closedTurnaway: 0, congestT: 0 },
+    closing: false,         // Taco Week CLOSE phase: nobody new joins
     flyers: [],             // tortillas in flight (cannon), purely visual
-    thoughts: { longline: 0, tasty: 0, pricey: 0, slow: 0 },
-    cookRate: 1,
-    serviceSlow: 1,         // > 1 while grackles mob the stand (ordering + hand-off slower)
+    thoughts: { longline: 0, tasty: 0, pricey: 0, slow: 0, where: 0 },
+    cookRate: 1,            // stand 1's grill (Ali); 0 while Mrs. West distracts him
+    serviceSlow: 1,         // > 1 while grackles mob stand 1 (ordering + hand-off slower)
     priceBoostT: 0,         // "Add more salsa!": +10% price while > 0
     crowd: 'normal',        // low | normal | high
-    rushT: 0, nextRush: 80, // periodic rushes double spawns for ~30 s
-    capExtra: 0,            // headroom over the crowd cap for event waves
+    rushT: 0, nextRush: 80, // periodic rushes double spawns for ~30 s (Free Play)
+    capExtra: 0,
     waits: [],              // recent pay -> taco-in-hand seconds
-    // Station timings. Crew and upgrades (TF.Crew) rewrite these.
-    mods: { orderT: C.ORDER_T, cookT: C.COOK_T, grill: C.GRILL, handT: C.HAND_T, zoneR: C.ZONE_R, buyP: C.BUY_P, spawnMul: 1, priceAdd: 0, serving: false, stockMax: C.STOCK_T0 },
-    runner: null,           // Jared on a restock trip: {x, y, path, phase: 'out' | 'away' | 'back', ...}
-    stand: {
-      placed: false, sx: 0, sy: 0, rot: 0, geom: null,
-      line: [], poly: [], polyLen: 0, cap: 0, connected: false, link: null,
-      queue: [], window: null, pickup: [null, null, null, null],
-      cook: { pending: [], grill: [] },
-      tier: 0, stock: C.STOCK_T0, restocks: 0, needRestock: false
-    },
+    stands: [mkStand(0)],
+    sel: 0,                 // the stand the player is editing (move / line / upgrades)
     rand: World.rng(7)
   };
-  var stand = Sim.stand;
+  // Stand 1 aliases kept for the rest of the code base (crew, events, tests).
+  Sim.stand = Sim.stands[0];
+  Sim.mods = Sim.stand.mods;
+  Object.defineProperty(Sim, 'runner', { get: function () { return Sim.stands[0].trip; }, set: function (v) { Sim.stands[0].trip = v; } });
+  Sim.selected = function () { return Sim.stands[Sim.sel] || Sim.stands[0]; };
+  Sim.MAX_STANDS = 2;
 
   function rnd(a, b) { return a + (b - a) * Sim.rand(); }
   function center(t) { return { x: t.x + 0.5, y: t.y + 0.5 }; }
   function tileOf(g) { return { x: Math.floor(g.x), y: Math.floor(g.y) }; }
+  function placedStands() { return Sim.stands.filter(function (s) { return s.placed; }); }
+  function syncWorld() {
+    World.stands = Sim.stands.map(function (s) { return s.placed ? { sx: s.sx, sy: s.sy, rot: s.rot, idx: s.idx } : null; });
+    World.stand = World.stands[0];
+  }
 
   // ---- Stand geometry ----------------------------------------------------
-  Sim.windowPos = function () {
-    var g = stand.geom;
+  Sim.windowPos = function (st) {
+    var g = (st || Sim.stand).geom;
     return { x: g.order[0] + 0.5 - g.n[0] * 0.2, y: g.order[1] + 0.5 - g.n[1] * 0.2 };
   };
   // Four waiting spots, two on each tile in front of the pickup hatch.
-  Sim.pickupPos = function (k) {
-    var g = stand.geom, t = g.pickup[k >> 1];
+  Sim.pickupPos = function (k, st) {
+    var g = (st || Sim.stand).geom, t = g.pickup[k >> 1];
     var side = (k & 1) ? 0.22 : -0.22;
     return { x: t[0] + 0.5 - g.np[0] * 0.2 + g.np[1] * side, y: t[1] + 0.5 - g.np[1] * 0.2 + g.np[0] * side };
   };
-  function cornerPos() {
-    var g = stand.geom;
+  function cornerPos(st) {
+    var g = st.geom;
     return { x: g.cx + (g.n[0] + g.np[0]) * 1.25, y: g.cy + (g.n[1] + g.np[1]) * 1.25 };
   }
+  Sim.door = cornerPos;
 
-  // ---- Queue line ----------------------------------------------------------
-  // The chain runs from the tile in front of the order window to the entry. Queue positions are
+  // ---- Queue lines -----------------------------------------------------------
+  // Each chain runs from the tile in front of its order window to the entry. Queue positions are
   // arc-length distances along a polyline: window point -> tile centres -> entry edge.
-  function rebuildLine() {
-    World.lineSet = {};
+  // Light line-shape rules (item 7): a queue tile on a busy footpath crossing slows passers-by
+  // while people stand in it, and a line hugging the pickup tiles slows the hand-off.
+  TF.lineInfo = function (line, geom) {
+    var crossings = [], pickupClear = true;
+    line.forEach(function (t, i) {
+      if (i === 0) return;   // the order tile itself always sits next to the pickup
+      // a plaza tile with foot traffic on 3+ sides is a crossing people need to walk through
+      var walk = function (x, y) { var k = World.get(x, y); return k === World.T.PATH || k === World.T.PLAZA; };
+      var n = World.DIRS.filter(function (d) { return walk(t.x + d[0], t.y + d[1]); }).length;
+      if (World.get(t.x, t.y) === World.T.PLAZA && n >= 3) crossings.push(t);
+      if (geom.pickup.some(function (p) { return Math.max(Math.abs(p[0] - t.x), Math.abs(p[1] - t.y)) <= 1; })) pickupClear = false;   // incl. diagonal: pickup crowd
+    });
+    return { cap: line.length * 2, crossings: crossings, blocked: crossings.length > 0, pickupClear: pickupClear };
+  };
+  Sim.congest = {};
+  function rebuildLines() {
+    World.lineSet = {}; World.lineOwner = {};
     World.version++;
-    stand.line.forEach(function (t, i) { World.lineSet[t.x + ',' + t.y] = i; });
-    stand.poly = []; stand.polyLen = 0; stand.cap = 0; stand.connected = false; stand.link = null;
-    if (!stand.placed || !stand.line.length) return;
-    var pts = [Sim.windowPos()];
-    stand.line.forEach(function (t) { pts.push(center(t)); });
+    Sim.stands.forEach(function (st) {
+      st.line.forEach(function (t, i) { World.lineSet[t.x + ',' + t.y] = i; World.lineOwner[t.x + ',' + t.y] = st.idx; });
+    });
+    Sim.stands.forEach(rebuildLine);
+    Sim.congest = {};
+    Sim.stands.forEach(function (st) { if (st.info) st.info.crossings.forEach(function (t) { Sim.congest[t.x + ',' + t.y] = st; }); });
+  }
+  function rebuildLine(st) {
+    st.poly = []; st.polyLen = 0; st.cap = 0; st.connected = false; st.link = null; st.info = null;
+    if (!st.placed || !st.line.length) return;
+    st.info = TF.lineInfo(st.line, st.geom);
+    var pts = [Sim.windowPos(st)];
+    st.line.forEach(function (t) { pts.push(center(t)); });
     // Connected when the far end touches a walkway tile (not the tile it came from).
-    var end = stand.line[stand.line.length - 1], prev = stand.line[stand.line.length - 2];
-    var prevDir = prev ? [end.x - prev.x, end.y - prev.y] : [stand.geom.n[0], stand.geom.n[1]];
+    var end = st.line[st.line.length - 1], prev = st.line[st.line.length - 2];
+    var prevDir = prev ? [end.x - prev.x, end.y - prev.y] : [st.geom.n[0], st.geom.n[1]];
     var best = null;
     World.DIRS.forEach(function (d) {
       var nx = end.x + d[0], ny = end.y + d[1];
@@ -76,21 +118,22 @@
       if (!best || score > best.score) best = { x: nx, y: ny, score: score };
     });
     if (best) {
-      stand.connected = true;
-      stand.link = { x: best.x, y: best.y };
+      st.connected = true;
+      st.link = { x: best.x, y: best.y };
       pts.push({ x: end.x + 0.5 + (best.x - end.x) * 0.5, y: end.y + 0.5 + (best.y - end.y) * 0.5 });
     }
-    stand.poly = pts.map(function (p, i) {
-      if (i) stand.polyLen += Math.hypot(p.x - pts[i - 1].x, p.y - pts[i - 1].y);
-      return { x: p.x, y: p.y, s: stand.polyLen };
+    st.poly = pts.map(function (p, i) {
+      if (i) st.polyLen += Math.hypot(p.x - pts[i - 1].x, p.y - pts[i - 1].y);
+      return { x: p.x, y: p.y, s: st.polyLen };
     });
-    stand.cap = stand.line.length * 2;
+    st.cap = st.line.length * 2;
   }
 
-  Sim.polyAt = function (s) {
-    var P = stand.poly;
-    if (P.length < 2) return { x: P.length ? P[0].x : 0, y: P.length ? P[0].y : 0, dx: -stand.geom.n[0], dy: -stand.geom.n[1] };
-    s = Math.max(0, Math.min(stand.polyLen, s));
+  Sim.polyAt = function (s, st) {
+    st = st || Sim.stand;
+    var P = st.poly;
+    if (P.length < 2) return { x: P.length ? P[0].x : 0, y: P.length ? P[0].y : 0, dx: -st.geom.n[0], dy: -st.geom.n[1] };
+    s = Math.max(0, Math.min(st.polyLen, s));
     for (var i = 1; i < P.length; i++) {
       if (s <= P[i].s || i === P.length - 1) {
         var a = P[i - 1], b = P[i], L = b.s - a.s || 1e-6, f = (s - a.s) / L;
@@ -99,37 +142,38 @@
     }
   };
 
-  function enrouteCount() {
+  function enrouteCount(st) {
     var n = 0;
-    for (var i = 0; i < Sim.guests.length; i++) if (Sim.guests[i].state === 'TO_QUEUE') n++;
+    for (var i = 0; i < Sim.guests.length; i++) if (Sim.guests[i].state === 'TO_QUEUE' && Sim.guests[i].st === st) n++;
     return n;
   }
 
-  // After the line changes: queued guests past the new capacity (or on a line that no longer
+  // After a line changes: queued guests past the new capacity (or on a line that no longer
   // reaches a path) leave politely; guests on their way re-path to the new entry.
-  function lineChanged() {
-    rebuildLine();
+  function lineChanged(st) {
+    rebuildLines();
     var keep = [];
-    stand.queue.forEach(function (g, i) {
+    st.queue.forEach(function (g, i) {
       if (g.state === 'ORDER' || g.atWindow) keep.push(g);
-      else if (stand.connected && i < stand.cap) keep.push(g);
+      else if (st.connected && i < st.cap) keep.push(g);
       else leavePolitely(g);
     });
-    stand.queue = keep;
-    if (stand.window && keep.indexOf(stand.window) < 0) stand.window = null;
-    keep.forEach(function (g) { g.qs = Math.min(g.qs, stand.polyLen); });
+    st.queue = keep;
+    if (st.window && keep.indexOf(st.window) < 0) st.window = null;
+    keep.forEach(function (g) { g.qs = Math.min(g.qs, st.polyLen); });
     Sim.guests.forEach(function (g) {
-      if (g.state !== 'TO_QUEUE') return;
-      if (!stand.connected || stand.queue.length >= stand.cap) leavePolitely(g);
-      else goToQueue(g);
+      if (g.state !== 'TO_QUEUE' || g.st !== st) return;
+      if (!st.connected || st.queue.length >= st.cap) leavePolitely(g);
+      else goToQueue(g, st);
     });
   }
 
-  Sim.canAddLine = function (x, y) {
-    if (!stand.placed) return { ok: false, reason: 'Place the stand first' };
+  Sim.canAddLine = function (x, y, st) {
+    st = st || Sim.selected();
+    if (!st.placed) return { ok: false, reason: 'Place the stand first' };
     if (World.isLine(x, y)) return { ok: false, reason: 'Already part of the line' };
-    var end = stand.line[stand.line.length - 1];
-    var o = stand.geom.order;
+    var end = st.line[st.line.length - 1];
+    var o = st.geom.order;
     if (!end) { if (x !== o[0] || y !== o[1]) return { ok: false, reason: 'Start the line at the order window' }; }
     else if (Math.abs(x - end.x) + Math.abs(y - end.y) !== 1) return { ok: false, reason: 'Line tiles must join the end of the line' };
     if (!World.lineGround(x, y)) {
@@ -138,11 +182,12 @@
     return { ok: true, reason: '' };
   };
 
-  Sim.addLineTile = function (x, y) {
-    var v = Sim.canAddLine(x, y);
+  Sim.addLineTile = function (x, y, st) {
+    st = st || Sim.selected();
+    var v = Sim.canAddLine(x, y, st);
     if (!v.ok) return v;
-    stand.line.push({ x: x, y: y });
-    lineChanged();
+    st.line.push({ x: x, y: y });
+    lineChanged(st);
     // Non-queuers never use line tiles: anyone on or heading over the new tile re-routes.
     Sim.guests.forEach(function (g) {
       if (g.state !== 'WANDER' && g.state !== 'LEAVE' && g.state !== 'PAID_WAIT') return;
@@ -156,14 +201,16 @@
     return v;
   };
 
-  // Removes the given line tile and everything after it.
+  // Removes the given line tile and everything after it (on whichever stand owns it).
   Sim.removeLineFrom = function (x, y) {
-    var i = World.lineSet[x + ',' + y];
+    var k = x + ',' + y, i = World.lineSet[k];
     if (i === undefined) return false;
-    stand.line = stand.line.slice(0, i);
-    lineChanged();
+    var st = Sim.stands[World.lineOwner[k]] || Sim.stand;
+    st.line = st.line.slice(0, i);
+    lineChanged(st);
     return true;
   };
+  Sim.lineOwnerAt = function (x, y) { var o = (World.lineOwner || {})[x + ',' + y]; return o === undefined ? null : Sim.stands[o]; };
 
   // ---- Guests ------------------------------------------------------------
   var SHIRTS = ['#7a1e2c', '#c9a227', '#3d6fb4', '#e07a3f', '#5b8c5a', '#8e5ba8', '#2f2f3a', '#d6d2c4', '#b8394b', '#501214'];
@@ -182,7 +229,7 @@
       hx: -ex.ox, hy: -ex.oy, facing: 0, moving: false, anim: Sim.rand() * 4,
       speed: rnd(C.WALK_MIN, C.WALK_MAX),
       state: 'WANDER', path: [], lastTile: null, budget: Math.floor(rnd(C.WANDER_MIN, C.WANDER_MAX)),
-      considered: false, spawnExit: ex, hasTaco: false, paid: false, order: null, spot: -1, qs: 0,
+      considered: false, seen: {}, spawnExit: ex, hasTaco: false, paid: false, order: null, spot: -1, qs: 0, st: null,
       timer: 0, blockedT: 0, ghostT: 0, emote: null, emoteT: 0, gone: false, paidAt: 0,
       thought: null, thoughtT: 0, maxPay: rnd(4.5, 10), waitT: 0,
       variant: Math.floor(Sim.rand() * 1000),
@@ -213,17 +260,17 @@
     var f = 1, gx = g.x + g.offX, gy = g.y + g.offY;
     var bx = Math.max(0, Math.min(GW - 1, Math.floor(g.x) + 2)), by = Math.max(0, Math.min(GH - 1, Math.floor(g.y) + 2));
     for (var cy = Math.max(0, by - 1); cy <= Math.min(GH - 1, by + 1); cy++) for (var cx = Math.max(0, bx - 1); cx <= Math.min(GW - 1, bx + 1); cx++) {
-    var cell = grid[cy * GW + cx];
-    for (var i = 0; i < cell.length; i++) {
-      var o = cell[i];
-      if (o === g || o.gone) continue;
-      var dx = o.x + o.offX - gx, dy = o.y + o.offY - gy;
-      var ahead = dx * hx + dy * hy;
-      if (ahead <= 0 || ahead > C.FOLLOW_SLOW) continue;
-      if (Math.abs(-dx * hy + dy * hx) > C.FOLLOW_LAT) continue;
-      if (o.moving && o.hx * hx + o.hy * hy < -0.3) continue;   // oncoming: lanes separate them
-      f = Math.min(f, Math.max(0, (ahead - C.FOLLOW_STOP) / (C.FOLLOW_SLOW - C.FOLLOW_STOP)));
-    }
+      var cell = grid[cy * GW + cx];
+      for (var i = 0; i < cell.length; i++) {
+        var o = cell[i];
+        if (o === g || o.gone) continue;
+        var dx = o.x + o.offX - gx, dy = o.y + o.offY - gy;
+        var ahead = dx * hx + dy * hy;
+        if (ahead <= 0 || ahead > C.FOLLOW_SLOW) continue;
+        if (Math.abs(-dx * hy + dy * hx) > C.FOLLOW_LAT) continue;
+        if (o.moving && o.hx * hx + o.hy * hy < -0.3) continue;   // oncoming: lanes separate them
+        f = Math.min(f, Math.max(0, (ahead - C.FOLLOW_STOP) / (C.FOLLOW_SLOW - C.FOLLOW_STOP)));
+      }
     }
     if (f < 0.05) { g.blockedT += dt; if (g.blockedT > C.UNSTICK_T) { g.ghostT = 0.8; g.blockedT = 0; } }
     else g.blockedT = Math.max(0, g.blockedT - dt * 2);
@@ -237,6 +284,10 @@
     var hx0 = t0.x - g.x, hy0 = t0.y - g.y, d0 = Math.hypot(hx0, hy0);
     var f = 1;
     if (avoid && d0 > 1e-6) f = avoidance(g, hx0 / d0, hy0 / d0, dt);
+    if (avoid) {   // squeezing past a queue that stands on a busy crossing
+      var cst = Sim.congest[Math.floor(g.x) + ',' + Math.floor(g.y)];
+      if (cst && cst.queue.length >= 2) { f *= 0.5; Sim.stats.congestT += dt; }
+    }
     var budget = g.speed * dt * f, moved = 0;
     while (budget > 1e-7 && g.path.length) {
       var t = g.path[0], dx = t.x - g.x, dy = t.y - g.y, d = Math.hypot(dx, dy);
@@ -295,8 +346,44 @@
   }
   Sim.routeToExit = routeToExit;
 
+  // Taco Week closing: people still walking over turn back; at the end of overtime anyone still
+  // in line leaves, and anyone who already paid gets their taco on the way out.
+  Sim.closeStand = function () {
+    Sim.guests.forEach(function (g) { if (g.state === 'TO_QUEUE') { Sim.stats.closedTurnaway++; leavePolitely(g); } });
+  };
+  Sim.flushQueue = function () {
+    Sim.guests.forEach(function (g) {
+      var st = g.st;
+      if (g.state === 'QUEUE' || (g.state === 'ORDER' && !g.paid) || g.state === 'TO_QUEUE') {
+        Sim.stats.closedTurnaway++;
+        if (st) { var i = st.queue.indexOf(g); if (i >= 0) st.queue.splice(i, 1); if (st.window === g) st.window = null; }
+        leavePolitely(g);
+      } else if (g.paid && !g.hasTaco && st) {
+        g.hasTaco = true; Sim.stats.served++;
+        var j = st.queue.indexOf(g); if (j >= 0) st.queue.splice(j, 1);
+        if (st.window === g) st.window = null;
+        if (g.spot >= 0) { st.pickup[g.spot] = null; g.spot = -1; }
+        g.atWindow = false; startLeave(g);
+      }
+    });
+    Sim.stands.forEach(function (st) { st.cook.pending.length = 0; st.cook.grill.length = 0; });
+  };
+  Sim.reopenStand = function () { Sim.closing = false; };
+
+  // What is holding a stand back right now (one label), or null when it flows.
+  TF.bottleneckOf = function (st) {
+    if (!st || !st.placed) return null;
+    if (st.stock <= 0 || st.trip) return 'NO STOCK';
+    var main = st === Sim.stand;
+    if (main && ((Sim.cookRate === 0 && (st.cook.grill.length || st.cook.pending.length)) || Sim.serviceSlow > 1)) return 'GRILL STALLED';
+    if (st.window && st.window.paid && st.window.state === 'ORDER') return 'PICKUP FULL';
+    if (st.cap > 0 && st.queue.length >= st.cap) return 'LINE FULL';
+    if (st.cook.pending.length >= 2) return 'SLOW KITCHEN';
+    return null;
+  };
+
   function leavePolitely(g) {
-    if (g.spot >= 0) { stand.pickup[g.spot] = null; g.spot = -1; }
+    if (g.spot >= 0 && g.st) { g.st.pickup[g.spot] = null; g.spot = -1; }
     g.considered = true;
     g.path = [];
     g.emote = 'bye'; g.emoteT = 1.2;
@@ -311,25 +398,51 @@
     if (!w || !pathTo(g, w, null)) startLeave(g);
   }
 
-  function goToQueue(g) {
-    if (!stand.connected) return false;
+  function goToQueue(g, st) {
+    if (!st.connected) return false;
     g.state = 'TO_QUEUE';
+    g.st = st;
     g.path = g.path.slice(0, 1);
-    var entry = stand.poly[stand.poly.length - 1];
-    if (!pathTo(g, stand.link, { x: entry.x, y: entry.y })) { g.state = 'WANDER'; g.path = []; return false; }
+    var entry = st.poly[st.poly.length - 1];
+    if (!pathTo(g, st.link, { x: entry.x, y: entry.y })) { g.state = 'WANDER'; g.path = []; return false; }
     return true;
+  }
+
+  // Seconds a student expects to wait at a stand: the line ahead of them times ordering speed.
+  Sim.predictedWait = function (st) {
+    return (st.queue.length + enrouteCount(st)) * (st.mods.orderT + (st.mods.serving ? 0 : st.mods.handT * 0.5));
+  };
+
+  // A student near one or more stands they haven't sized up yet picks the best: shortest walk +
+  // predicted wait. Each stand is considered once, so someone turned away by stand 1's long line
+  // can still try stand 2 when they pass it.
+  function chooseStand(g) {
+    var best = null;
+    placedStands().forEach(function (st) {
+      if (g.seen[st.idx]) return;
+      var d = Math.hypot(g.x - st.geom.cx, g.y - st.geom.cy);
+      if (d > st.mods.zoneR) return;
+      g.seen[st.idx] = true;
+      var score = d / g.speed + Sim.predictedWait(st) + (st.connected ? 0 : 1000);
+      if (!best || score < best.score) best = { st: st, score: score };
+    });
+    return best && best.st;
   }
 
   function wanderStep(g) {
     var t = tileOf(g);
-    if (stand.placed && !g.considered) {
-      if (Math.hypot(g.x - stand.geom.cx, g.y - stand.geom.cy) <= Sim.mods.zoneR) {
-        g.considered = true;
-        if (Sim.rand() < Sim.mods.buyP) {
-          if (!stand.connected) { g.emote = 'noline'; g.emoteT = 1.6; }
-          else if (g.maxPay < Sim.menuPrice()) think(g, 'pricey');
-          else if (stand.queue.length + enrouteCount() < stand.cap) { if (goToQueue(g)) return; }
-          else { think(g, 'longline'); Sim.stats.balked++; }
+    if (!g.considered) {
+      var st = chooseStand(g);
+      if (st) {
+        if (Sim.rand() < st.mods.buyP) {
+          if (Sim.closing) { /* closing time: no new joiners */ }
+          else if (!st.connected) { g.emote = 'noline'; g.emoteT = 1.6; Sim.stats.noline++; }
+          else if (g.maxPay < Sim.menuPrice(st)) think(g, 'pricey');
+          else if (st.queue.length + enrouteCount(st) < st.cap) { if (goToQueue(g, st)) return; }
+          else {
+            Sim.stats.balked++; noteBalk(st, 'longline');
+            if (Sim.recentBalks(st, 'longline') <= 1) think(g, 'longline'); else Sim.thoughts.longline++;   // grouped: one bubble, then the stand's warning
+          }
         }
       }
     }
@@ -352,53 +465,68 @@
     g.path.push(center(next));
   }
 
+  // How many students walked away from a stand for a reason in the last 10 s.
+  Sim.recentBalks = function (st, why) {
+    return (st.balks || []).filter(function (b) { return b.why === why && Sim.t - b.t <= 10; }).length;
+  };
+  // Recent balks per stand (for grouped warnings).
+  function noteBalk(st, why) {
+    st.balks = st.balks || [];
+    st.balks.push({ t: Sim.t, why: why });
+    if (st.balks.length > 40) st.balks.shift();
+  }
+
   // RCT-style thought bubbles: a quick icon over a guest when something happens to them.
-  function think(g, type) {
-    g.thought = type; g.thoughtT = 2.2;
+  function think(g, type, secs) {
+    g.thought = type; g.thoughtT = secs || 2.2;
     Sim.thoughts[type]++;
   }
+  Sim.think = think;
   // Rough menu price a guest compares against what they're willing to pay.
-  Sim.menuPrice = function () {
-    var p = (C.PRICE_MIN + C.PRICE_MAX) / 2 + (Sim.mods.priceAdd || 0);
+  Sim.menuPrice = function (st) {
+    var p = (C.PRICE_MIN + C.PRICE_MAX) / 2 + ((st || Sim.stand).mods.priceAdd || 0);
     return Sim.priceBoostT > 0 ? p * 1.1 : p;
   };
 
-  function freeSpot() {
-    for (var i = 0; i < stand.pickup.length; i++) if (!stand.pickup[i]) return i;
+  function freeSpot(st) {
+    for (var i = 0; i < st.pickup.length; i++) if (!st.pickup[i]) return i;
     return -1;
   }
 
   function sendToPickup(g, viaCorner) {
-    var k = freeSpot();
+    var st = g.st, k = freeSpot(st);
     if (k < 0) return false;
-    stand.pickup[k] = g;
+    st.pickup[k] = g;
     g.spot = k;
     g.state = 'TO_PICKUP';
-    g.path = viaCorner ? [cornerPos(), Sim.pickupPos(k)] : [Sim.pickupPos(k)];
+    g.path = viaCorner ? [cornerPos(st), Sim.pickupPos(k, st)] : [Sim.pickupPos(k, st)];
     return true;
   }
 
   function pay(g) {
-    var price = C.PRICE_MIN + Math.floor(Sim.rand() * (C.PRICE_MAX - C.PRICE_MIN + 1)) + (Sim.mods.priceAdd || 0);
+    var st = g.st;
+    var price = C.PRICE_MIN + Math.floor(Sim.rand() * (C.PRICE_MAX - C.PRICE_MIN + 1)) + (st.mods.priceAdd || 0);
     if (Sim.priceBoostT > 0) price += Math.max(1, Math.round(price * 0.1));
     g.paid = true;
     g.paidAt = Sim.t;
     Sim.stats.money += price;
+    st.sold = (st.sold || 0) + 1;
     if (TF.Bets) TF.Bets.earn(price);
-    var w = Sim.windowPos();
+    if (TF.Week) TF.Week.earn(price);
+    var w = Sim.windowPos(st);
     Sim.floaters.push({ x: w.x, y: w.y, text: '+$' + price, t: 0 });
     Sim.events.push({ type: 'cash', amount: price });
-    g.order = { guest: g, t: Sim.mods.cookT, total: Sim.mods.cookT, ready: false, progress: 0, handT: 0 };
-    stand.cook.pending.push(g.order);
-    stand.stock = Math.max(0, stand.stock - 1);
-    if (stand.stock === 0) stand.needRestock = true;
+    g.order = { guest: g, t: st.mods.cookT, total: st.mods.cookT, ready: false, progress: 0, handT: 0 };
+    st.cook.pending.push(g.order);
+    st.stock = Math.max(0, st.stock - 1);
+    if (st.stock === 0) st.needRestock = true;
   }
 
   function updateGuest(g, dt) {
     g.px = g.x; g.py = g.y; g.pOffX = g.offX; g.pOffY = g.offY;
     if (g.emoteT > 0) { g.emoteT -= dt; if (g.emoteT <= 0) g.emote = null; }
     if (g.thoughtT > 0) { g.thoughtT -= dt; if (g.thoughtT <= 0) g.thought = null; }
-    var laneOn = false, faceTo = null;
+    var laneOn = false, faceTo = null, st = g.st, slow = st === Sim.stand ? Sim.serviceSlow : 1;
 
     switch (g.state) {
       case 'WANDER':
@@ -415,64 +543,64 @@
       case 'TO_QUEUE':
         laneOn = g.path.length > 1;
         if (walk(g, dt, true)) {
-          if (!stand.connected || stand.queue.length >= stand.cap) { leavePolitely(g); break; }
-          stand.queue.push(g); g.state = 'QUEUE'; g.qs = stand.polyLen;
+          if (!st.connected || st.queue.length >= st.cap) { leavePolitely(g); break; }
+          st.queue.push(g); g.state = 'QUEUE'; g.qs = st.polyLen;
         }
         break;
       case 'QUEUE': {
         // 1-D along the painted line: walk toward our slot, never closer than 0.45 to the person ahead.
-        var k = stand.queue.indexOf(g);
+        var k = st.queue.indexOf(g);
         var target = k * C.Q_SPACING;
-        if (k > 0) target = Math.max(target, stand.queue[k - 1].qs + C.Q_SPACING * 0.9);
+        if (k > 0) target = Math.max(target, st.queue[k - 1].qs + C.Q_SPACING * 0.9);
         var before = g.qs;
         if (g.qs > target) g.qs = Math.max(target, g.qs - g.speed * 0.85 * dt);
-        var p = Sim.polyAt(g.qs);
+        var p = Sim.polyAt(g.qs, st);
         if (g.qs < before - 1e-6) { g.hx = p.dx; g.hy = p.dy; g.moving = true; g.anim += before - g.qs; }
         else { g.moving = false; faceTo = { x: p.dx, y: p.dy }; }
         g.x = p.x; g.y = p.y;
-        if (k === 0 && g.qs <= 1e-4 && !stand.window && Sim.isOpen()) { stand.window = g; g.state = 'ORDER'; g.timer = Sim.mods.orderT; }
+        if (k === 0 && g.qs <= 1e-4 && !st.window && Sim.isOpen(st)) { st.window = g; g.state = 'ORDER'; g.timer = st.mods.orderT; }
         impatience(g, dt);
         break;
       }
       case 'ORDER':
-        faceTo = { x: -stand.geom.n[0], y: -stand.geom.n[1] };
+        faceTo = { x: -st.geom.n[0], y: -st.geom.n[1] };
         g.moving = false;
-        if (!g.paid) { g.timer -= dt / Sim.serviceSlow; if (g.timer <= 0) pay(g); }
-        if (g.paid && !Sim.mods.serving) { g.state = 'WAIT_PICKUP'; g.atWindow = true; }   // no serving station: wait at the table
-        else if (g.paid && freeSpot() >= 0) {
-          var qi = stand.queue.indexOf(g);
-          if (qi >= 0) stand.queue.splice(qi, 1);
-          stand.window = null;
+        if (!g.paid) { g.timer -= dt / slow; if (g.timer <= 0) pay(g); }
+        if (g.paid && !st.mods.serving) { g.state = 'WAIT_PICKUP'; g.atWindow = true; }   // no serving station: wait at the table
+        else if (g.paid && freeSpot(st) >= 0) {
+          var qi = st.queue.indexOf(g);
+          if (qi >= 0) st.queue.splice(qi, 1);
+          st.window = null;
           sendToPickup(g, true);
         }
         break;
       case 'PAID_WAIT':   // paid, then the stand moved: walk to the new hatch and take a free spot
         laneOn = g.path.length > 0;
         walk(g, dt, true);
-        if (!g.path.length) faceTo = { x: -stand.geom.np[0], y: -stand.geom.np[1] };
-        if (!g.path.length || Math.hypot(g.x - stand.geom.cx, g.y - stand.geom.cy) < 3) sendToPickup(g, false);
+        if (!g.path.length) faceTo = { x: -st.geom.np[0], y: -st.geom.np[1] };
+        if (!g.path.length || Math.hypot(g.x - st.geom.cx, g.y - st.geom.cy) < 3) sendToPickup(g, false);
         break;
       case 'TO_PICKUP':
         if (walk(g, dt, false)) g.state = 'WAIT_PICKUP';
         break;
       case 'WAIT_PICKUP':
-        faceTo = g.atWindow ? { x: -stand.geom.n[0], y: -stand.geom.n[1] } : { x: -stand.geom.np[0], y: -stand.geom.np[1] };
+        faceTo = g.atWindow ? { x: -st.geom.n[0], y: -st.geom.n[1] } : { x: -st.geom.np[0], y: -st.geom.np[1] };
         g.moving = false;
         g.waitT += dt;
         if (!g.hasTaco && g.waitT > 8 && !g.thoughtSlow) { g.thoughtSlow = true; think(g, 'slow'); }
         if (!g.hasTaco && g.order && g.order.ready) {
-          g.order.handT += dt / Sim.serviceSlow;
-          if (g.order.handT >= Sim.mods.handT) {
+          g.order.handT += dt / slow / (st.info && !st.info.pickupClear ? 1.35 : 1);
+          if (g.order.handT >= st.mods.handT) {
             g.hasTaco = true;
             g.timer = C.GOT_IT_T;
             Sim.stats.served++;
+            st.served = (st.served || 0) + 1;
             Sim.waits.push({ at: g.paidAt, w: Sim.t - g.paidAt });
             if (Sim.waits.length > 60) Sim.waits.shift();
             Sim.events.push({ type: 'handoff' });
             // Tortilla cannon (Phillip's gadget): the taco flies from the stand to the pickup spot.
-            if (Sim.mods.cannon && !g.atWindow) {
-              var from = { x: stand.geom.cx, y: stand.geom.cy };
-              Sim.flyers.push({ x0: from.x, y0: from.y, x1: g.x, y1: g.y, t: 0, T: 0.45 });
+            if (st.mods.cannon && !g.atWindow) {
+              Sim.flyers.push({ x0: st.geom.cx, y0: st.geom.cy, x1: g.x, y1: g.y, t: 0, T: 0.45 });
               Sim.stats.tortillaShots++;
             }
           }
@@ -480,8 +608,8 @@
         if (g.hasTaco) {
           g.timer -= dt;
           if (g.timer <= 0) {
-            if (g.atWindow) { var wi = stand.queue.indexOf(g); if (wi >= 0) stand.queue.splice(wi, 1); if (stand.window === g) stand.window = null; g.atWindow = false; }
-            else { stand.pickup[g.spot] = null; g.spot = -1; }
+            if (g.atWindow) { var wi = st.queue.indexOf(g); if (wi >= 0) st.queue.splice(wi, 1); if (st.window === g) st.window = null; g.atWindow = false; }
+            else { st.pickup[g.spot] = null; g.spot = -1; }
             startLeave(g);
           }
         }
@@ -505,11 +633,11 @@
     g.offY += (ty - g.offY) * k2;
   }
 
-  // Sim.cookRate < 1 while something distracts the cook (Mrs. West chatting with Ali).
-  function updateCook(dt) {
-    var ck = stand.cook, rate = Sim.cookRate;
-    while (ck.grill.length < Sim.mods.grill && ck.pending.length) ck.grill.push(ck.pending.shift());
-    if (ck.grill.length) Sim.stats.grillWork += dt * rate;
+  // Sim.cookRate < 1 while something distracts stand 1's cook (Mrs. West chatting with Ali).
+  function updateCook(st, dt) {
+    var ck = st.cook, rate = st === Sim.stand ? Sim.cookRate : 1;
+    while (ck.grill.length < st.mods.grill && ck.pending.length) ck.grill.push(ck.pending.shift());
+    if (ck.grill.length && st === Sim.stand) Sim.stats.grillWork += dt * rate;
     for (var i = ck.grill.length - 1; i >= 0; i--) {
       var o = ck.grill[i];
       o.t -= dt * rate;
@@ -518,28 +646,26 @@
     }
   }
 
-  // ---- Stock + restock trips (tier 0 sells pre-made tacos from the cooler) ------
-  // Open = Jared is at the stand and there is stock. When the cooler empties he finishes the
-  // orders in hand, then walks the paths off the map with the cooler and comes back refilled.
-  Sim.isOpen = function () { return stand.placed && !Sim.runner && stand.stock > 0; };
+  // ---- Stock + restock walks ----------------------------------------------------
+  // Open = the stand's cashier is there and there is stock. When the cooler empties (and no
+  // Freshman Runner is hired) the cashier finishes the orders in hand, walks the paths off the
+  // map with the cooler and comes back refilled.
+  Sim.isOpen = function (st) { st = st || Sim.stand; return st.placed && !st.trip && st.stock > 0; };
 
   function impatience(g, dt) {
-    if (Sim.isOpen()) { g.closedT = 0; return; }
+    var st = g.st;
+    if (Sim.isOpen(st)) { g.closedT = 0; return; }
     g.closedT = (g.closedT || 0) + dt;
     if (g.closedT > 8 && !g.thoughtSlow) { g.thoughtSlow = true; think(g, 'slow'); }
     if (g.closedT > C.PATIENCE + (g.variant % 7)) {
-      var i = stand.queue.indexOf(g);
-      if (i >= 0) stand.queue.splice(i, 1);
-      if (stand.window === g) stand.window = null;
+      var i = st.queue.indexOf(g);
+      if (i >= 0) st.queue.splice(i, 1);
+      if (st.window === g) st.window = null;
       Sim.stats.gaveUp++;
+      noteBalk(st, 'slow');
       leavePolitely(g);
       g.emote = 'slow'; g.emoteT = 1.8;
     }
-  }
-
-  function standDoor() {
-    var gm = stand.geom;
-    return { x: gm.cx + (gm.n[0] + gm.np[0]) * 1.25, y: gm.cy + (gm.n[1] + gm.np[1]) * 1.25 };
   }
 
   function nearestExit(from) {
@@ -552,67 +678,68 @@
     return best;
   }
 
-  function runnerPath(r, from, toTiles, extra) {
-    r.path = toTiles.slice(1).map(center);
-    if (extra) r.path.push(extra);
-  }
-
-  function updateRestock(dt) {
-    var busyCook = stand.cook.grill.length || stand.cook.pending.length;
-    var handing = stand.window && stand.window.paid;
-    if (stand.needRestock && !Sim.runner && !busyCook && !handing && stand.pickup.every(function (p) { return !p; })) {
-      var d = standDoor(), ex = nearestExit(d);
-      if (!ex) { stand.stock = Sim.mods.stockMax; stand.needRestock = false; return; }
-      var r = Sim.runner = {
+  function updateRestock(st, dt) {
+    // With a Freshman Runner hired he fetches stock from the supply van and the cashier keeps selling.
+    if (TF.Crew && TF.Crew.hiredSet.runner && !st.trip) { st.needRestock = false; return; }
+    var busyCook = st.cook.grill.length || st.cook.pending.length;
+    var handing = st.window && st.window.paid;
+    if (st.needRestock && !st.trip && !busyCook && !handing && st.pickup.every(function (p) { return !p; })) {
+      var d = cornerPos(st), ex = nearestExit(d);
+      if (!ex) { st.stock = st.mods.stockMax; st.needRestock = false; return; }
+      var r = st.trip = {
         x: d.x, y: d.y, px: d.x, py: d.y, offX: 0, offY: 0, pOffX: 0, pOffY: 0, path: [], speed: 1.8,
         hx: 1, hy: 0, facing: 0, moving: false, anim: 0, phase: 'out', exit: ex.e, timer: 0
       };
-      runnerPath(r, d, ex.t, { x: ex.e.x + 0.5 + ex.e.ox, y: ex.e.y + 0.5 + ex.e.oy });
-      stand.needRestock = false;
+      r.path = ex.t.slice(1).map(center);
+      r.path.push({ x: ex.e.x + 0.5 + ex.e.ox, y: ex.e.y + 0.5 + ex.e.oy });
+      st.needRestock = false;
     }
-    var r2 = Sim.runner;
+    var r2 = st.trip;
     if (!r2) return;
     r2.px = r2.x; r2.py = r2.y; r2.pOffX = r2.offX; r2.pOffY = r2.offY;
     if (r2.phase === 'away') {
       r2.moving = false;
       r2.timer -= dt;
       if (r2.timer <= 0) {
-        var dd = standDoor(), back = World.astar(r2.exit.x, r2.exit.y, Math.floor(dd.x), Math.floor(dd.y));
+        var dd = cornerPos(st), back = World.astar(r2.exit.x, r2.exit.y, Math.floor(dd.x), Math.floor(dd.y));
         r2.phase = 'back';
         r2.path = (back || []).map(center);
         r2.path.push(dd);
       }
     } else if (walk(r2, dt, false)) {
       if (r2.phase === 'out') { r2.phase = 'away'; r2.timer = C.RESTOCK_AWAY; }
-      else { Sim.runner = null; stand.stock = Sim.mods.stockMax; stand.restocks++; Sim.events.push({ type: 'restock' }); }
+      else { st.trip = null; st.stock = st.mods.stockMax; st.restocks++; Sim.events.push({ type: 'restock' }); }
     }
     if (r2.moving) setFacingFromHeading(r2, r2.hx, r2.hy);
   }
 
-  Sim.setTier = function (tier) {
-    var was = stand.tier;
-    stand.tier = tier;
+  Sim.setTier = function (tier, st) {
+    st = st || Sim.selected();
+    var was = st.tier;
+    st.tier = tier;
     if (TF.Crew) TF.Crew.applyMods();
     // The grill brings fresh ingredients that last much longer than a cooler of tacos.
-    if (was < 1 && tier >= 1) { stand.stock = Sim.mods.stockMax; stand.needRestock = false; }
+    if (was < 1 && tier >= 1) { st.stock = st.mods.stockMax; st.needRestock = false; }
   };
 
   Sim.step = function (dt) {
     Sim.t += dt;
     Sim.spawnT -= dt;
     if (Sim.priceBoostT > 0) Sim.priceBoostT -= dt;
-    // Periodic rushes: double spawns for ~30 s.
+    // Periodic rushes (Free Play): double spawns for ~30 s.
     if (Sim.rushT > 0) Sim.rushT -= dt;
-    else if (Sim.t >= Sim.nextRush) { Sim.rushT = C.RUSH_T; Sim.nextRush = Sim.t + rnd(C.RUSH_EVERY[0], C.RUSH_EVERY[1]); Sim.events.push({ type: 'toast', text: 'Rush!' }); }
+    else if (Sim.t >= Sim.nextRush && !(TF.Week && TF.Week.active())) { Sim.rushT = C.RUSH_T; Sim.nextRush = Sim.t + rnd(C.RUSH_EVERY[0], C.RUSH_EVERY[1]); Sim.events.push({ type: 'toast', text: 'Rush!' }); }
     var crowd = C.CROWD[Sim.crowd];
     if (Sim.spawnT <= 0) {
-      Sim.spawnT = rnd(C.SPAWN_MIN, C.SPAWN_MAX) / (Sim.mods.spawnMul * crowd.mul * (Sim.rushT > 0 ? 2 : 1));
+      Sim.spawnT = rnd(C.SPAWN_MIN, C.SPAWN_MAX) / (Sim.mods.spawnMul * crowd.mul * (Sim.rushT > 0 ? 2 : 1) * (Sim.demandMul || 1));
       if (Sim.guests.length < crowd.max) spawn();
     }
     if (TF.Events) TF.Events.step(dt);
     if (TF.Ambient) TF.Ambient.step(dt);
     if (TF.Bets) TF.Bets.step(dt);
-    if (stand.placed) { updateCook(dt); updateRestock(dt); }
+    if (TF.Week) TF.Week.step(dt);
+    Sim.stands.forEach(function (st) { if (st.placed) { updateCook(st, dt); updateRestock(st, dt); } });
+    if (TF.Supply) TF.Supply.step(dt);
     buildGrid();
     for (var i = 0; i < Sim.guests.length; i++) updateGuest(Sim.guests[i], dt);
     Sim.guests = Sim.guests.filter(function (g) { return !g.gone; });
@@ -624,26 +751,38 @@
     if (TF.Crew) TF.Crew.step(dt);
   };
 
-  // ---- Placement / move --------------------------------------------------
-  // Moving the stand clears its line: unpaid guests in line leave politely; guests who already
+  // ---- Stands: add / place / move ---------------------------------------------
+  // A second stand (Taco Week Day 4+, max 2): starts at tier 0 with its own Freshman Cashier.
+  Sim.addStand = function () {
+    if (Sim.stands.length >= Sim.MAX_STANDS) return null;
+    var st = mkStand(Sim.stands.length);
+    Sim.stands.push(st);
+    if (TF.Crew) TF.Crew.applyMods();
+    return st;
+  };
+
+  // Moving a stand clears its line: unpaid guests in line leave politely; guests who already
   // paid keep their order and are served at the new hatch (no refunds needed).
-  Sim.placeStand = function (sx, sy, rot) {
+  Sim.placeStand = function (sx, sy, rot, st) {
     rot = rot || 0;
+    st = st || Sim.selected();
+    World.validating = st.idx;   // a stand may overlap its own old footprint
     var v = World.validateStand(sx, sy, rot);
+    World.validating = null;
     if (!v.ok) return v;
-    var wasPlaced = stand.placed;
-    var oldQueue = stand.queue.slice();
-    stand.placed = true; stand.sx = sx; stand.sy = sy; stand.rot = rot;
-    stand.geom = World.standGeom(sx, sy, rot);
-    World.stand = { sx: sx, sy: sy, rot: rot };
-    stand.line = [];
-    stand.queue = [];
-    stand.window = null;
-    rebuildLine();
+    var wasPlaced = st.placed;
+    var oldQueue = st.queue.slice();
+    st.placed = true; st.sx = sx; st.sy = sy; st.rot = rot;
+    st.geom = World.standGeom(sx, sy, rot);
+    syncWorld();
+    st.line = [];
+    st.queue = [];
+    st.window = null;
+    rebuildLines();
     if (!wasPlaced) return v;
 
-    for (var k = 0; k < stand.pickup.length; k++) stand.pickup[k] = null;
-    if (Sim.runner && Sim.runner.phase === 'back') { var rd = standDoor(); pathTo(Sim.runner, { x: Math.floor(rd.x), y: Math.floor(rd.y) }, rd); }
+    for (var k = 0; k < st.pickup.length; k++) st.pickup[k] = null;
+    if (st.trip && st.trip.phase === 'back') { var rd = cornerPos(st); pathTo(st.trip, { x: Math.floor(rd.x), y: Math.floor(rd.y) }, rd); }
     Sim.guests.forEach(function (g) {
       var t = tileOf(g);
       if (World.isStand(t.x, t.y)) {
@@ -651,14 +790,14 @@
         g.x = g.px = w.x + 0.5; g.y = g.py = w.y + 0.5; g.path = [];
       }
     });
-    var pt = stand.geom.pickup[0];
+    var pt = st.geom.pickup[0];
     oldQueue.forEach(function (g) {
       if (g.paid) { g.atWindow = false; g.path = []; g.spot = -1; g.state = 'PAID_WAIT'; pathTo(g, { x: pt[0], y: pt[1] }, null); }
       else leavePolitely(g);
     });
     Sim.guests.forEach(function (g) {
-      if (g.state === 'TO_QUEUE') leavePolitely(g);
-      else if ((g.state === 'TO_PICKUP' || g.state === 'WAIT_PICKUP') && oldQueue.indexOf(g) < 0) {
+      if (g.state === 'TO_QUEUE' && g.st === st) leavePolitely(g);
+      else if ((g.state === 'TO_PICKUP' || g.state === 'WAIT_PICKUP') && g.st === st && oldQueue.indexOf(g) < 0) {
         g.spot = -1;
         if (g.hasTaco) { startLeave(g); return; }
         g.path = [];
@@ -675,7 +814,8 @@
   };
 
   Sim.counts = function () {
-    var c = { queue: stand.queue.length, atPickup: 0, leavingWithTaco: 0, alive: Sim.guests.length, enroute: 0 };
+    var c = { queue: 0, atPickup: 0, leavingWithTaco: 0, alive: Sim.guests.length, enroute: 0 };
+    Sim.stands.forEach(function (st) { c.queue += st.queue.length; });
     Sim.guests.forEach(function (g) {
       if (g.state === 'WAIT_PICKUP' || g.state === 'TO_PICKUP') c.atPickup++;
       if (g.state === 'LEAVE' && g.hasTaco) c.leavingWithTaco++;
@@ -691,12 +831,13 @@
   };
   Sim.waitCount = function (since) { return Sim.waits.filter(function (e) { return e.at >= since; }).length; };
 
-  // Shared helpers for event walkers (Mrs. West, the hack wave).
+  // Shared helpers for event walkers (Mrs. West, the hack wave, the supply runner).
   Sim.walkEntity = walk;
   Sim.faceEntity = setFacingFromHeading;
   Sim.routeTo = pathTo;
   Sim.nearestExit = nearestExit;
   Sim.oldMainDoor = function () { return World.exits.filter(function (e) { return e.y === 0 && e.x === 13; })[0] || World.exits[0]; };
 
+  syncWorld();
   TF.Sim = Sim;
 })(window.TF);

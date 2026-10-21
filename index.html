@@ -18,11 +18,17 @@
   #money { color: #b6ff8f; min-width: 3.5em; text-align: right; }
   #served { font-size: 12px; font-weight: 600; }
   #hint { position: fixed; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); background: rgba(40,20,15,0.85); color: #fff5d6; padding: 8px 12px; border-radius: 8px; font-size: 13px; max-width: calc(100% - 32px); text-align: center; transition: opacity .3s; pointer-events: none; z-index: 2; }
-  #crewPanel { position: fixed; right: 8px; top: 64px; width: 340px; max-height: calc(100% - 90px); overflow: auto; background: #fff5d6; border: 2px solid #501214; border-radius: 10px; box-shadow: 0 4px 0 #501214; z-index: 3; padding: 8px; color: #2a1810; }
+  #crewPanel { position: fixed; right: 8px; top: 64px; width: 300px; box-sizing: border-box; max-height: calc(100% - 90px); overflow: auto; background: #fff5d6; border: 2px solid #501214; border-radius: 10px; box-shadow: 0 4px 0 #501214; z-index: 3; padding: 8px; color: #2a1810; }
   #crewPanel .head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-bottom: 6px; }
   #crewPanel .head span { font-size: 11px; flex: 1 1 100%; order: 3; color: #6a4a3a; }
   #crewPanel .head button { margin-left: auto; padding: 4px 9px; }
-  #crewPanel h3 { font-size: 13px; margin: 10px 0 4px; }
+  #crewPanel h3, #crewPanel summary { font-size: 13px; margin: 8px 0 4px; font-weight: 800; color: #7a1e2c; cursor: pointer; }
+  #crewPanel details { border-top: 1px solid #e3cfa5; }
+  #crewPanel .card[hidden] { display: none; }
+  #crewPanel .soon { font-size: 11px; color: #7a5a4a; padding: 4px 6px 6px; }
+  .bar { display: contents; }
+  .bar[hidden] { display: none; }
+  #crewPanel h3 .mini, #crewPanel summary .mini { font-size: 11px; padding: 3px 7px; margin-left: 6px; }
   .card { display: flex; align-items: center; gap: 8px; padding: 6px; border-top: 1px solid #e3cfa5; }
   .card .portrait { width: 44px; height: 64px; background: #f2e4c0; border-radius: 6px; image-rendering: pixelated; flex: none; }
   .card .info { flex: 1; font-size: 13px; }
@@ -44,6 +50,24 @@
   #hackPopup.glitch { animation: glitch .5s steps(2) 0s 3, fadeout 3s linear forwards; }
   @keyframes glitch { 0% { transform: translate(0,0) skewX(0); filter: none; } 20% { transform: translate(-6px,2px) skewX(-8deg); filter: hue-rotate(90deg); clip-path: inset(10% 0 40% 0); } 40% { transform: translate(5px,-3px) skewX(6deg); clip-path: inset(50% 0 5% 0); } 60% { transform: translate(-3px,1px); filter: invert(1); clip-path: none; } 100% { transform: none; filter: none; } }
   @keyframes fadeout { 0%, 85% { opacity: 1; } 100% { opacity: 0; } }
+  #starterPins { position: fixed; inset: 0; pointer-events: none; z-index: 2; }
+  .starter { position: absolute; left: 0; top: 0; pointer-events: auto; background: #2fbf5c; color: #fff; border-color: #155c2b; box-shadow: 0 2px 0 #155c2b, 0 0 14px rgba(80,255,140,.8); font-weight: 800; animation: pinPulse 1.2s ease-in-out infinite; white-space: nowrap; }
+  @keyframes pinPulse { 50% { box-shadow: 0 2px 0 #155c2b, 0 0 26px rgba(80,255,140,1); } }
+  #btnAcceptLine { position: fixed; left: 50%; bottom: max(64px, calc(env(safe-area-inset-bottom) + 56px)); transform: translateX(-50%); z-index: 3; background: #ffd23a; font-size: 16px; padding: 12px 18px; }
+  #btnOpen { position: fixed; left: 50%; bottom: max(64px, calc(env(safe-area-inset-bottom) + 56px)); transform: translateX(-50%); z-index: 3; background: #2fbf5c; color: #fff; border-color: #155c2b; box-shadow: 0 3px 0 #155c2b; font-size: 22px; font-weight: 900; padding: 14px 34px; letter-spacing: 1px; animation: pinPulse 1.2s ease-in-out infinite; }
+  #dayHud { background: #7a1e2c; color: #ffd23a; font-weight: 800; box-shadow: 0 2px 0 #3a0c14; }
+  #dayHud.bell { background: #c9a227; color: #3a0c14; animation: bellPulse 0.6s ease-in-out infinite alternate; }
+  @keyframes bellPulse { to { transform: scale(1.08); box-shadow: 0 0 14px #ffd23a; } }
+  .card2 { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(360px, calc(100% - 32px)); background: #fff5d6; border: 3px solid #501214; border-radius: 12px; box-shadow: 0 6px 0 #501214; padding: 14px; z-index: 6; color: #2a1810; }
+  .card2 h2 { margin: 0 0 8px; font-size: 18px; color: #7a1e2c; }
+  .card2 .big { font-size: 22px; font-weight: 900; margin: 6px 0 10px; }
+  .card2 .big.hit { color: #1f8a3a; } .card2 .big.miss { color: #b8283a; }
+  .card2 .row { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; border-top: 1px solid #e3cfa5; font-size: 14px; }
+  .card2 .why { font-size: 12px; color: #6a4a3a; padding: 0 0 4px; }
+  .card2 button { margin-top: 12px; width: 100%; font-size: 16px; padding: 11px; }
+  .card2 .btns { display: flex; gap: 8px; } .card2 .btns button { flex: 1; }
+  .card2 p { font-size: 14px; margin: 0 0 8px; }
+  @media (max-width: 480px) { #betCard { top: 118px; bottom: auto; left: 8px; right: 8px; width: auto; } }
   @media (max-width: 480px) { #crewPanel { left: 8px; right: 8px; width: auto; top: auto; bottom: 8px; max-height: 55%; } }
   @media (max-width: 480px) { button, .chip { font-size: 13px; padding: 8px 9px; } }
 </style>
@@ -51,22 +75,35 @@
 <body>
 <canvas id="c"></canvas>
 <div id="hud">
-  <button id="btnPlace">Place stand</button>
-  <button id="btnRotate" title="Rotate (R)">&#8635;</button>
-  <button id="btnLine" disabled>Build line</button>
-  <button id="btnPlay">&#9654; Play</button>
+  <span class="chip" id="dayHud" hidden></span>
+  <span class="chip" id="money">$0</span>
+  <button id="btnPlay" title="Play / pause (space)">&#9654;</button>
   <button id="btnSpeed">1&times;</button>
-  <button id="btnCrew">Crew</button>
+  <button id="btnBuild" title="Move the stand / draw the queue line">&#128296; Build</button>
+  <button id="btnCrew">Stand &amp; crew</button>
   <button id="btnHack" hidden>Hack agenda</button>
   <button id="btnRaid" hidden>Raid</button>
-  <button id="btnCrowd">Crowd: Normal</button>
-  <button id="btnZoomOut" aria-label="Zoom out">&minus;</button>
-  <button id="btnZoomIn" aria-label="Zoom in">+</button>
-  <button id="btnArt" disabled>Art: placeholder</button>
-  <span class="chip" id="money">$0</span>
-  <span class="chip" id="served">0 served</span>
+  <button id="btnFocus" title="Stand close-up / whole quad">&#128269; Stand</button>
+  <button id="btnDebug" title="More options" aria-label="More options">&#9881;</button>
+  <span id="buildBar" class="bar" hidden>
+    <button id="btnPlace">Place stand</button>
+    <button id="btnRotate" title="Rotate (R)">&#8635;</button>
+    <button id="btnLine" disabled>Build line</button>
+  </span>
+  <span id="debugBar" class="bar" hidden>
+    <button id="btnCrowd">Crowd: Normal</button>
+    <button id="btnZoomOut" aria-label="Zoom out">&minus;</button>
+    <button id="btnZoomIn" aria-label="Zoom in">+</button>
+    <button id="btnArt" disabled>Art: placeholder</button>
+    <span class="chip" id="served">0 served</span>
+  </span>
 </div>
 <div id="hint"></div>
+<div id="reportCard" class="card2" hidden></div>
+<div id="endCard" class="card2" hidden></div>
+<div id="starterPins" hidden></div>
+<button id="btnAcceptLine" hidden>&#10003; Use suggested line</button>
+<button id="btnOpen" hidden>OPEN</button>
 <div id="toast" hidden></div>
 <div id="betCard" hidden><div class="txt"></div><div class="btns"></div></div>
 <div id="hackPopup" hidden>
@@ -74,7 +111,7 @@
   <div class="body"><b>Classes dismissed early!</b><small>All afternoon sections cancelled. Enjoy the Quad :)</small></div>
 </div>
 <div id="crewPanel" hidden>
-  <div class="head"><b>Hire crew</b><span>Each hire shows up at the stand and speeds a station.</span><button id="btnCrewClose" aria-label="Close">&times;</button></div>
+  <div class="head"><b>Stand &amp; crew</b><button id="btnCrewClose" aria-label="Close">&times;</button></div>
   <div id="crewList"></div>
 </div>
 <script src="src/config.js"></script>
@@ -94,8 +131,11 @@
 <script src="src/render.js"></script>
 <script src="src/crew.js"></script>
 <script src="src/events.js"></script>
+<script src="src/supply.js"></script>
 <script src="src/ambient.js"></script>
 <script src="src/bets.js"></script>
+<script src="src/week.js"></script>
 <script src="src/main.js"></script>
+<script src="src/onboard.js"></script>
 </body>
 </html>

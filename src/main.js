@@ -9,6 +9,7 @@
     place: $('btnPlace'), rotate: $('btnRotate'), line: $('btnLine'), crowd: $('btnCrowd'), hack: $('btnHack'),
     raid: $('btnRaid'), zin: $('btnZoomIn'), zout: $('btnZoomOut'), toast: $('toast'), popup: $('hackPopup'),
     play: $('btnPlay'), speed: $('btnSpeed'), art: $('btnArt'),
+    build: $('btnBuild'), debug: $('btnDebug'), focus: $('btnFocus'), buildBar: $('buildBar'), debugBar: $('debugBar'),
     money: $('money'), served: $('served'), hint: $('hint')
   };
 
@@ -34,7 +35,7 @@
     canvas.style.width = R.vw + 'px'; canvas.style.height = R.vh + 'px';
     var oldCenter = R.vw0 ? R.toWorld(R.vw0 / 2, R.vh0 / 2) : { x: World.W / 2, y: World.H / 2 - 2 };
     // Start zoomed in enough that a 2x2 stand and its line read clearly; +/-, wheel and pinch zoom.
-    if (!R.vw0) R.cam.z = Math.max(1.1, Math.min(2.0, Math.min(R.vw, R.vh) / 520));
+    if (!R.vw0) { R.cam.z = Math.max(1.1, Math.min(2.0, Math.min(R.vw, R.vh) / 520)); R.defaultZ = R.cam.z; }
     R.centerOn(oldCenter.x, oldCenter.y);
     R.vw0 = R.vw; R.vh0 = R.vh;
   }
@@ -43,20 +44,30 @@
 
   // ---- HUD ---------------------------------------------------------------
   function defaultHint() {
-    if (!Sim.stand.placed) return 'Tap “Place stand”, then tap open ground. R rotates.';
-    if (!Sim.stand.line.length) return 'Tap “Build line” and paint a queue from the ORDER window to a path.';
-    if (!Sim.stand.connected) return 'Keep painting: the line’s end must touch a footpath.';
+    var sel = Sim.selected();
+    if (TF.Week && TF.Week.active() && TF.Week.phase === 'prep' && TF.Onboard && TF.Onboard.allConnected()) return 'Day ' + TF.Week.day + ' PREP: buy upgrades in Stand & crew, then press OPEN.';
+    var who = Sim.stands.length > 1 ? 'Stand ' + (sel.idx + 1) + ': ' : '';
+    if (!sel.placed) return who + 'Tap a glowing spot (or Place stand, then open ground). R rotates.';
+    if (!sel.line.length) return who + 'Tap \u201CUse suggested line\u201D or Build line from the ORDER window to a path.';
+    if (!sel.connected) return who + 'Keep painting: the line\u2019s end must touch a footpath.';
+    var other = Sim.stands.filter(function (o) { return o.placed && !o.connected; })[0];
+    if (other) return 'Stand ' + (other.idx + 1) + '\u2019s line isn\u2019t connected yet: tap that stand, then Build line.';
     return '';
   }
   function setHint(text, secs) { el.hint.textContent = text; el.hint.style.opacity = text ? 1 : 0; state.hintT = secs || 0; }
   function refreshButtons() {
-    el.place.textContent = state.mode === 'place' ? 'Cancel' : (Sim.stand.placed ? 'Move stand' : 'Place stand');
+    el.place.textContent = state.mode === 'place' ? 'Cancel' : (Sim.selected().placed ? 'Move stand' : 'Place stand') + (Sim.stands.length > 1 ? ' ' + (Sim.sel + 1) : '');
     el.place.classList.toggle('active', state.mode === 'place');
     el.rotate.style.display = state.mode === 'place' ? '' : 'none';
     el.line.textContent = state.mode === 'build' ? 'Done' : 'Build line';
     el.line.classList.toggle('active', state.mode === 'build');
-    el.line.disabled = !Sim.stand.placed;
-    el.play.textContent = state.running ? '❚❚ Pause' : '▶ Play';
+    el.line.disabled = !Sim.selected().placed;
+    el.play.textContent = state.running ? '\u275A\u275A' : '\u25B6';
+    var bo = state.mode !== 'idle' || state.buildOpen;
+    el.buildBar.hidden = !bo;
+    el.build.classList.toggle('active', bo);
+    var wk = TF.Week && TF.Week.active();
+    el.play.disabled = !!(wk && TF.Week.phase !== 'open' && TF.Week.phase !== 'close');
     el.speed.textContent = state.speed + '×';
     el.art.textContent = 'Art: ' + TF.Art.mode;
     el.art.disabled = !TF.Art.ready;
@@ -64,12 +75,35 @@
   }
   function setMode(m) {
     state.mode = m;
+    if (m !== 'idle') state.buildOpen = true;
     state.ghost = null; state.hover = null;
     if (m === 'place') setHint('Tap open ground to place the stand. R / ↻ rotates. Green = OK.');
     else if (m === 'build') setHint('Tap or drag tile by tile from the ORDER window to a footpath. Tap a line tile to remove it and the rest.');
     else setHint(defaultHint());
     refreshButtons();
   }
+  // Slim HUD: Move / Rotate / Build line live behind Build; Crowd / zoom / Art behind the gear.
+  el.build.addEventListener('click', function () {
+    Audio.unlock();
+    state.buildOpen = !(state.buildOpen || state.mode !== 'idle');
+    if (!state.buildOpen) setMode('idle'); else refreshButtons();
+  });
+  el.debug.addEventListener('click', function () { el.debugBar.hidden = !el.debugBar.hidden; el.debug.classList.toggle('active', !el.debugBar.hidden); });
+  // Camera: a stand close-up (about 1.25x the default zoom) or the whole quad.
+  state.view = 'default';
+  el.focus.addEventListener('click', function () {
+    if (state.view !== 'stand') {
+      var st = Sim.selected();
+      R.cam.z = Math.min(2.6, (R.defaultZ || R.cam.z) * 1.25);
+      if (st.placed) R.centerOn(st.geom.cx, st.geom.cy + 0.5); else R.centerOn(World.W / 2, World.H / 2 - 2);
+      state.view = 'stand'; el.focus.textContent = '\uD83D\uDDFA Quad';
+    } else {
+      R.cam.z = Math.max(0.5, Math.min(R.vw, R.vh * 2) / ((World.W + World.H) * (C.TW / 2)));
+      R.centerOn(World.W / 2, World.H / 2 - 1);
+      state.view = 'overview'; el.focus.textContent = '\uD83D\uDD0D Stand';
+    }
+    if (TF.Onboard) TF.Onboard.userPanned = true;
+  });
   el.place.addEventListener('click', function () { Audio.unlock(); setMode(state.mode === 'place' ? 'idle' : 'place'); });
   el.rotate.addEventListener('click', function () { api.rotate(); });
   el.line.addEventListener('click', function () { Audio.unlock(); setMode(state.mode === 'build' ? 'idle' : 'build'); });
@@ -109,15 +143,19 @@
     el.popup.classList.remove('glitch'); void el.popup.offsetWidth; el.popup.classList.add('glitch');
     clearTimeout(popupTimer); popupTimer = setTimeout(function () { el.popup.hidden = true; }, 3000);
   }
+  // Hovering auto-tries all 4 rotations (starting from the one R picked) and snaps to a valid one.
+  // If none fits, the ghost shows the preferred rotation with the offending tile and a fix.
   function updateGhost(cx, cy) {
-    var t = standAt(cx, cy), v = World.validateStand(t.x, t.y, state.rot);
-    state.ghost = { sx: t.x, sy: t.y, rot: state.rot, ok: v.ok, reason: v.reason };
+    var t = standAt(cx, cy), best = World.bestRotation(t.x, t.y, state.rot);
+    var rot = best === null ? state.rot : best, v = World.validateStand(t.x, t.y, rot);
+    state.ghost = { sx: t.x, sy: t.y, rot: rot, ok: v.ok, reason: v.reason, bad: v.tile || null, fix: v.fix || '' };
+    if (v.ok) state.ghost.loc = locationGrade(t.x, t.y, rot);
   }
   function tryPlace(cx, cy) {
     updateGhost(cx, cy);
     var g = state.ghost, res = Sim.placeStand(g.sx, g.sy, g.rot);
-    if (res.ok) { setMode('idle'); setHint('Stand placed. Now tap “Build line” to paint its queue.', 3); }
-    else setHint(res.reason + ' — try another spot.', 2.5);
+    if (res.ok) { setMode('idle'); setHint('Stand placed. Tap \u201CUse suggested line\u201D or Build line to paint its queue.', 4); }
+    else setHint(res.fix || (res.reason + ' \u2014 try another spot.'), 4);
   }
   function updateHover(cx, cy) {
     var t = tileAt(cx, cy);
@@ -127,7 +165,7 @@
   function lineAt(cx, cy) {
     var t = tileAt(cx, cy), r = Sim.addLineTile(t.x, t.y);
     if (!r.ok) setHint(r.reason, 2);
-    else setHint(Sim.stand.connected ? 'Connected! Guests can queue now.' : 'Line not connected to a path yet.', 2);
+    else setHint(Sim.selected().connected ? 'Connected! Guests can queue now.' : 'Line not connected to a path yet.', 2);
     return r.ok;
   }
 
@@ -175,6 +213,7 @@
       }
     } else if (drag.moved && !(state.mode === 'place' && drag.type !== 'mouse')) {
       R.cam.x += e.clientX - drag.lx; R.cam.y += e.clientY - drag.ly;
+      if (TF.Onboard) TF.Onboard.userPanned = true;
     }
     drag.lx = e.clientX; drag.ly = e.clientY;
   });
@@ -185,15 +224,21 @@
     var d = drag; drag = null;
     if (cancelled) return;
     if (state.mode === 'place' && (!d.moved || d.type !== 'mouse')) tryPlace(e.clientX, e.clientY);
+    if (state.mode === 'idle' && !d.moved && Sim.stands.length > 1) {   // tap a stand to work on it
+      var tt = tileAt(e.clientX, e.clientY), hit = Sim.stands.filter(function (o) { return o.placed && tt.x >= o.sx && tt.x <= o.sx + 1 && tt.y >= o.sy && tt.y <= o.sy + 1; })[0];
+      if (hit && hit.idx !== Sim.sel) { Sim.sel = hit.idx; setHint('Stand ' + (hit.idx + 1) + ' selected (Move / Build line / upgrades apply to it).', 2.5); refreshButtons(); }
+    }
     if (state.mode === 'build' && d.del) {
       Sim.removeLineFrom(d.del.x, d.del.y);
-      setHint(Sim.stand.line.length ? 'Line shortened — not connected to a path.' : 'Line removed.', 2);
+      setHint(Sim.selected().line.length ? 'Line shortened \u2014 not connected to a path.' : 'Line removed.', 2);
       updateHover(e.clientX, e.clientY);
     }
   }
   canvas.addEventListener('pointerup', function (e) { endPointer(e, false); });
   canvas.addEventListener('pointercancel', function (e) { endPointer(e, true); });
-  canvas.addEventListener('pointerleave', function () { if (!drag) { if (state.mode === 'place') state.ghost = null; state.hover = null; } });
+  // A finger lifting also "leaves" the canvas: keep a touch ghost (e.g. a rejected spot and its
+  // red tile + fix) on screen; only the mouse clears it by leaving.
+  canvas.addEventListener('pointerleave', function (e) { if (!drag && e.pointerType === 'mouse') { if (state.mode === 'place') state.ghost = null; state.hover = null; } });
   window.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && state.mode !== 'idle') setMode('idle');
     if ((e.key === 'r' || e.key === 'R') && state.mode === 'place') api.rotate();
@@ -246,6 +291,8 @@
     }
     var ct = 'Crowd: ' + Sim.crowd[0].toUpperCase() + Sim.crowd.slice(1) + (Sim.rushT > 0 ? ' \u2022 RUSH' : '');
     if (el.crowd.textContent !== ct) el.crowd.textContent = ct;
+    if (TF.Onboard) TF.Onboard.frame(real);
+    if (TF.Week) { TF.Week.refresh(); var pd = !!(TF.Week.active() && TF.Week.phase !== 'open' && TF.Week.phase !== 'close'); if (el.play.disabled !== pd) refreshButtons(); }
     if (state.hintT > 0) { state.hintT -= real; if (state.hintT <= 0 && state.mode === 'idle') setHint(defaultHint()); }
     else if (state.mode === 'idle' && el.hint.textContent !== defaultHint()) setHint(defaultHint());
 
@@ -254,25 +301,49 @@
     requestAnimationFrame(frame);
   }
 
-  // BFS over line-able ground from the order tile to the first tile touching a walkway.
-  function planLine(sx, sy, rot) {
+  // Shortest queue line from the order tile to a tile touching a walkway (BFS, up to 8 tiles).
+  // With minLen, prefer a roomier line of at least that many tiles (2 people per tile), falling
+  // back to the shortest one when nothing longer fits.
+  function planLine(sx, sy, rot, minLen) {
     var g = World.standGeom(sx, sy, rot), start = { x: g.order[0], y: g.order[1] };
-    var saved = World.stand; World.stand = { sx: sx, sy: sy, rot: rot };
-    var seen = {}, q = [[start]], out = null;
-    seen[start.x + ',' + start.y] = 1;
-    while (q.length) {
+    World.planning = { sx: sx, sy: sy, rot: rot, idx: -1 };
+    var touches = function (t) { return World.DIRS.some(function (d) { return World.isWalkway(t.x + d[0], t.y + d[1]); }); };
+    var shortest = null, roomy = null, roomyAny = null;
+    // Simple paths only (no revisits), breadth-first so the first roomy hit is the most compact.
+    var q = [[start]], expanded = 0;
+    while (q.length && expanded < 6000) {
       var path = q.shift(), t = path[path.length - 1];
-      if (World.DIRS.some(function (d) { return World.isWalkway(t.x + d[0], t.y + d[1]); })) { out = path; break; }
-      if (path.length > 7) continue;
+      expanded++;
+      if (touches(t)) {
+        if (!shortest) shortest = path;
+        if (path.length >= (minLen || 1)) {
+          var inf = TF.lineInfo(path, g);
+          if (!inf.blocked && inf.pickupClear) { roomy = path; break; }
+          roomyAny = roomyAny || path;
+        }
+      }
+      if (path.length >= 8) continue;
       World.DIRS.forEach(function (d) {
-        var n = { x: t.x + d[0], y: t.y + d[1] }, k = n.x + ',' + n.y;
-        if (seen[k] || !World.lineGround(n.x, n.y)) return;
-        seen[k] = 1; q.push(path.concat([n]));
+        var n = { x: t.x + d[0], y: t.y + d[1] };
+        if (!World.lineGround(n.x, n.y) || path.some(function (p) { return p.x === n.x && p.y === n.y; })) return;
+        // keep it a clean single file: a new tile may only touch the previous one
+        if (path.some(function (p, i) { return i < path.length - 1 && Math.abs(p.x - n.x) + Math.abs(p.y - n.y) === 1; })) return;
+        q.push(path.concat([n]));
       });
     }
-    World.stand = saved;
-    return out;
+    World.planning = null;
+    return roomy || roomyAny || shortest;
   }
+  // Location grade while placing (item 7): foot traffic = footpath tiles inside the draw zone.
+  function locationGrade(sx, sy, rot) {
+    var g = World.standGeom(sx, sy, rot), r = Sim.selected().mods.zoneR, n = 0;
+    for (var y = Math.floor(g.cy - r); y <= g.cy + r; y++) for (var x = Math.floor(g.cx - r); x <= g.cx + r; x++) {
+      if (Math.hypot(x + 0.5 - g.cx, y + 0.5 - g.cy) <= r && World.isPath(x, y)) n++;
+    }
+    return { n: n, grade: n >= LOC_GOOD ? 'GOOD' : n >= LOC_OKAY ? 'OKAY' : 'SLOW' };
+  }
+  var LOC_GOOD = 14, LOC_OKAY = 8;   // path tiles in the zone; quad median is 9
+  TF.locationGrade = locationGrade;
 
   // ---- Debug hook --------------------------------------------------------
   var api = {
@@ -281,7 +352,10 @@
     removeLine: function (tx, ty) { return Sim.removeLineFrom(tx, ty); },
     rotate: function () {
       state.rot = (state.rot + 1) % 4;
-      if (state.ghost) { state.ghost.rot = state.rot; state.ghost.ok = World.validateStand(state.ghost.sx, state.ghost.sy, state.rot).ok; }
+      if (state.ghost) {
+        var v = World.validateStand(state.ghost.sx, state.ghost.sy, state.rot);
+        state.ghost.rot = state.rot; state.ghost.ok = v.ok; state.ghost.bad = v.tile || null; state.ghost.fix = v.fix || '';
+      }
       return state.rot;
     },
     mode: function () { return state.mode; },
@@ -299,18 +373,23 @@
         lineTiles: st.line.length, connected: st.connected, capacity: st.cap,
         avgWait: Math.round(Sim.avgWait() * 100) / 100, hint: el.hint.textContent,
         crew: TF.Crew ? TF.Crew.hired() : [],
-        tier: st.tier, stock: st.stock, restocks: st.restocks, restocking: !!Sim.runner, gaveUp: Sim.stats.gaveUp,
+        stands: Sim.stands.map(function (o) { return { idx: o.idx, placed: o.placed, sx: o.sx, sy: o.sy, rot: o.rot, tier: o.tier, stock: o.stock, stockMax: o.mods.stockMax, queue: o.queue.length, served: o.served || 0, sold: o.sold || 0, connected: o.connected, lineTiles: o.line.length, restocks: o.restocks, trip: !!o.trip, neck: TF.bottleneckOf(o), info: o.info ? { cap: o.info.cap, blocked: o.info.blocked, pickupClear: o.info.pickupClear } : null }; }),
+        sel: Sim.sel,
+        tier: st.tier, stock: st.stock, stockMax: Sim.mods.stockMax, restocks: st.restocks, restocking: !!Sim.runner, gaveUp: Sim.stats.gaveUp,
+        supplyTrips: TF.Supply ? TF.Supply.trips : 0, tripsByStand: TF.Supply ? TF.Supply.tripsByStand.slice() : [], supplyPhase: TF.Supply && TF.Supply.trip ? TF.Supply.trip.phase : null, soldOutSeconds: TF.Supply ? Math.round(TF.Supply.soldOutSeconds * 10) / 10 : 0,
         zoom: Math.round(R.cam.z * 100) / 100, crowd: Sim.crowd, rush: Sim.rushT > 0, grillWork: Math.round(Sim.stats.grillWork * 100) / 100,
         westVisits: TF.Events.westVisits, westActive: !!TF.Events.west && TF.Events.west.phase === 'chat', westPhase: TF.Events.west ? TF.Events.west.phase : null,
-        aliPausedSeconds: Math.round(TF.Events.aliPausedSeconds * 10) / 10, aiAli: !!TF.Crew.extras.aiali, aiAliChatSeconds: Math.round(TF.Events.aiAliChats * 10) / 10,
+        aliPausedSeconds: Math.round(TF.Events.aliPausedSeconds * 10) / 10, westChatT: TF.Events.west && TF.Events.west.phase === 'chat' ? Math.round(TF.Events.west.ct * 10) / 10 : null, grillStalled: TF.Events.grillStalled(), aiAli: !!TF.Crew.extras.aiali, aiAliChatSeconds: Math.round(TF.Events.aiAliChats * 10) / 10,
         thoughts: Object.assign({}, Sim.thoughts),
         ambientBikers: TF.Ambient.bikers.length, ambientSitters: TF.Ambient.sitters.length, bikesPassed: TF.Ambient.bikesPassed,
         day: TF.Bets.day, dayEarn: TF.Bets.dayEarn, bets: Object.assign({}, TF.Bets.bets), flips: Object.assign({}, TF.Bets.flips), flipPolicy: TF.Bets.policy, betCard: TF.Bets.card,
         tortillaShots: Sim.stats.tortillaShots, cannon: !!Sim.mods.cannon, handT: Math.round(Sim.mods.handT * 100) / 100,
         grackleEvents: TF.Events.grackle.events, grackleSlowSeconds: Math.round(TF.Events.grackle.slowSeconds * 10) / 10, grackleShooed: TF.Events.grackle.shooed, grackles: TF.Events.grackle.phase,
         raids: TF.Events.raid.raids, raidPhase: TF.Events.raid.phase, lastRaidSpawned: TF.Events.raid.lastSpawned, raidFromEdges: TF.Events.raid.fromEdges,
-        hacks: TF.Events.hack.hacks, hackPhase: TF.Events.hack.phase, lastHackSpawned: TF.Events.hack.lastSpawned,
-        fromHackAlive: Sim.guests.filter(function (g) { return g.fromHack; }).length
+        hacks: TF.Events.hack.hacks, hackTimed: TF.Events.hack.timed || 0, congestT: Math.round(Sim.stats.congestT * 10) / 10, ghostLoc: state.ghost && state.ghost.loc ? state.ghost.loc.grade : null, hackPhase: TF.Events.hack.phase, lastHackSpawned: TF.Events.hack.lastSpawned,
+        fromHackAlive: Sim.guests.filter(function (g) { return g.fromHack; }).length,
+        week: TF.Week ? { mode: TF.Week.mode, day: TF.Week.day, phase: TF.Week.phase, t: Math.round(TF.Week.t * 10) / 10, soldToday: TF.Week.soldToday(), goal: TF.Week.goal(),
+          majorUsed: TF.Week.majorUsed, eventsToday: TF.Week.eventsToday, bellsRung: TF.Week.bellsRung || 0, bellCountdown: TF.Week.bellCountdown(), bellSpawned: TF.Week.bellSpawned || 0, hud: document.getElementById('dayHud').textContent, results: TF.Week.results, won: TF.Week.won } : null
       };
     },
     // Test helpers (client pixels).
@@ -406,7 +485,8 @@
     }
   };
   window.__flow = api;
-  TF.ui = { refresh: refreshButtons, setHint: setHint, state: state };
+  TF.planLine = planLine;
+  TF.ui = { refresh: refreshButtons, setHint: setHint, setMode: setMode, state: state, api: api, setZoom: setZoom };
 
   setMode('idle');
   TF.Art.load(function (ok) {
