@@ -156,7 +156,13 @@
       try { storage = win.localStorage; } catch (ignore) {}
       deviceBoard = Board.local(storage);
     }
-    var rank = readonly ? 0 : deviceBoard.add(result);
+    var rank = readonly || opts.skipBoard ? 0 : deviceBoard.add(result);
+    if ((readonly || opts.skipBoard) && !rank) {
+      var listed = deviceBoard.list();
+      for (var ri = 0; ri < listed.length; ri++) {
+        if (listed[ri].n === result.n && listed[ri].s === result.s && listed[ri].d === result.d) { rank = ri + 1; break; }
+      }
+    }
     el('h3', 'Local top 10');
     var list = el('ol'); list.style.cssText = 'list-style:none;padding-left:0';
     var empty = el('p', 'No local scores yet.');

@@ -44,10 +44,12 @@
     groundskeeper: { sheet: 'customers_rct_v5', h: 156, toward: [{x:2,y:827,w:110,h:157,ax:60.5,ay:155.0}, {x:147,y:827,w:107,h:157,ax:61.5,ay:155.0}, {x:292,y:827,w:108,h:157,ax:65.0,ay:155.0}, {x:437,y:827,w:107,h:157,ax:62.0,ay:155.0}, {x:582,y:827,w:107,h:157,ax:62.5,ay:155.0}], away: [{x:727,y:827,w:99,h:156,ax:51.5,ay:154.0}, {x:872,y:827,w:97,h:154,ax:50.0,ay:152.0}, {x:1017,y:827,w:97,h:155,ax:48.5,ay:153.0}], stand: {x:1162,y:827,w:99,h:156,ax:56.5,ay:154.0}, taco: {x:1307,y:827,w:141,h:156,ax:59.0,ay:154.0} }
   };
   var VARIANTS = ['hoodie', 'tank', 'capguy', 'sundress', 'glasses', 'ponytail', 'jersey', 'cardigan', 'cowboy', 'bandtee'];
-  // Batch 2 looks: loaded into P.cust but not yet in the spawn mix (Pass 6B wires crowd spawning / per-level mixes).
+  // Batches 2–4: painted looks; Pass 6D puts all 28 into ALL_LOOKS for guest spawning.
   var VARIANTS_B2 = ['athlete', 'skater', 'rotc', 'bandkid', 'hijab', 'movein_dad'];
-  var VARIANTS_B3 = ['sorority', 'frat', 'cowboy2', 'nursing', 'artstudent', 'gymgirl'];   // batch 3: loaded, not spawned yet
-  var VARIANTS_B4 = ['professor', 'tuber', 'engineer', 'gradstudent', 'footballfan', 'groundskeeper'];   // batch 4: loaded, not spawned yet
+  var VARIANTS_B3 = ['sorority', 'frat', 'cowboy2', 'nursing', 'artstudent', 'gymgirl'];
+  var VARIANTS_B4 = ['professor', 'tuber', 'engineer', 'gradstudent', 'footballfan', 'groundskeeper'];
+  var ALL_LOOKS = VARIANTS.concat(VARIANTS_B2, VARIANTS_B3, VARIANTS_B4);
+
   // The taco in the hoodie's taco frame, drawn in the hand on walking frames.
   var TACO = { x: 982, y: 50, w: 27, h: 20, ax: 0, ay: 0 };
   var CUST_H = 122;   // sheet px of a standing student
@@ -132,7 +134,8 @@
   // Returns false to fall back to the placeholder person.
   P.drawGuest = function (ctx, g, sx, sy, z) {
     if (!P.ready) return false;
-    var set = P.cust[VARIANTS[g.variant % VARIANTS.length]] || P.cust.hoodie;
+    var set = P.cust[ALL_LOOKS[g.variant % ALL_LOOKS.length]] || P.cust.hoodie;
+
     var sc = 30 * z * (g.tall || 1) / (set.h || CUST_H);   // every look ~30 px tall at zoom 1
     var front = g.facing < 2, mirror = g.facing === 1 || g.facing === 3;
     var img;
@@ -211,6 +214,8 @@
   };
 
   P.VARIANTS = VARIANTS; P.VARIANTS_B2 = VARIANTS_B2; P.VARIANTS_B3 = VARIANTS_B3; P.VARIANTS_B4 = VARIANTS_B4;
+  P.ALL_LOOKS = ALL_LOOKS;
+
   P.crewPortrait = function (id) { return P.crew[id] ? P.crew[id][0] : null; };
 
   TF.ArtPeople = P;

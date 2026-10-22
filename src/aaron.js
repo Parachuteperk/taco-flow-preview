@@ -188,5 +188,53 @@
     };
     return api;
   }
-  return { create: create, patienceBonus: patienceBonus, hireCents: 4000, wageCents: 800, unlockDay: 3 };
+  function textData() {
+    if (typeof TF !== 'undefined') return { AARON_HIRE: TF.AARON_HIRE, AARON_IDLE: TF.AARON_IDLE };
+    try { return require('../data/aaron-text'); } catch (e) { return {}; }
+  }
+  function idleLine(rng) {
+    var lines = textData().AARON_IDLE || [];
+    if (!lines.length) return '';
+    var r = rng && typeof rng.next === 'function' ? rng.next() : Math.random();
+    return lines[Math.floor(r * lines.length) % lines.length];
+  }
+  function mountHire(host, api, opts) {
+    opts = opts || {};
+    if (!host || !host.ownerDocument) throw new TypeError('Host required');
+    var T = textData().AARON_HIRE || {};
+    var doc = host.ownerDocument, wrap = doc.createElement('section');
+    wrap.id = 'aaronHire';
+    wrap.setAttribute('role', 'dialog');
+    wrap.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:1005;width:min(360px,calc(100% - 32px));box-sizing:border-box;background:#fff5d6;border:3px solid #501214;border-radius:12px;padding:14px;color:#2a1810;overflow-wrap:anywhere;word-break:break-word';
+    function p(text) {
+      var el = doc.createElement('p'); el.textContent = text; el.style.cssText = 'margin:0 0 6px;overflow-wrap:anywhere'; wrap.appendChild(el);
+    }
+    (T.offer || []).forEach(function (line) { p((line.who ? line.who.toUpperCase() + ': ' : '') + line.text); });
+    var h = doc.createElement('h2'); h.textContent = T.cardTitle || 'Aaron - SIFE';
+    h.style.cssText = 'margin:8px 0 4px;font-size:16px;color:#7a1e2c;overflow-wrap:anywhere'; wrap.appendChild(h);
+    p(T.cardBody || '');
+    p((T.perkName || 'Elevator Pitch') + ': ' + (T.perkDesc || ''));
+    var btns = doc.createElement('div'); btns.style.cssText = 'display:flex;gap:8px;margin-top:10px';
+    var hire = doc.createElement('button'); hire.type = 'button'; hire.textContent = T.hireBtn || 'Hire $40';
+    hire.style.cssText = 'flex:1;min-height:44px';
+    var pass = doc.createElement('button'); pass.type = 'button'; pass.textContent = T.passBtn || 'Not now';
+    pass.style.cssText = 'flex:1;min-height:44px';
+    hire.onclick = function () {
+      var r = api && api.hire ? api.hire() : { ok: false };
+      wrap.remove();
+      if (r && r.ok && opts.onHired) opts.onHired(T.hired || []);
+      else if (opts.onResult) opts.onResult(r);
+    };
+    pass.onclick = function () {
+      wrap.remove();
+      if (opts.onPassed) opts.onPassed(T.passed || []);
+    };
+    btns.appendChild(hire); btns.appendChild(pass); wrap.appendChild(btns);
+    host.appendChild(wrap); hire.focus();
+    return { element: wrap, destroy: function () { wrap.remove(); } };
+  }
+  return {
+    create: create, patienceBonus: patienceBonus, hireCents: 4000, wageCents: 800, unlockDay: 3,
+    idleLine: idleLine, mountHire: mountHire, text: textData
+  };
 }));

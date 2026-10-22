@@ -66,5 +66,101 @@
     ShareCard.draw({ getContext: function () { return ctx; } }, payload, { frame: frameImg });
     return ctx;
   };
+  // Pass 6D text helpers (data/results-text.js → TF.RESULTS / TF.RANKS / TF.MVP_LINES).
+  function textData() {
+    if (typeof TF !== 'undefined') return { RESULTS: TF.RESULTS, RANKS: TF.RANKS, MVP_LINES: TF.MVP_LINES };
+    try {
+      var t = require('../data/results-text');
+      return t;
+    } catch (e) { return {}; }
+  }
+  R.rankFor = function (score) {
+    var ranks = textData().RANKS || [];
+    var best = ranks[0] || { min: 0, title: '', blurb: '' };
+    ranks.forEach(function (r) { if (score >= r.min) best = r; });
+    return { min: best.min, title: best.title, blurb: best.blurb };
+  };
+  R.ranksOrdered = function () {
+    var ranks = (textData().RANKS || []).slice();
+    for (var i = 1; i < ranks.length; i++) if (!(ranks[i].min > ranks[i - 1].min)) return false;
+    return ranks.length > 0;
+  };
+  R.mvpLine = function (id) {
+    var lines = textData().MVP_LINES || {};
+    return lines[id] || '';
+  };
+  R.labels = function () { return textData().RESULTS || {}; };
+  R.mount = function (host, payload, opts) {
+    opts = opts || {};
+    if (!host || !host.ownerDocument) throw new TypeError('Host required');
+    checked(payload);
+    var doc = host.ownerDocument, L = R.labels(), rank = R.rankFor(payload.s);
+    var wrap = doc.createElement('section');
+    wrap.id = 'resultsScreen';
+    wrap.style.cssText = 'position:fixed;inset:0;z-index:1200;background:#170d20ee;display:grid;place-items:center;padding:12px;box-sizing:border-box;overflow:auto';
+    var panel = doc.createElement('div');
+    panel.style.cssText = 'width:100%;max-width:390px;box-sizing:border-box;background:#fff5d6;color:#2a1810;border:3px solid #501214;border-radius:12px;padding:14px;overflow-wrap:anywhere;word-break:break-word;font:14px/1.4 system-ui';
+    wrap.appendChild(panel);
+    function row(label, value) {
+      var r = doc.createElement('div');
+      r.style.cssText = 'display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-top:1px solid #e3cfa5;overflow-wrap:anywhere';
+      var a = doc.createElement('span'); a.textContent = label;
+      var b = doc.createElement('b'); b.textContent = value; b.style.cssText = 'text-align:right;overflow-wrap:anywhere';
+      r.appendChild(a); r.appendChild(b); panel.appendChild(r);
+    }
+    var h = doc.createElement('h2'); h.textContent = L.title || 'Night Results'; h.style.cssText = 'margin:0 0 6px;color:#7a1e2c;overflow-wrap:anywhere';
+    panel.appendChild(h);
+    var big = doc.createElement('div'); big.className = 'big';
+    big.style.cssText = 'font-size:28px;font-weight:900;margin:6px 0;overflow-wrap:anywhere';
+    big.textContent = (L.scoreLabel || 'Gala Score') + ': ' + payload.s;
+    panel.appendChild(big);
+    var title = doc.createElement('p'); title.style.cssText = 'margin:0 0 8px;font-weight:800;overflow-wrap:anywhere';
+    title.textContent = rank.title + ' — ' + rank.blurb;
+    panel.appendChild(title);
+    row(L.rentLabel || 'Rent Paid', payload.rent + (payload.rt ? ' · ' + payload.rt + ' retry' : ''));
+    row(L.profitLabel || 'Profit', Board.money ? Board.money(payload.p) : String(payload.p));
+    row(L.moodLabel || 'West Mood', payload.m + '/10');
+    row(L.bestStockLabel || 'Best Stock %', payload.bs || '—');
+    var mvp = payload.mvp || '';
+    row(L.mvpLabel || 'Crew MVP', mvp ? mvp + (R.mvpLine(mvp) ? ' — ' + R.mvpLine(mvp) : '') : '—');
+    if (payload.hard) {
+      var hard = doc.createElement('p'); hard.textContent = L.hardTag || 'HARD';
+      hard.style.cssText = 'font-weight:800;color:#b8283a;overflow-wrap:anywhere'; panel.appendChild(hard);
+    }
+    var boardHost = doc.createElement('div');
+    boardHost.style.cssText = 'margin-top:10px;overflow-wrap:anywhere';
+    var bh = doc.createElement('h3'); bh.textContent = L.boardTitle || 'Local Top 10';
+    bh.style.cssText = 'margin:8px 0 4px;font-size:15px;overflow-wrap:anywhere'; boardHost.appendChild(bh);
+    var board = R.createBoard(opts.storage);
+    // Record the finish before painting Top 10 so the new score is on first paint.
+    var rank = 0;
+    try { rank = board.add(payload) || 0; } catch (e) { rank = 0; }
+    var rows = board.list();
+    var list = doc.createElement('ol'); list.style.cssText = 'margin:0;padding-left:20px;overflow-wrap:anywhere';
+    rows.forEach(function (e, i) {
+      var li = doc.createElement('li'); li.textContent = e.n + ' — ' + e.s;
+      if (rank && i + 1 === rank) li.style.cssText = 'font-weight:800';
+      list.appendChild(li);
+    });
+    if (!rows.length) {
+      var empty = doc.createElement('p'); empty.textContent = L.emptyBoard || 'No scores yet';
+      empty.style.cssText = 'margin:0;overflow-wrap:anywhere'; boardHost.appendChild(empty);
+    } else boardHost.appendChild(list);
+    panel.appendChild(boardHost);
+    if (ShareCard && ShareCard.mount && !opts.skipShare) {
+      var shareHost = doc.createElement('div');
+      shareHost.style.cssText = 'margin-top:10px;max-width:100%;overflow:auto';
+      panel.appendChild(shareHost);
+      var shareOpts = Object.assign({}, opts, { skipBoard: true });
+      ShareCard.mount(shareHost, payload, shareOpts);
+    }
+    var close = doc.createElement('button');
+    close.type = 'button'; close.textContent = 'Close';
+    close.style.cssText = 'width:100%;min-height:44px;margin-top:10px';
+    close.onclick = function () { wrap.remove(); if (opts.onClose) opts.onClose(); };
+    panel.appendChild(close);
+    host.appendChild(wrap);
+    return { element: wrap, board: board, destroy: function () { wrap.remove(); } };
+  };
   return R;
 });

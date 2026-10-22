@@ -60,7 +60,8 @@
         events: plain(TF.Events, ['west']), supply: TF.Supply ? { trips: TF.Supply.trips, tripsByStand: TF.Supply.tripsByStand, soldOutSeconds: TF.Supply.soldOutSeconds } : null,
         handyman: TF.Handyman && TF.Handyman.M ? { m: TF.Handyman.M.getState(), day: TF.Handyman.day, fixes: TF.Handyman.fixes, faultsSeen: TF.Handyman.faultsSeen } : null,
         checkpoint: TF.Checkpoint ? TF.Checkpoint.monday : null, retried: TF.Checkpoint ? TF.Checkpoint.retried : 0,
-        campaign: TF.Campaign ? { monday: TF.Campaign.monday, pending: TF.Campaign.pending } : null   // the month's Monday checkpoint (6B B2)
+        campaign: TF.Campaign ? { monday: TF.Campaign.monday, pending: TF.Campaign.pending } : null,   // the month's Monday checkpoint (6B B2)
+        aaron: TF.Aaron && TF.Aaron.live ? TF.Aaron.live.getState() : null
       }
     };
   };
@@ -286,6 +287,13 @@
       W.setDayForResume(d.day, d.resume === 'report');
       TF.Crew.applyMods(); TF.Crew.spotKey = '';
       if (E) E.sync();
+      if (TF.Aaron && TF.Aaron.ensure && f.aaron) {
+        try {
+          var a = TF.Aaron.ensure();
+          if (a) a.setState(f.aaron);
+          if (f.aaron.hired && TF.Crew) { TF.Crew.hiredSet.aaron = true; TF.Crew.applyMods(); TF.Crew.spotKey = ''; }
+        } catch (aaronErr) { SV.aaronRestoreError = aaronErr.message; }
+      }
       SV.resumed = { day: W.day, from: d.resume };
     } catch (err) {
       // a save that validated but still fails to apply: put it aside and start clean rather than play on half-restored

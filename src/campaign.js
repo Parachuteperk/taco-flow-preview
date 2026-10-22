@@ -16,7 +16,10 @@
     var s = TF.LevelFlow.fromLive({ Econ: TF.Econ, Week: { day: TF.Week.day, phase: phaseOverride || TF.Week.phase }, Ledger: TF.Ledger,
       Crew: TF.Crew, Rng: TF.Rng, World: World, Market: TF.Market, standTier: Sim.stand.tier, flags: {} });
     if (TF.Invest) s.flags.invest = JSON.parse(JSON.stringify({ metals: TF.Invest.metals, price: TF.Invest.price, lastPrice: TF.Invest.lastPrice }));
-    if (TF.Save) { var snap = TF.Save.snapshot('prep'), b = snap.buildings; s.placements = b.stands; s.buildings = b.objects; s.flags.owned = snap.flags.owned; }
+    if (TF.Aaron && TF.Aaron.live) {
+      try { s.flags.aaron = TF.Aaron.live.getState(); } catch (e) { /* best-effort */ }
+    }
+    if (TF.Save) { var snap = TF.Save.snapshot('prep'), b = snap.buildings; s.placements = b.stands; s.buildings = b.objects; s.flags.owned = snap.flags.owned; if (snap.flags.aaron) s.flags.aaron = snap.flags.aaron; }
     return s;
   };
   CA.captureMonday = function () { if (!on()) return null; try { CA.monday = TF.LevelFlow.captureMonday(CA.live('prep')); } catch (e) { CA.monday = null; } return CA.monday; };
@@ -80,7 +83,18 @@
       CA.busy = false;
       if (!r.saved) { CA.monday = CA.pending.monday; throw new Error('Transition save failed'); }
       if (TF.Checkpoint) TF.Checkpoint.monday = TF.Checkpoint.capture();
-      ['endCard', 'reportCard'].forEach(function (id) { var e = document.getElementById(id); if (e) e.hidden = true; });
+      ['endCard', 'reportCard'].forEach(function (id) {
+        var e = document.getElementById(id);
+        if (!e) return;
+        e.hidden = true;
+        if (id === 'endCard' && e.dataset) {
+          delete e.dataset.levelText; delete e.dataset.galaWired; delete e.dataset.galaShown;
+          if (TF.LevelTextUI && TF.LevelTextUI.clearEndFlags) TF.LevelTextUI.clearEndFlags();
+        }
+      });
+      if (TF.StoryBeats && TF.StoryBeats.clearLevelDays) TF.StoryBeats.clearLevelDays(n);
+      if (TF.HintsUI && TF.HintsUI.clearLevelDays) TF.HintsUI.clearLevelDays(n);
+      if (TF.CastLines && TF.CastLines.resetLevel) TF.CastLines.resetLevel();
       CA.locked = false; CA.last = { level: n, saved: r.saved }; CA.log.push('L' + n + (state.retrying ? ' retry' : ''));
       if (TF.ui && TF.ui.api) TF.ui.api.pause();
       Sim.events.push({ type: 'toast', text: (state.retrying ? '🔁 Monday again: ' : '📍 ') + (map.name || 'Level ' + n) + '. Rent is $' + (TF.Econ.M.rentDue() / 100) + ' by Friday.' });
@@ -111,7 +125,75 @@
     if (!CA.monday) throw new Error('No Monday checkpoint');
     var s = CA.pending ? CA.pending.state : TF.LevelFlow.retry(CA.live('report'), CA.monday);
     if (TF.Checkpoint && !CA.pending) TF.Checkpoint.retried = (TF.Checkpoint.retried || 0) + 1;
+    var lvl = s.level || (TF.Econ && TF.Econ.levelNo) || 1;
+    if (TF.StoryBeats && TF.StoryBeats.clearLevelDays) TF.StoryBeats.clearLevelDays(lvl);
+    if (TF.HintsUI && TF.HintsUI.clearLevelDays) TF.HintsUI.clearLevelDays(lvl);
+    if (TF.CastLines && TF.CastLines.resetLevel) TF.CastLines.resetLevel();
     return load(s);
+  };
+  // Wipe campaign save so the next load is a fresh L1. Keeps loli.v6.board (local leaderboard).
+  CA.clearForNewRun = function () {
+    if (TF.Save && TF.Save.clear) TF.Save.clear();
+    try {
+      var ls = window.localStorage;
+      if (ls) {
+        ls.removeItem('loli.v6.bad');
+        // never touch loli.v6.board
+      }
+    } catch (e) { /* storage blocked */ }
+    try { sessionStorage.removeItem('loli.v6.retry'); } catch (e2) { /* ignore */ }
+    CA.monday = null; CA.pending = null; CA.pendingDurable = false; CA.locked = false; CA._finaleBusy = false;
+    if (TF.Checkpoint) { TF.Checkpoint.monday = null; TF.Checkpoint.retried = 0; }
+  };
+  // L4 month complete: Gala first (both endings), then Results + local board, then navigate.
+  // choice: 'again' (fresh campaign from L1) | 'free' (?mode=free).
+  CA.runFinale = function (choice) {
+    if (CA._finaleBusy) return;
+    CA._finaleBusy = true;
+    var end = document.getElementById('endCard');
+    if (end) end.hidden = true;
+    var score = TF.Gala && TF.Gala.scoreFromLive ? TF.Gala.scoreFromLive(TF) : 0;
+    function goNext() {
+      CA._finaleBusy = false;
+      // Keep file:// (and http) base; bare pathname drops the scheme and can crash Chromium.
+      var base = String(location.href || '').split('#')[0].split('?')[0] || location.pathname;
+      if (choice === 'again') CA.clearForNewRun();
+      // Defer so Results teardown finishes before unload (avoids Chromium file:// crashes after L4).
+      setTimeout(function () {
+        if (choice === 'free') location.href = base + '?mode=free';
+        else location.href = base;
+      }, 0);
+    }
+    function showResults(play) {
+      if (!(TF.Results && TF.Results.buildPayload && TF.Results.mount)) { goNext(); return; }
+      var split = TF.Ledger.split();
+      var west = TF.Econ.M.getState();
+      var crewStats = {};
+      if (TF.Crew && TF.Crew.hired) {
+        TF.Crew.hired().forEach(function (id) { crewStats[id] = { fixes: 0, sales: 0, hacks: 0 }; });
+      }
+      var payload;
+      try {
+        payload = TF.Results.buildPayload({
+          name: 'PLAYER',
+          operatingProfitCents: split.operating,
+          tradingNetCents: split.trading,
+          seed: TF.Rng.seed,
+          date: (function () { var d = new Date(); return d.toISOString().slice(0, 10); })(),
+          bestStock: '',
+          crewStats: crewStats,
+          west: west
+        });
+      } catch (e) {
+        console.warn('[campaign] Results.buildPayload', e);
+        goNext();
+        return;
+      }
+      TF.Results.mount(document.body, payload, { onClose: goNext });
+    }
+    if (TF.Gala && TF.Gala.mount) {
+      TF.Gala.mount(document.body, score, { onDone: showResults });
+    } else showResults({ won: score >= 700 });
   };
   CA.resumePending = function () {
     if (!CA.pending) return;

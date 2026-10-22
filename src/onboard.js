@@ -66,7 +66,11 @@
     if (!s) return false;
     TF.Audio.unlock();
     var r = Sim.placeStand(s.sx, s.sy, s.rot, Sim.selected());
-    if (r.ok) { TF.ui.setMode('idle'); TF.ui.setHint('Jared’s set up! Tap “Use suggested line” (or Build line to draw your own).', 4); }
+    if (r.ok) {
+      TF.ui.setMode('idle');
+      var tip = TF.HintsUI && TF.HintsUI.tutorial && TF.HintsUI.tutorial('place');
+      TF.ui.setHint((tip && tip.text) || 'Jared’s set up! Tap “Use suggested line” (or Build line to draw your own).', 4);
+    }
     return r.ok;
   };
 
@@ -74,7 +78,10 @@
     var st = Sim.selected();
     if (!O.suggest || !st.placed || st.line.length) return false;
     O.suggest.forEach(function (t) { Sim.addLineTile(t.x, t.y, st); });
-    TF.ui.setHint(st.connected ? 'Line connected! Press OPEN when you’re ready.' : 'Finish the line to a footpath with Build line.', 3);
+    var priceTip = TF.HintsUI && TF.HintsUI.tutorial && TF.HintsUI.tutorial('price');
+    TF.ui.setHint(st.connected
+      ? ((priceTip && priceTip.text) || 'Line connected! Press OPEN when you’re ready.')
+      : 'Finish the line to a footpath with Build line.', 3);
     return st.connected;
   };
 

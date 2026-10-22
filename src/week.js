@@ -132,11 +132,18 @@
     W.day = 1; W.phase = 'prep'; W.t = 0; W.overtime = 0; W.majorUsed = false; W.openMinorUsed = false; W.eventsToday = 0;
     W.results = []; W.today = null; W.ended = false; W.bell = null; W.bells = []; W.necks = {};
     card.hidden = true; $('endCard').hidden = true;
+    var end = $('endCard');
+    if (end && end.dataset) { delete end.dataset.levelText; delete end.dataset.galaWired; delete end.dataset.galaShown; }
     if ($('betCard')) $('betCard').hidden = true;   // Jared's / Ali's card from the old week (6B B2)
     if ($('toast')) $('toast').hidden = true;
     Sim.closing = false; Sim.demandMul = 1;
     W.gen++;   // async work from the old level (the Friday verdict) checks this and stands down
     [TF.Hacks, TF.Story, TF.Arcs, TF.Events, TF.Ambient].forEach(function (m) { if (m && m.resetLevel) m.resetLevel(); });
+    var lvl = TF.Econ && TF.Econ.levelNo ? TF.Econ.levelNo : 1;
+    if (TF.StoryBeats && TF.StoryBeats.clearLevelDays) TF.StoryBeats.clearLevelDays(lvl);
+    if (TF.HintsUI && TF.HintsUI.clearLevelDays) TF.HintsUI.clearLevelDays(lvl);
+    if (TF.CastLines && TF.CastLines.resetLevel) TF.CastLines.resetLevel();
+    if (TF.Aaron && TF.Aaron.onLevelReset) TF.Aaron.onLevelReset();
     if (TF.ui && TF.ui.api) TF.ui.api.pause();
     W.refresh();
   };
@@ -421,10 +428,21 @@
       if (camp && TF.Campaign.monday) { end.hidden = true; TF.Campaign.retry().catch(function () { end.hidden = false; }); }
       else TF.Checkpoint.retry();
     });
-    if ($('btnPlayAgain')) $('btnPlayAgain').addEventListener('click', function () { location.href = location.pathname; });
-    if ($('btnFreePlay')) $('btnFreePlay').addEventListener('click', function () {
-      end.hidden = true; if (TF.Story && bet !== null) TF.Story.applyEnding(bet); W.mode = 'free'; Sim.closing = false; Sim.reopenStand(); TF.ui.api.play(); W.refresh(); if (TF.Crew) TF.Crew.refresh();
-    });
+    if (finale && camp && TF.Campaign.runFinale) {
+      if ($('btnPlayAgain')) $('btnPlayAgain').addEventListener('click', function () { TF.Campaign.runFinale('again'); });
+      if ($('btnFreePlay')) $('btnFreePlay').addEventListener('click', function () { TF.Campaign.runFinale('free'); });
+    } else {
+      // Start over / Play again (gameOver or rent-short): fresh L1, keep local leaderboard.
+      if ($('btnPlayAgain')) $('btnPlayAgain').addEventListener('click', function () {
+        if (TF.Campaign && TF.Campaign.clearForNewRun) TF.Campaign.clearForNewRun();
+        else if (TF.Save && TF.Save.clear) TF.Save.clear();
+        var base = String(location.href || '').split('#')[0].split('?')[0] || location.pathname;
+        location.href = base;
+      });
+      if ($('btnFreePlay')) $('btnFreePlay').addEventListener('click', function () {
+        end.hidden = true; if (TF.Story && bet !== null) TF.Story.applyEnding(bet); W.mode = 'free'; Sim.closing = false; Sim.reopenStand(); TF.ui.api.play(); W.refresh(); if (TF.Crew) TF.Crew.refresh();
+      });
+    }
     W.refresh();
   }
 
