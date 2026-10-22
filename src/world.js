@@ -55,6 +55,8 @@
   // walks cross it and run out to the edges, with planters, live oaks and lamps around it.
   World.build = function () {
     World.labels = [];   // building names belong to the map that's being built (L1's stayed on L2, 6B B2)
+    World.entries = []; World.slots = []; World.chokes = []; World.oldMainBlock = null;
+    World.standSlots = LV && LV.landmarks && LV.landmarks.quad ? (LV.landmarks.quad.slots || []).map(function (s) { return Object.assign({}, s); }) : [];
     if (!LV) return buildLegacy();
     if (LV.map) return buildFromMap();
     var r = rng(LV.trees.seed), i, x, y;
@@ -301,7 +303,8 @@
   var SB = {};
   function allocSearch() { SB = { g: new Float32Array(W * H), came: new Int32Array(W * H), closed: new Uint8Array(W * H) }; }
   allocSearch();
-  World.astar = function (sx, sy, gx, gy) {
+  World.astar = function (sx, sy, gx, gy, cost) {
+    cost = cost || World.cost;
     if (!World.inside(sx, sy) || !World.inside(gx, gy)) return null;
     var N = W * H, start = sy * W + sx, goal = gy * W + gx;
     var g = SB.g, came = SB.came, closed = SB.closed;   // reused buffers (allocated per level load)
@@ -339,7 +342,7 @@
         if (!World.inside(nx, ny)) continue;
         var ni = ny * W + nx;
         if (closed[ni]) continue;
-        var c = World.cost(nx, ny);
+        var c = cost(nx, ny);
         if (c === Infinity) continue;
         if (ni === goal) c = Math.min(c, 1);
         var ng = g[cur] + c;
@@ -357,22 +360,25 @@
   // changes (World.version). Leaving guests just walk downhill: no per-guest A* in a crowd.
   World.version = 0;
   var fields = {};
-  World.exitField = function (ex) {
-    var key = ex.x + ',' + ex.y, f = fields[key];
+  World.pavedCost = function (x, y) { return World.isWalkway(x, y) ? C.COST_PATH : Infinity; };
+  World.exitField = function (ex, paved) {
+    var cost = paved ? World.pavedCost : World.cost;
+    var key = ex.x + ',' + ex.y + (paved ? ':paved' : ''), f = fields[key];
     if (f && f.v === World.version) return f.d;
-    var N = W * H, d = new Float32Array(N).fill(Infinity), heap = [[0, ex.y * W + ex.x]];
-    d[ex.y * W + ex.x] = 0;
+    var N = W * H, d = new Float32Array(N).fill(Infinity), heap = [];
+    if (World.inside(ex.x, ex.y) && Number.isFinite(cost(ex.x, ex.y))) {
+      heap.push([0, ex.y * W + ex.x]); d[ex.y * W + ex.x] = 0;
+    }
     while (heap.length) {
       var bi = 0;
       for (var h = 1; h < heap.length; h++) if (heap[h][0] < heap[bi][0]) bi = h;
       var top = heap[bi]; heap[bi] = heap[heap.length - 1]; heap.pop();
       var u = top[1];
       if (top[0] > d[u]) continue;
-      var ux = u % W, uy = (u / W) | 0, cu = World.cost(ux, uy);
-      if (cu === Infinity) cu = 1;
+      var ux = u % W, uy = (u / W) | 0, cu = cost(ux, uy);
       for (var k = 0; k < 4; k++) {
         var nx = ux + DIRS[k][0], ny = uy + DIRS[k][1];
-        if (!World.inside(nx, ny) || World.cost(nx, ny) === Infinity) continue;
+        if (!World.inside(nx, ny) || cost(nx, ny) === Infinity) continue;
         var nd = d[u] + cu, ni = ny * W + nx;
         if (nd < d[ni]) { d[ni] = nd; heap.push([nd, ni]); }
       }
@@ -381,8 +387,8 @@
     return d;
   };
   // Tile path from (sx, sy) to the exit following the field (null if unreachable).
-  World.exitPath = function (sx, sy, ex) {
-    var d = World.exitField(ex), out = [{ x: sx, y: sy }], x = sx, y = sy, guard = 0;
+  World.exitPath = function (sx, sy, ex, paved) {
+    var d = World.exitField(ex, paved), out = [{ x: sx, y: sy }], x = sx, y = sy, guard = 0;
     if (!World.inside(sx, sy) || d[sy * W + sx] === Infinity) return null;
     while ((x !== ex.x || y !== ex.y) && guard++ < 400) {
       var best = null, bd = d[y * W + x];

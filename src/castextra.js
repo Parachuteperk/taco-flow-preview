@@ -274,7 +274,12 @@
     var look = a.looks[vy >= 0 || a.looks.length < 2 ? 0 : 1], mirror = vy >= 0 ? vx < 0 : vx > 0;
     var set = mirror ? look.mirrored : look.frames, fr = set[w.state === 'stay' ? 0 : Math.floor(performance.now() / 160) % set.length];
     ctx.drawImage(fr.sheet, fr.sx, fr.sy, fr.sw, fr.sh, p.x - fr.ax * z, p.y - fr.ay * z, fr.width * z, fr.height * z);
-    if (w.state === 'stay' && w.said) R.speech(w.said, p.x, p.y - 44 * z, 12 * z, 'rgba(60,30,20,0.95)');
+    if (w.state === 'stay' && w.said) {
+      var gate = TF.SpeechGate, st = gate ? gate.begin(w.said, { critical: true, secs: 4 }) : 'live';
+      if (st === 'live' || (gate && gate.allows(w.said))) {
+        R.speech(w.said, p.x, p.y - 44 * z, 12 * z, 'rgba(60,30,20,0.95)');
+      }
+    }
   };
   // a new level / day: nobody from yesterday is still walking
   if (World.onLoad) World.onLoad.push(function () { CX.walkers = []; CX.day = 0; CX.demandMul = 1; CX.demandT = 0; });

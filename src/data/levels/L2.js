@@ -5,6 +5,10 @@
 // Fix: walkway landing [20,17,23,17]
 // Fix: walkway landing [20,29,24,29]
 // Fix: walkway landing [20,32,24,32]
+// Fix: walkway landing [14,1,14,1]
+// Fix: walkway landing [0,22,20,22]
+// Fix: walkway landing [20,21,20,22]
+// Fix: walkway landing [31,20,39,20]
 // Fix: fountain grass tile (16,11)
 // Fix: oak grass tile (6,12)
 // Fix: oak grass tile (30,12)
@@ -52,6 +56,12 @@ window.TF.LEVELS.L2 = {
       17
     ],
     [
+      0,
+      22,
+      20,
+      22
+    ],
+    [
       20,
       26,
       23,
@@ -68,6 +78,12 @@ window.TF.LEVELS.L2 = {
       10,
       19,
       12
+    ],
+    [
+      31,
+      20,
+      39,
+      20
     ],
     [
       25,
@@ -118,6 +134,12 @@ window.TF.LEVELS.L2 = {
       32
     ],
     [
+      14,
+      1,
+      14,
+      1
+    ],
+    [
       16,
       10,
       16,
@@ -136,16 +158,10 @@ window.TF.LEVELS.L2 = {
       17
     ],
     [
-      39,
       20,
-      39,
-      20
-    ],
-    [
-      0,
-      22,
-      0,
-      22
+      21,
+      20,
+      21
     ],
     [
       24,
@@ -342,18 +358,18 @@ window.TF.LEVELS.L2 = {
       }
     },
     "van": {
-      "x0": 19.25,
-      "x1": 21.15,
-      "y0": 24.95,
-      "y1": 25.75,
+      "x0": 0.25,
+      "x1": 2.15,
+      "y0": 20.95,
+      "y1": 21.75,
       "stop": {
-        "x": 20.5,
-        "y": 26.3
+        "x": 1.5,
+        "y": 22.3
       },
       "block": {
-        "y": 25,
-        "x0": 19,
-        "x1": 21
+        "y": 21,
+        "x0": 0,
+        "x1": 2
       }
     },
     "quad": {

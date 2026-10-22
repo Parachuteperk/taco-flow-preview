@@ -85,8 +85,16 @@
         offX: 0, offY: 0, pOffX: 0, pOffY: 0,
         hx: 0, hy: 1, facing: 0, moving: true, anim: 0, speed: 1.35,
         state: 'CAST_WANDER', path: [], budget: 40 + i * 8, gone: false,
-        speech: line, speechT: 4.5, barkT: 8 + i * 3
+        speech: null, speechT: 0, barkT: 8 + i * 3, _speechCritical: true
       };
+      if (line) {
+        var st = (typeof TF !== 'undefined' && TF.SpeechGate)
+          ? TF.SpeechGate.begin(line, { critical: true, secs: 4.5 })
+          : 'live';
+        if (st === 'live' || st === 'queued') {
+          actor.speech = line; actor.speechT = 4.5; actor._speechHold = st === 'queued';
+        }
+      }
       CL.active.push(actor);
     });
     return CL.active.slice();
@@ -100,14 +108,23 @@
       if (a.gone) return;
       a.px = a.x; a.py = a.y;
       a.anim += dt;
-      if (a.speechT > 0) a.speechT -= dt;
+      if (a.speechT > 0) {
+        if (a._speechHold && TF.SpeechGate) {
+          var hold = TF.SpeechGate.begin(a.speech, { critical: !!a._speechCritical, secs: a.speechT });
+          if (hold === 'live') a._speechHold = false;
+          else if (hold === 'rejected') { a.speech = null; a.speechT = 0; a._speechHold = false; }
+        } else a.speechT -= dt;
+        if (a.speechT <= 0) { a.speech = null; a._speechHold = false; }
+      }
       a.barkT -= dt;
       if (a.barkT <= 0) {
         a.barkT = 10 + (a.castId.length % 5);
-        a.speech = CL.bark(a.castId); a.speechT = 3.2;
-        if (TF.Arcs && a.speech) {
-          /* bubbles pushed in items */
-        }
+        var bark = CL.bark(a.castId);
+        if (bark && TF.SpeechGate) {
+          if (TF.SpeechGate.begin(bark, { critical: false, secs: 3.2 }) === 'live') {
+            a.speech = bark; a.speechT = 3.2; a._speechCritical = false; a._speechHold = false;
+          }
+        } else if (bark) { a.speech = bark; a.speechT = 3.2; }
       }
       a.budget -= dt * a.speed;
       if (a.budget <= 0) { a.gone = true; return; }
@@ -144,7 +161,8 @@
       var a = CL.active[i], it = POOL[i];
       it.a = a; it.x = a.x; it.y = a.y; it.k = a.x + a.y;
       items.push(it);
-      if (a.speech && a.speechT > 0 && typeof TF !== 'undefined' && TF.Arcs && TF.Render) {
+      if (a.speech && a.speechT > 0 && !a._speechHold && typeof TF !== 'undefined' && TF.Arcs && TF.Render) {
+        if (TF.SpeechGate && !TF.SpeechGate.allows(a.speech)) continue;
         var p = TF.Render.toScreen(a.x, a.y);
         TF.Arcs.bubbles.push({ text: a.speech, x: p.x, y: p.y - 48 * TF.Render.cam.z, bg: 'rgba(80,18,20,0.92)' });
       }

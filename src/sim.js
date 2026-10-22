@@ -221,10 +221,12 @@
   function pick(a) { return a[Math.floor(Sim.rand() * a.length)]; }
 
   function spawn(exAt) {
-    var ex = exAt || World.exits[Math.floor(Sim.rand() * World.exits.length)];
+    var entries = World.exits.filter(function (e) { return World.isWalkway(e.x, e.y); });
+    var ex = exAt || entries[Math.floor(Sim.rand() * entries.length)];
+    if (!ex || !World.isWalkway(ex.x, ex.y)) return null;
     var g = {
       id: Sim.nextId++,
-      x: ex.x + 0.5 + ex.ox * 0.9, y: ex.y + 0.5 + ex.oy * 0.9,
+      x: ex.x + 0.5, y: ex.y + 0.5,
       px: 0, py: 0, offX: 0, offY: 0, pOffX: 0, pOffY: 0,
       hx: -ex.ox, hy: -ex.oy, facing: 0, moving: false, anim: Sim.rand() * 4,
       speed: rnd(C.WALK_MIN, C.WALK_MAX),
@@ -316,11 +318,11 @@
     g.facing = front ? (right ? 0 : 1) : (right ? 3 : 2);
   }
 
-  function pathTo(g, goal, extra) {
+  function pathTo(g, goal, extra, cost) {
     // Start from the next waypoint tile if mid-segment, so nobody turns back.
     var startPt = g.path.length ? g.path[0] : { x: g.x, y: g.y };
     var st = { x: Math.floor(startPt.x), y: Math.floor(startPt.y) };
-    var tiles = World.astar(st.x, st.y, goal.x, goal.y);
+    var tiles = World.astar(st.x, st.y, goal.x, goal.y, cost);
     if (!tiles) return false;
     var pts = g.path.length ? [g.path[0]] : [];
     for (var i = 1; i < tiles.length; i++) pts.push(center(tiles[i]));
@@ -338,17 +340,49 @@
     routeToExit(g, ex);
   }
 
-  // Leave along the cached exit field (falls back to a straight line if somehow cut off).
+  // Only the service approach may cross lawn: find a short access route, then stay
+  // on pavement all the way to an exit. Never bridge disconnected walks through grass.
+  function exitAccess(sx, sy, ex) {
+    if (!World.inside(sx, sy) || !World.walkable(sx, sy)) return null;
+    var field = World.exitField(ex, true), queue = [{ x: sx, y: sy, prev: -1 }], seen = {};
+    seen[sx + ',' + sy] = true;
+    for (var i = 0; i < queue.length; i++) {
+      var t = queue[i];
+      if (World.isWalkway(t.x, t.y)) {
+        if (!Number.isFinite(field[t.y * World.W + t.x])) continue;
+        var out = [], k = i;
+        while (k >= 0) { out.push({ x: queue[k].x, y: queue[k].y }); k = queue[k].prev; }
+        return out.reverse();
+      }
+      World.DIRS.forEach(function (d) {
+        var x = t.x + d[0], y = t.y + d[1], key = x + ',' + y;
+        if (!seen[key] && World.walkable(x, y)) { seen[key] = true; queue.push({ x: x, y: y, prev: i }); }
+      });
+    }
+    return null;
+  }
+
   function routeToExit(g, ex) {
     var startPt = g.path.length ? g.path[0] : { x: g.x, y: g.y };
-    var tiles = World.exitPath(Math.floor(startPt.x), Math.floor(startPt.y), ex);
-    var off = { x: ex.x + 0.5 + ex.ox, y: ex.y + 0.5 + ex.oy };
-    if (!tiles) { g.path = [off]; return; }
+    var sx = Math.floor(startPt.x), sy = Math.floor(startPt.y), access = ex && exitAccess(sx, sy, ex);
+    if (!access) {
+      for (var e = 0; e < World.exits.length; e++) {
+        access = exitAccess(sx, sy, World.exits[e]);
+        if (access) { ex = World.exits[e]; break; }
+      }
+    }
+    if (!access) { g.path = []; return false; }
+    var end = access[access.length - 1], tail = World.exitPath(end.x, end.y, ex, true);
+    if (!tail) { g.path = []; return false; }
+    var tiles = access.concat(tail.slice(1));
+    g.exit = ex;
     var pts = g.path.length ? [g.path[0]] : [];
     for (var i = 1; i < tiles.length; i++) pts.push(center(tiles[i]));
     if (tiles.length === 1 && !g.path.length) pts.push(center(tiles[0]));
-    pts.push(off);
+    // Interior door entries retire on their tile; edge exits walk out of bounds.
+    if (!World.inside(ex.x + ex.ox, ex.y + ex.oy)) pts.push({ x: ex.x + 0.5 + ex.ox, y: ex.y + 0.5 + ex.oy });
     g.path = pts;
+    return true;
   }
   Sim.routeToExit = routeToExit;
   // Kits a finished restock walk puts in the stand: Taco Week takes them from the van (TF.Econ);
@@ -453,7 +487,7 @@
     g.st = st;
     g.path = g.path.slice(0, 1);
     var entry = st.poly[st.poly.length - 1];
-    if (!pathTo(g, st.link, { x: entry.x, y: entry.y })) { g.state = 'WANDER'; g.path = []; return false; }
+    if (!pathTo(g, st.link, { x: entry.x, y: entry.y }, World.pavedCost)) { g.state = 'WANDER'; g.path = []; return false; }
     unloseSale(g);   // walked away from the other stand, but buys here after all
     return true;
   }
@@ -724,6 +758,7 @@
         if (g.eatT <= 0) { TF.Objects.freeSeat(g); startLeave(g); }
         break;
       case 'LEAVE':
+        if (!g.path.length && !routeToExit(g, g.exit)) { g.moving = false; break; }
         laneOn = g.path.length > 1;
         if (g.hasTaco && !g.thoughtTasty) { g.leaveT = (g.leaveT || 0) + dt; if (g.leaveT > 2) { g.thoughtTasty = true; think(g, 'tasty'); } }
         if (g.hasTaco && !g.littered && TF.Objects) { g.litT = (g.litT || 0) + dt; if (g.litT > 3.5) TF.Objects.maybeLitter(g); }   // done eating: wrapper

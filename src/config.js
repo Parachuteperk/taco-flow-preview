@@ -11,7 +11,8 @@ window.TF.plugins = [];   // Pass 5 systems: { step(dt), items(items, alpha, ui)
 
     SPAWN_MIN: 0.45,      // seconds between spawns (Normal crowd)
     SPAWN_MAX: 0.9,
-    CROWD: { low: { max: 50, mul: 0.6 }, normal: { max: 95, mul: 1 }, high: { max: 140, mul: 2.4 } },
+    // Paved departures retire sooner; High needs enough arrivals to keep the quad busy.
+    CROWD: { low: { max: 50, mul: 0.6 }, normal: { max: 95, mul: 1 }, high: { max: 140, mul: 2.8 } },
     RUSH_T: 30,
     RUSH_EVERY: [80, 120],
     WALK_MIN: 1.5,        // tiles / s

@@ -48,7 +48,8 @@
       }
       return true;
     });
-    if (fit === undefined) return; // An unreadable overlapping bubble waits for another frame.
+    // Offset into a free band; skip this frame when every candidate still overlaps another plate.
+    if (fit === undefined) return;
     py = fit;
     var plate = plates[count] || (plates[count] = {}); count++;
     plate.x = left; plate.y = py; plate.w = w; plate.h = h;

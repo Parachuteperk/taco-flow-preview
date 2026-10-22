@@ -203,7 +203,7 @@
 
   // ---- Litter + trash cans ----------------------------------------------------------------------
   // A few seconds after getting a taco, half the customers drop the wrapper, unless a trash can is
-  // within 4 tiles (then it goes in the can). Litter inside a stand's draw zone cuts its draw by 1%
+  // within 4 tiles (then it goes in the can). Litter around the stand or its service approach cuts draw by 1%
   // a piece, up to 10%; every piece blows away / gets picked up after 90 s, so it's never permanent.
   O.LITTER = { p: 0.5, canR: 4, life: 90, max: 40, perPiece: 0.01, cap: 0.10 };
   O.litter = [];
@@ -226,7 +226,14 @@
     Sim.stands.forEach(function (st) {
       if (!st.placed) return;
       var r = st.mods.zoneR, n = 0;
-      for (var j = 0; j < O.litter.length; j++) if (Math.hypot(O.litter[j].x - st.geom.cx, O.litter[j].y - st.geom.cy) <= r) n++;
+      // Customers see the queue entrance and pickup surroundings as well as the counter.
+      // Paved departures can leave the centre's radius before a wrapper is dropped.
+      var pts = [{ x: st.geom.cx, y: st.geom.cy }].concat(st.line.map(function (t) { return { x: t.x + 0.5, y: t.y + 0.5 }; }),
+        st.geom.pickup.map(function (p) { return { x: p[0] + 0.5, y: p[1] + 0.5 }; }));
+      for (var j = 0; j < O.litter.length; j++) {
+        var lit = O.litter[j];
+        if (pts.some(function (p) { return Math.hypot(lit.x - p.x, lit.y - p.y) <= r; })) n++;
+      }
       st.litterN = n;
       st.litterMul = 1 - Math.min(O.LITTER.cap, n * O.LITTER.perPiece);
     });

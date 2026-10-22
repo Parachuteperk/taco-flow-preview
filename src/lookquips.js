@@ -68,6 +68,13 @@
     // Cosmetic quips must NOT touch Sim.rand — per-frame rolls desync the customer stream
     // (week-run desktop then can't afford Day-4 stand 2).
     function quipRand() { return chatter(); }   // ambient stream, not the customer RNG (review M5)
+    function gate() { return TF.SpeechGate; }
+    function tryAmbient(line, secs) {
+      var G = gate();
+      if (!line) return false;
+      if (!G) return true;
+      return G.begin(line, { critical: false, secs: secs }) === 'live';
+    }
     if (typeof wrap === 'function') {
       TF.Sim.spawnGuest = function () {
         var g = wrap.apply(this, arguments);
@@ -75,8 +82,8 @@
           g._lookId = LQ.lookName(g.variant, TF.ArtPeople);
           g._quipT = 1.5 + quipRand() * 2;
           if (quipRand() < LQ.rate) {
-            g.speech = LQ.pick(g._lookId, quipRand);
-            g.speechT = 3.5;
+            var line = LQ.pick(g._lookId, quipRand);
+            if (tryAmbient(line, 3.5)) { g.speech = line; g.speechT = 3.5; }
           }
         }
         return g;
@@ -94,12 +101,14 @@
             g._quipT = 2.5 + quipRand() * 2;
             if (quipRand() < 0.12) {
               g._lookId = g._lookId || LQ.lookName(g.variant, TF.ArtPeople);
-              g.speech = LQ.pick(g._lookId, quipRand);
-              g.speechT = 3;
+              var line = LQ.pick(g._lookId, quipRand);
+              if (tryAmbient(line, 3)) { g.speech = line; g.speechT = 3; }
             }
           }
         }
         if (g.speech && g.speechT > 0 && TF.Arcs && TF.Render) {
+          var G = gate();
+          if (G && !G.allows(g.speech)) return;
           var p = TF.Render.toScreen(g.x, g.y);
           TF.Arcs.bubbles.push({ text: g.speech, x: p.x, y: p.y - 44 * TF.Render.cam.z, bg: 'rgba(40,20,15,0.9)', small: true });
         }

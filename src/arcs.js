@@ -22,7 +22,15 @@
   function hired(id) { return !!(TF.Crew && TF.Crew.hiredSet[id]); }
   function beat(who, what) { A.beats.push({ day: day(), who: who, what: what }); }
   // A short speech bubble over a crew member (drawn over everything, by render's overlay pass).
-  A.say = function (id, text, secs) { A.said[id] = { text: text, t: secs || 4 }; };
+  A.say = function (id, text, secs) {
+    secs = secs || 4;
+    A.said[id] = { text: text, t: secs, hold: false };
+    if (TF.SpeechGate && text) {
+      var st = TF.SpeechGate.begin(text, { critical: true, secs: secs });
+      A.said[id].hold = st === 'queued';
+      if (st === 'rejected') delete A.said[id];
+    }
+  };
 
   // ---- Morning banter (PREP) ------------------------------------------------------------------------
   function banter() {
@@ -162,7 +170,17 @@
   A.handMul = function () { return A.prototype && week() && day() === 5 ? 0.8 : 1; };
 
   A.step = function (dt) {
-    Object.keys(A.said).forEach(function (k) { A.said[k].t -= dt; if (A.said[k].t <= 0) delete A.said[k]; });
+    Object.keys(A.said).forEach(function (k) {
+      var s = A.said[k];
+      if (s.hold && TF.SpeechGate) {
+        var st = TF.SpeechGate.begin(s.text, { critical: true, secs: s.t });
+        if (st === 'live') s.hold = false;
+        else if (st === 'rejected') { delete A.said[k]; return; }
+      } else {
+        s.t -= dt;
+        if (s.t <= 0) delete A.said[k];
+      }
+    });
     stepRant(dt);
     phillip();
     aliFriday();
@@ -177,8 +195,12 @@
       ctx.fillStyle = '#7a5230'; ctx.fillRect(0, -1 * z, 9 * z, 2 * z);
       ctx.fillStyle = '#c0c4c8'; ctx.fillRect(8 * z, -3 * z, 6 * z, 6 * z);
       ctx.restore();
-      A.bubbles.push({ text: '🏀🏈 ' + A.rant.line, x: p.x, y: p.y - 66 * z, bg: 'rgba(0,40,110,0.95)' });
-      A.bubbles.push({ text: '😤 DISTRACTED', x: p.x, y: p.y - 48 * z, bg: 'rgba(200,90,20,0.95)', small: true });
+      var rantLine = '🏀🏈 ' + A.rant.line;
+      if (!TF.SpeechGate || TF.SpeechGate.begin(rantLine, { critical: true, secs: 2 }) === 'live' || TF.SpeechGate.allows(rantLine)) {
+        A.bubbles.push({ text: rantLine, x: p.x, y: p.y - 66 * z, bg: 'rgba(0,40,110,0.95)' });
+      }
+      // Paired status chip (emoji cue): not a customer text comment — skip the gate.
+      A.bubbles.push({ text: '😤 DISTRACTED', x: p.x, y: p.y - 48 * z, bg: 'rgba(200,90,20,0.95)', small: true, free: true });
     }
     if (id === 'ali' && A.aliHiding()) R.text('😰 (hiding)', p.x, p.y - 40 * z, 8 * z, '#fff', 'rgba(60,30,90,0.9)');
     if (id === 'jared' && week()) {   // the gold jar fills day by day; on Friday it's a gold chain
@@ -194,11 +216,17 @@
       }
     }
     var s2 = A.said[id];
-    if (s2) A.bubbles.push({ text: s2.text, x: p.x, y: p.y - 56 * z, bg: 'rgba(60,30,20,0.92)' });
+    if (s2 && !s2.hold) A.bubbles.push({ text: s2.text, x: p.x, y: p.y - 56 * z, bg: 'rgba(60,30,20,0.92)' });
   };
   A.bubbles = [];
   A.drawOverlay = function (ctx, z) {
-    A.bubbles.forEach(function (b) { R.speech(b.text, b.x, b.y, (b.small ? 7 : 8.5) * z, b.bg); });
+    var seen = {};
+    A.bubbles.forEach(function (b) {
+      if (!b || !b.text || seen[b.text]) return;
+      if (!b.free && TF.SpeechGate && !TF.SpeechGate.allows(b.text)) return;
+      seen[b.text] = true;
+      R.speech(b.text, b.x, b.y, (b.small ? 7 : 8.5) * z, b.bg);
+    });
     A.bubbles = [];
   };
   A.crowned = function () { return A.kingOn && !A.kingDown; };

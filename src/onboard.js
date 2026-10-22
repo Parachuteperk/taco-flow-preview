@@ -25,7 +25,7 @@
     }
     cands.sort(function (a, b) { return a.score - b.score; });
     // the level's stand slots come first (when they pass the validator and get a line)
-    var slots = World.standSlots && World.standSlots.length ? World.standSlots.map(function (s) { return { id: s.id, x: s.x, y: s.y, rot: 0 }; }) : ((World.level && World.level.landmarks.quad && World.level.landmarks.quad.slots) || []);
+    var slots = World.standSlots && World.standSlots.length ? World.standSlots.map(function (s) { return { id: s.id, x: s.x, y: s.y, rot: s.rot || 0 }; }) : ((World.level && World.level.landmarks.quad && World.level.landmarks.quad.slots) || []);
     slots.slice().reverse().forEach(function (sl) {
       var rot = World.validateStand(sl.x, sl.y, sl.rot).ok ? sl.rot : World.bestRotation(sl.x, sl.y, sl.rot);
       var line = rot === null ? null : TF.planLine(sl.x, sl.y, rot, 4);

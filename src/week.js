@@ -138,7 +138,7 @@
     if ($('toast')) $('toast').hidden = true;
     Sim.closing = false; Sim.demandMul = 1;
     W.gen++;   // async work from the old level (the Friday verdict) checks this and stands down
-    [TF.Hacks, TF.Story, TF.Arcs, TF.Events, TF.Ambient].forEach(function (m) { if (m && m.resetLevel) m.resetLevel(); });
+    [TF.Hacks, TF.Story, TF.Arcs, TF.Events, TF.Ambient, TF.SpeechGate].forEach(function (m) { if (m && m.resetLevel) m.resetLevel(); });
     var lvl = TF.Econ && TF.Econ.levelNo ? TF.Econ.levelNo : 1;
     if (TF.StoryBeats && TF.StoryBeats.clearLevelDays) TF.StoryBeats.clearLevelDays(lvl);
     if (TF.HintsUI && TF.HintsUI.clearLevelDays) TF.HintsUI.clearLevelDays(lvl);

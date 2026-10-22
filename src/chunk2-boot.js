@@ -12,6 +12,7 @@
     }
   }
   function go() {
+    boot('speechgate', function () { if (TF.SpeechGate && TF.SpeechGate.install) TF.SpeechGate.install(TF); });
     boot('gala', function () { if (TF.Gala && TF.Gala.install) TF.Gala.install(TF); });
     boot('cast', function () { if (TF.CastLines && TF.CastLines.install) TF.CastLines.install(TF); });
     boot('looks', function () { if (TF.LookQuips && TF.LookQuips.install) TF.LookQuips.install(TF); });
@@ -229,8 +230,10 @@
         a._idleT = (a._idleT || 12) - dt;
         if (a._idleT > 0) return;
         a._idleT = 14;
-        var line = TF.Aaron.idleLine({ next: function () { return Math.random(); } });
+        var line = TF.Aaron.idleLine({ next: function () { return TF.Rng && TF.Rng.ambient ? TF.Rng.ambient() : 0; } });
         if (line && TF.Arcs && TF.Render && TF.Crew && TF.Crew.spotOf) {
+          var gate = TF.SpeechGate;
+          if (gate && gate.begin(line, { critical: false, secs: 3.5 }) !== 'live') return;
           var spot = TF.Crew.spotOf('aaron') || TF.Crew.spotOf('jared');
           if (spot) {
             var p = TF.Render.toScreen(spot.x, spot.y);
