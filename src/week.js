@@ -6,11 +6,11 @@
   var $ = function (id) { return document.getElementById(id); };
 
   var DAYS = [
-    { name: 'First Day on the Quad', goal: 20 },
-    { name: 'Lunch Rush', goal: 24 },
-    { name: 'Old Main Goes Viral', goal: 33 },   // ~85% of a decent scripted run once the grill can be bought on Day 1 (Pass 5)
-    { name: 'Double Trouble', goal: 45 },
-    { name: 'Bobcat Taco Fest', goal: 45 }
+    { name: 'First Day on the Quad', goal: 16 },
+    { name: 'Lunch Rush', goal: 22 },
+    { name: 'Old Main Goes Viral', goal: 26 },   // ~80% of decent scripted runs (desktop + phone) once the grill can be bought on Day 1 (Pass 5)
+    { name: 'Double Trouble', goal: 40 },
+    { name: 'Bobcat Taco Fest', goal: 34 }
   ];
   var OPEN_T = 180, OVERTIME = 20;
   // What unlocks on which day (PLAN section C). Anything not listed is available from Day 1.

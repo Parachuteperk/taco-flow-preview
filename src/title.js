@@ -1,7 +1,7 @@
 // Intro screen: TXST maroon, the name in cream, one big START button, and a loading bar for the art.
 (function (TF) {
   var boot = document.getElementById('bootLoading'); if (boot) boot.remove();   // the plain-HTML boot message
-  var skip = navigator.webdriver || new URLSearchParams(location.search).has('autotest');
+  var skip = navigator.webdriver || window.__autotest || new URLSearchParams(location.search).has('autotest');
   var T = TF.Title = { active: !skip };
   if (skip) return;
   var style = document.createElement('style');
