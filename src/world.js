@@ -1,8 +1,22 @@
 // Tile map, stand / queue-line rules and A* pathfinding.
 (function (TF) {
   var C = TF.C;
-  var W = C.MAP_W, H = C.MAP_H;
-  var T = { GRASS: 0, PATH: 1, TREE: 2, BENCH: 3, LAMP: 4, PLAZA: 5, PLANTER: 6, BUILDING: 7 };
+  // The map comes from the level file (src/data/levels/L1.js); C.MAP_W/H is only a fallback.
+  var LV = (TF.LEVELS || {})[TF.LEVEL_ID || 'L1'] || null;
+  var W = LV ? LV.w : C.MAP_W, H = LV ? LV.h : C.MAP_H;
+  // Per-level tuning: peak walkers and demand. Reapplied on every loadLevel (L2 = 250, not L1's 150).
+  var BASE = { crowdMax: C.CROWD.normal.max, demand: C.WEEK_DEMAND };
+  function applyTuning(lv) {
+    C.CROWD.normal.max = lv && lv.spawn && lv.spawn.crowdMax ? lv.spawn.crowdMax : BASE.crowdMax;
+    C.WEEK_DEMAND = lv && lv.demand ? lv.demand : BASE.demand;
+  }
+  applyTuning(LV);
+  // Tile kinds. STAIRS and RAMP are walkable like PATH (RAMP = the step-free route, for wheelchair
+  // walkers later). Props: each placed prop type maps to a blocking kind; unknown types are T.PROP
+  // and render looks up their sprite by type name, so new painted props drop in with no code.
+  var T = { GRASS: 0, PATH: 1, TREE: 2, BENCH: 3, LAMP: 4, PLAZA: 5, PLANTER: 6, BUILDING: 7, STAIRS: 8, RAMP: 9, PROP: 10, HILL: 11 };
+  var PROP_TILE = { oak: T.TREE, bench: T.BENCH, lamp: T.LAMP, planter: T.PLANTER };
+  var WALK = {}; WALK[T.PATH] = 1; WALK[T.STAIRS] = 1; WALK[T.RAMP] = 1;
 
   function rng(seed) {
     return function () {
@@ -17,62 +31,153 @@
     T: T, W: W, H: H,
     tiles: new Uint8Array(W * H),
     shade: new Float32Array(W * H),
+    propType: [],         // tile index -> prop type ('oak', 'bench', ...) for every prop tile
+    props: [],            // [{type, x, y, rot}] as placed (from the level file + generated oaks)
     exits: [],
     stand: null,          // {sx, sy, rot} when placed (set by Sim)
     lineSet: {},          // "x,y" -> chain index (set by Sim)
     lineOwner: {},        // "x,y" -> index of the stand whose line it is
     stands: [],           // placed stands {sx, sy, rot, idx} (set by Sim)
     validating: null,
-    rng: rng
+    rng: rng,
+    level: LV,
+    onLoad: []          // other modules re-size their per-tile buffers here (objects mask, ...)
   };
 
   World.inside = function (x, y) { return x >= 0 && y >= 0 && x < W && y < H; };
   World.get = function (x, y) { return World.inside(x, y) ? World.tiles[y * W + x] : -1; };
   World.set = function (x, y, t) { if (World.inside(x, y)) World.tiles[y * W + x] = t; };
-  World.isPath = function (x, y) { return World.get(x, y) === T.PATH; };
+  World.isPath = function (x, y) { return WALK[World.get(x, y)] === 1; };   // walks, stairs, ramps
+  World.isProp = function (t) { return t === T.TREE || t === T.BENCH || t === T.LAMP || t === T.PLANTER || t === T.PROP; };
 
   // ---- The TXST Quad ------------------------------------------------------
   // Old Main sits on its hill past the top edge; a red-brick plaza fills the middle, limestone
   // walks cross it and run out to the edges, with planters, live oaks and lamps around it.
   World.build = function () {
+    if (!LV) return buildLegacy();
+    if (LV.map) return buildFromMap();
+    var r = rng(LV.trees.seed), i, x, y;
+    World.tiles.fill(T.GRASS);
+    for (i = 0; i < W * H; i++) World.shade[i] = r();
+    LV.walks.forEach(function (s) {
+      for (y = Math.min(s[1], s[3]); y <= Math.max(s[1], s[3]); y++) for (x = Math.min(s[0], s[2]); x <= Math.max(s[0], s[2]); x++) World.set(x, y, T.PATH);
+    });
+    (LV.surfaces || []).forEach(function (sf) {   // stairs / ramps: walkable, drawn as limestone
+      var k = sf.kind === 'ramp' ? T.RAMP : T.STAIRS, q = sf.rect;
+      for (y = q[1]; y <= q[3]; y++) for (x = q[0]; x <= q[2]; x++) World.set(x, y, k);
+    });
+    LV.plazas.forEach(function (p) {
+      for (y = p[1]; y <= p[3]; y++) for (x = p[0]; x <= p[2]; x++) if (World.get(x, y) !== T.PATH) World.set(x, y, T.PLAZA);
+    });
+    World.props = []; World.propType = [];
+    function place(pr, ok) {
+      if (ok && !ok(World.get(pr.x, pr.y))) return;
+      World.set(pr.x, pr.y, PROP_TILE[pr.type] !== undefined ? PROP_TILE[pr.type] : T.PROP);
+      World.propType[pr.y * W + pr.x] = pr.type;
+      World.props.push({ type: pr.type, x: pr.x, y: pr.y, rot: pr.rot || 0 });
+    }
+    var props = LV.props || [];
+    // ground-level props first (planters), then the generated oaks, then everything else
+    props.filter(function (p) { return p.type === 'planter'; }).forEach(function (p) { place(p); });
+    for (i = 0; i < LV.trees.tries; i++) {   // live oaks in the lawns, never touching a walk
+      x = Math.floor(r() * W); y = Math.floor(r() * H);
+      if (World.get(x, y) !== T.GRASS || World.nearWalk(x, y, 1)) continue;
+      if (r() < LV.trees.p) place({ type: 'oak', x: x, y: y });
+    }
+    props.filter(function (p) { return p.type !== 'planter'; }).forEach(function (p) {
+      place(p, p.type === 'lamp' ? function (t) { return t === T.GRASS || t === T.PLAZA; } : function (t) { return t === T.GRASS; });
+    });
+    findExits();
+  };
+  // ---- ASCII tile maps (LEVELS_TXST) --------------------------------------------------------------
+  // Each map row is a string; LV.legend maps chars to {tile, prop, role}. A run of letters between
+  // '#'/'^' cells is a building's name (label only). Fills: tiles, props, stand slots, entries,
+  // chokes, building labels and Old Main's block.
+  var KIND = { grass: T.GRASS, path: T.PATH, building: T.BUILDING, hill: T.HILL, stairs: T.STAIRS, ramp: T.RAMP, plaza: T.PLAZA };
+  function buildFromMap() {
+    var r = rng((LV.trees && LV.trees.seed) || 20261021), x, y, i;
+    World.tiles.fill(T.GRASS);
+    for (i = 0; i < W * H; i++) World.shade[i] = r();
+    World.props = []; World.propType = []; World.slots = []; World.entries = []; World.chokes = []; World.labels = [];
+    var om = null, nameCell = {};
+    LV.map.forEach(function (row, y) {   // building names: letters (and '-') flanked by '#'/'^'
+      var re = /[#^]([A-Z][A-Z\-]+)(?=[#^])/g, m;
+      while ((m = re.exec(row))) {
+        for (var k = 0; k < m[1].length; k++) nameCell[(m.index + 1 + k) + ',' + y] = 1;
+        World.labels.push({ name: m[1], x: m.index + 1 + m[1].length / 2, y: y + 0.5 });
+      }
+    });
+    var propAt = [];
+    for (y = 0; y < H; y++) for (x = 0; x < W; x++) {
+      var ch = (LV.map[y] || '')[x] || '.', lg = nameCell[x + ',' + y] ? { tile: 'building' } : (LV.legend[ch] || { tile: 'grass' });
+      World.set(x, y, KIND[lg.tile] !== undefined ? KIND[lg.tile] : T.GRASS);
+      if (lg.prop) propAt.push({ type: lg.prop, x: x, y: y });
+      if (lg.role === 'slot' || lg.role === 'slot2') World.slots.push({ x: x, y: y, main: lg.role === 'slot' });
+      if (lg.role === 'entry') World.entries.push({ x: x, y: y });
+      if (lg.role === 'choke') World.chokes.push({ x: x, y: y });
+      if (lg.role === 'oldmain') om = om ? { x0: Math.min(om.x0, x), y0: Math.min(om.y0, y), x1: Math.max(om.x1, x), y1: Math.max(om.y1, y) } : { x0: x, y0: y, x1: x, y1: y };
+    }
+    World.oldMainBlock = om;
+    function put(pr) {
+      World.set(pr.x, pr.y, PROP_TILE[pr.type] !== undefined ? PROP_TILE[pr.type] : T.PROP);
+      World.propType[pr.y * W + pr.x] = pr.type;
+      World.props.push({ type: pr.type, x: pr.x, y: pr.y, rot: pr.rot || 0 });
+    }
+    propAt.forEach(put);
+    (LV.props || []).forEach(function (pr) { var t = World.get(pr.x, pr.y); if (t === T.GRASS || (pr.type === 'lamp' && t === T.PLAZA)) put(pr); });
+    // Stand slots: each run of S / s marks a slot's anchor (its first cell).
+    var seen = {};
+    World.standSlots = World.slots.filter(function (s) { var k = (s.x - 1) + ',' + s.y; seen[s.x + ',' + s.y] = 1; return !seen[k]; })
+      .map(function (s, i) { return { id: (s.main ? 'main-' : 'stand2-') + i, x: s.x, y: s.y - (s.main ? 1 : 0), main: s.main }; })
+      .sort(function (a, b) { return (b.main ? 1 : 0) - (a.main ? 1 : 0); });   // the main slot first
+    findExits();
+  }
+
+  // Entrances/exits: every walk tile on the map edge, plus the map's 'E' cells (gaps between
+  // buildings, the top of the Old Main stairs): walkers appear / vanish there, facing away from the walk.
+  function findExits() {
+    World.exits = []; World.droppedEntries = [];
+    var isEntry = {};
+    (World.entries || []).forEach(function (e) { isEntry[e.x + ',' + e.y] = 1; });
+    for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) {
+      if (!World.isPath(x, y)) continue;
+      if (World.entries && World.entries.length) {   // a map with 'E' cells: only those are entries
+        if (!isEntry[x + ',' + y]) continue;
+        // face away from the walk: the neighbour that isn't walkable (or the map edge)
+        var out = DIRS.filter(function (d) { var nx = x + d[0], ny = y + d[1]; return !World.inside(nx, ny) || !(World.isPath(nx, ny) || World.get(nx, ny) === T.PLAZA); });
+        var hasWalk = DIRS.some(function (d) { return World.isPath(x + d[0], y + d[1]); });
+        if (!out.length || !hasWalk) { World.droppedEntries.push({ x: x, y: y }); continue; }   // an isolated 'E' (no walk leads to it): rejected, listed
+        // walk out through a door: prefer a building / hill / the map edge over a lawn
+        var gap = out.filter(function (d) { var k = World.get(x + d[0], y + d[1]); return k === T.BUILDING || k === T.HILL || k === -1; })[0] || out[0];
+        World.exits.push({ x: x, y: y, ox: gap[0], oy: gap[1] });
+      } else if (x === 0 || y === 0 || x === W - 1 || y === H - 1) {
+        World.exits.push({ x: x, y: y, ox: x === 0 ? -1 : x === W - 1 ? 1 : 0, oy: y === 0 ? -1 : y === H - 1 ? 1 : 0 });
+      }
+    }
+  }
+  // Load a level: size, tiles and every per-tile buffer (occupancy, distance fields, A*) rebuilt from
+  // scratch, so nothing is resized mid-level (PLAN §1a tech note).
+  World.loadLevel = function (lv) {
+    LV = World.level = lv; W = World.W = lv.w; H = World.H = lv.h;
+    applyTuning(lv);
+    World.tiles = new Uint8Array(W * H); World.shade = new Float32Array(W * H);
+    allocSearch();
+    fields = {}; World.version++;
+    World.build();
+    World.onLoad.forEach(function (fn) { fn(); });
+  };
+
+  function buildLegacy() {
     var r = rng(20261021), i, x, y;
     World.tiles.fill(T.GRASS);
     for (i = 0; i < W * H; i++) World.shade[i] = r();
-    // Limestone walks: the main north-south axis toward Old Main, an east-west cross walk,
-    // a loop around the plaza and two diagonal-ish spurs out to the edges.
     for (i = 0; i < H; i++) World.set(13, i, T.PATH);
     for (i = 0; i < W; i++) World.set(i, 14, T.PATH);
     for (i = 4; i <= 22; i++) { World.set(i, 6, T.PATH); World.set(i, 22, T.PATH); }
     for (i = 6; i <= 22; i++) { World.set(4, i, T.PATH); World.set(22, i, T.PATH); }
-    for (i = 22; i < W; i++) World.set(i, 9, T.PATH);
-    for (i = 22; i < H; i++) World.set(7, i, T.PATH);
-    // Red-brick plaza around the crossing.
     for (y = 11; y <= 17; y++) for (x = 10; x <= 16; x++) if (World.get(x, y) !== T.PATH) World.set(x, y, T.PLAZA);
-    // Planters at the plaza corners (blocked, flowers).
-    [[10, 11], [16, 11], [10, 17], [16, 17]].forEach(function (p) { World.set(p[0], p[1], T.PLANTER); });
-    // Old Main's front steps area: a little plaza at the top of the axis.
-    for (x = 11; x <= 15; x++) for (y = 0; y <= 1; y++) if (World.get(x, y) !== T.PATH) World.set(x, y, T.PLAZA);
-    // Live oaks in the lawns, never touching a walk.
-    for (i = 0; i < 500; i++) {
-      x = Math.floor(r() * W); y = Math.floor(r() * H);
-      if (World.get(x, y) !== T.GRASS || World.nearWalk(x, y, 1)) continue;
-      if (r() < 0.4) World.set(x, y, T.TREE);
-    }
-    [[12, 8], [14, 20], [5, 13], [21, 15], [9, 5], [17, 23], [3, 9]].forEach(function (b) {
-      if (World.get(b[0], b[1]) === T.GRASS) World.set(b[0], b[1], T.BENCH);
-    });
-    [[12, 5], [14, 23], [3, 15], [23, 13], [9, 13], [17, 15]].forEach(function (b) {
-      if (World.get(b[0], b[1]) === T.GRASS || World.get(b[0], b[1]) === T.PLAZA) World.set(b[0], b[1], T.LAMP);
-    });
-
-    World.exits = [];
-    for (y = 0; y < H; y++) for (x = 0; x < W; x++) {
-      if (!World.isPath(x, y)) continue;
-      if (x === 0 || y === 0 || x === W - 1 || y === H - 1) {
-        World.exits.push({ x: x, y: y, ox: x === 0 ? -1 : x === W - 1 ? 1 : 0, oy: y === 0 ? -1 : y === H - 1 ? 1 : 0 });
-      }
-    }
-  };
+    findExits();
+  }
 
   World.nearWalk = function (x, y, d) {
     for (var dy = -d; dy <= d; dy++) for (var dx = -d; dx <= d; dx++) {
@@ -173,12 +278,12 @@
   // Footpaths and plaza that everyone may walk (line tiles and the stand are excluded).
   World.isWalkway = function (x, y) {
     var t = World.get(x, y);
-    return (t === T.PATH || t === T.PLAZA) && !World.isStand(x, y) && !World.isLine(x, y) && !(World.isObject && World.isObject(x, y));
+    return (WALK[t] === 1 || t === T.PLAZA) && !World.isStand(x, y) && !World.isLine(x, y) && !(World.isObject && World.isObject(x, y));
   };
 
   World.walkable = function (x, y) {
     var t = World.get(x, y);
-    return (t === T.GRASS || t === T.PATH || t === T.PLAZA) && !World.isStand(x, y) && !(World.isObject && World.isObject(x, y));
+    return (t === T.GRASS || WALK[t] === 1 || t === T.PLAZA) && !World.isStand(x, y) && !(World.isObject && World.isObject(x, y));
   };
 
   // Guests keep to walks: grass is a last resort, line tiles are for queuers only.
@@ -192,10 +297,14 @@
   // ---- A* on a 4-connected grid -----------------------------------------
   var DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
   World.DIRS = DIRS;
+  var SB = {};
+  function allocSearch() { SB = { g: new Float32Array(W * H), came: new Int32Array(W * H), closed: new Uint8Array(W * H) }; }
+  allocSearch();
   World.astar = function (sx, sy, gx, gy) {
     if (!World.inside(sx, sy) || !World.inside(gx, gy)) return null;
     var N = W * H, start = sy * W + sx, goal = gy * W + gx;
-    var g = new Float32Array(N).fill(Infinity), came = new Int32Array(N).fill(-1), closed = new Uint8Array(N);
+    var g = SB.g, came = SB.came, closed = SB.closed;   // reused buffers (allocated per level load)
+    g.fill(Infinity); came.fill(-1); closed.fill(0);
     var heap = [];
     function push(i, f) {
       heap.push([f, i]);

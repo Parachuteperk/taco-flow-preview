@@ -32,6 +32,7 @@
     return best && best.st;
   }
   O.mask = new Uint8Array(World.W * World.H);
+  World.onLoad.push(function () { O.mask = new Uint8Array(World.W * World.H); O.list = []; });   // a new level: new ground
   World.isObject = function (x, y) { return x >= 0 && y >= 0 && x < World.W && y < World.H && O.mask[y * World.W + x] === 1; };
   var prevBlocked = World.blockedForStand;
   World.blockedForStand = function (x, y) { return (prevBlocked && prevBlocked(x, y)) || World.isObject(x, y); };
@@ -92,6 +93,17 @@
     return true;
   };
   O.cancel = function () { O.placing = null; };
+  // C6 resume: put saved objects back (their tiles block walkers again); seats start empty.
+  O.restore = function (recs) {
+    O.list = []; O.mask = new Uint8Array(World.W * World.H);
+    (recs || []).forEach(function (r) {
+      var o = { kind: r.kind, x: r.x, y: r.y, st: Sim.stands[r.st] || Sim.stand, ready: r.ready, day: r.day, binned: r.binned || 0 };
+      if (r.kind === 'picnic') o.seats = [null, null, null, null];
+      O.list.push(o);
+      tiles(r.kind, r.x, r.y).forEach(function (t) { O.mask[t[1] * World.W + t[0]] = 1; });
+    });
+    World.version++;
+  };
   O.tap = function (x, y) {
     var p = O.placing;
     if (!p) return false;
@@ -123,10 +135,10 @@
   // Called when a student pays: 35% add a $2 drink while today's 25 last. A drink adds ~2 s to the
   // hand-off unless someone mans the pickup (Matt).
   O.DRINK = { p: 0.35, price: 2, cost: 0.5, perDay: 25, slow: 2 };
-  O.rng = World.rng(31);   // its own stream: buying a cooler doesn't reshuffle the crowd
+  O.rng = TF.Rng.objects;   // its own stream: buying a cooler doesn't reshuffle the crowd
   O.onPay = function (g, st) {
     var c = O.of('drinks', st);
-    if (!c || O.day.drinks >= O.DRINK.perDay || O.rng() >= O.DRINK.p) return 0;
+    if (!c || O.day.drinks >= O.DRINK.perDay || (TF.Handyman && TF.Handyman.fault('cooler')) || O.rng() >= O.DRINK.p) return 0;   // a jammed cooler sells nothing (C4)
     g.drink = true;
     O.day.drinks++; O.day.drinkRev += O.DRINK.price; O.totals.drinks++; O.totals.drinkRev += O.DRINK.price;
     return O.DRINK.price;
@@ -137,8 +149,8 @@
   O.endDay = function () {
     var up = 0;
     O.list.forEach(function (o) { up += O.KINDS[o.kind].upkeep; });
-    var cost = Math.round(O.day.drinks * O.DRINK.cost);
-    Sim.stats.money -= up + cost;
+    var costCents = Math.round(O.day.drinks * O.DRINK.cost * 100), cost = costCents / 100;   // exact cents ($0.50 a drink)
+    if (up) TF.Ledger.add('upkeep', -up, 'buildings'); if (costCents) TF.Ledger.post({ cat: 'supplies', cents: -costCents, ref: 'drinks x' + O.day.drinks });
     O.totals.upkeep += up; O.totals.drinkCost += cost;
     var r = { drinks: O.day.drinks, drinkRev: O.day.drinkRev, upkeep: up, drinkCost: cost, litter: O.litter.length, litterPct: Math.round((1 - Math.min.apply(null, Sim.stands.map(function (st) { return st.litterMul || 1; }))) * 100) };
     O.day = { drinks: 0, drinkRev: 0 };
@@ -192,7 +204,7 @@
   O.maybeLitter = function (g) {
     if (g.littered) return;
     g.littered = true;
-    var can = O.list.filter(function (o) { return o.kind === 'trash' && o.ready && Math.hypot(o.x + 0.5 - g.x, o.y + 0.5 - g.y) <= O.LITTER.canR; })[0];
+    var can = O.list.filter(function (o) { return o.kind === 'trash' && o.ready && !(TF.Handyman && TF.Handyman.faultedObj(o)) && Math.hypot(o.x + 0.5 - g.x, o.y + 0.5 - g.y) <= O.LITTER.canR; })[0];   // a tipped can takes nothing (C4)
     if (can) { O.litterStats.binned++; can.binned = (can.binned || 0) + 1; can.flash = 0.6; return; }
     if (O.rng() >= O.LITTER.p) return;
     if (O.litter.length >= O.LITTER.max) O.litter.shift();   // capped for phones: the oldest goes

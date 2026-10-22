@@ -5,18 +5,18 @@
 
   var A = { bikers: [], sitters: [], nextBike: 3, nextSwap: 30, bikesPassed: 0 };
   var VARIANTS = 4;
-  function rnd(a, b) { return a + (b - a) * Sim.rand(); }
+  function rnd(a, b) { return a + (b - a) * TF.Rng.ambient(); }
   function pathExits() { return World.exits; }
 
   function spawnBiker() {
-    var ex = pathExits(), a = ex[Math.floor(Sim.rand() * ex.length)], b = a;
-    for (var i = 0; i < 6 && b === a; i++) b = ex[Math.floor(Sim.rand() * ex.length)];
+    var ex = pathExits(), a = ex[Math.floor(TF.Rng.ambient() * ex.length)], b = a;
+    for (var i = 0; i < 6 && b === a; i++) b = ex[Math.floor(TF.Rng.ambient() * ex.length)];
     if (a === b) return;
     var tiles = World.exitPath(a.x, a.y, b);
     if (!tiles) return;
     var bk = {
       x: a.x + 0.5 + a.ox, y: a.y + 0.5 + a.oy, px: 0, py: 0, path: tiles.map(function (t) { return { x: t.x + 0.5, y: t.y + 0.5 }; }),
-      speed: rnd(2.8, 3.6), hx: 0, hy: 1, facing: 0, moving: true, anim: 0, variant: Math.floor(Sim.rand() * 1000), offX: 0, offY: 0
+      speed: rnd(2.8, 3.6), hx: 0, hy: 1, facing: 0, moving: true, anim: 0, variant: Math.floor(TF.Rng.ambient() * 1000), offX: 0, offY: 0
     };
     bk.path.push({ x: b.x + 0.5 + b.ox, y: b.y + 0.5 + b.oy });
     bk.px = bk.x; bk.py = bk.y;
@@ -40,9 +40,11 @@
       if (st.placed && Math.hypot(s.x - st.geom.cx, s.y - st.geom.cy) < 3.5) return false;
       return A.sitters.every(function (o) { return Math.hypot(o.x - s.x, o.y - s.y) > 0.8; });
     });
-    return spots.length ? spots[Math.floor(Sim.rand() * spots.length)] : null;
+    return spots.length ? spots[Math.floor(TF.Rng.ambient() * spots.length)] : null;
   }
 
+  // new map: bikers and bench sitters belong to the old one (C3c)
+  A.resetLevel = function () { A.bikers = []; A.sitters = []; A.nextBike = 3; A.nextSwap = 30; };
   A.step = function (dt) {
     // bikers
     A.nextBike -= dt;
@@ -56,11 +58,11 @@
     }
     // sitters: keep ~5, swap one now and then
     A.nextSwap -= dt;
-    if (A.nextSwap <= 0 && A.sitters.length) { A.sitters.splice(Math.floor(Sim.rand() * A.sitters.length), 1); A.nextSwap = rnd(30, 60); }
+    if (A.nextSwap <= 0 && A.sitters.length) { A.sitters.splice(Math.floor(TF.Rng.ambient() * A.sitters.length), 1); A.nextSwap = rnd(30, 60); }
     while (A.sitters.length < 5) {
       var s = freeHangout();
       if (!s) break;
-      A.sitters.push({ x: s.x, y: s.y, bench: s.bench, variant: Math.floor(Sim.rand() * 1000), phase: Sim.rand() * 6, mirror: Sim.rand() < 0.5 });
+      A.sitters.push({ x: s.x, y: s.y, bench: s.bench, variant: Math.floor(TF.Rng.ambient() * 1000), phase: TF.Rng.ambient() * 6, mirror: TF.Rng.ambient() < 0.5 });
     }
     // Moving the stand or building a line onto a hangout spot sends that sitter away.
     for (var j = A.sitters.length - 1; j >= 0; j--) {

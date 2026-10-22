@@ -51,8 +51,9 @@
     if (w.kind === 'envelope') {
       S.started = true; S.envelope = true;
       w.snap = 0.6; Sim.events.push({ type: 'handoff' });   // the purse snap
-      Sim.events.push({ type: 'toast', text: '\uD83D\uDCDC Term sheet: $' + S.target + ' profit by Friday \u2192 Mrs. West invests (the Angel Round).' });
-      Sim.events.push({ type: 'toast', text: '\uD83D\uDCDC Term sheet: $' + S.target + ' profit by Friday \u2192 Mrs. West invests (the Angel Round).' });
+      // Pass 6 (C3b): with the economy on, her envelope is the rent notice; the week is decided by rent, not profit
+      Sim.events.push({ type: 'toast', text: S.econ() ? '\uD83D\uDCDC Rent notice: $' + rentDollars() + ' due Friday. Short = retry the week from Monday.'
+        : '\uD83D\uDCDC Term sheet: $' + S.target + ' profit by Friday \u2192 Mrs. West invests (the Angel Round).' });
     } else if (w.kind === 'clipboard') {
       S.challenge = { t: 40, base: Sim.stats.served, need: 10, done: false };
       Sim.events.push({ type: 'toast', text: '\uD83D\uDCCB Inspection! Serve 10 in 40 s for a $15 tip.' });
@@ -97,26 +98,36 @@
       var got = Sim.stats.served - c.base;
       if (got >= c.need || c.t <= 0) {
         c.done = true; c.won = got >= c.need;
-        if (c.won) { Sim.stats.money += 15; if (wk.earn) wk.earn(15); Sim.floaters.push({ x: Sim.stand.geom.cx, y: Sim.stand.geom.cy, text: '+$15 West tip', t: 0 }); }
+        if (c.won) { TF.Ledger.add('tips', 15, 'west challenge'); if (wk.earn) wk.earn(15); Sim.floaters.push({ x: Sim.stand.geom.cx, y: Sim.stand.geom.cy, text: '+$15 West tip', t: 0 }); }
         Sim.events.push({ type: 'toast', text: c.won ? 'Mrs. West: “Impressive. Here’s $15, darling.”' : 'Mrs. West: “Hmph. ' + got + ' in 40 seconds.”' });
       }
     }
   };
 
   // ---- Friday: the limo + verdict (played between the last report and the ending) -------------
+  S.econ = function () { return !!(TF.Econ && TF.Econ.on()); };
+  function rentDollars() { return TF.Econ && TF.Econ.M ? TF.Econ.M.rentDue() / 100 : 0; }
   S.playVerdict = function (done) {
-    var won = S.profit() >= S.target;
-    S.verdict = { won: won, profit: S.profit(), t0: performance.now(), done: done };
+    var econ = S.econ(), won = econ ? TF.Econ.rentPaid() : S.profit() >= S.target;
+    S.verdict = { won: won, profit: S.profit(), rent: econ ? { paid: won, due: rentDollars(), cash: Sim.stats.money } : null, t0: performance.now(), done: done };
     var st = Sim.stand;
     if (st.placed) R.centerOn(st.geom.cx, st.geom.cy + 0.5);
-    setTimeout(function () { S.verdict.over = true; done(won); }, 3200);
+    var gen = TF.Week.gen;   // a level load in between cancels it (C3c)
+    S.verdictTimer = setTimeout(function () { S.verdictTimer = null; if (gen !== TF.Week.gen || !S.verdict) return; S.verdict.over = true; done(won); }, 3200);
+  };
+
+  // A new level's Monday: this week's beats, walker, challenge and any verdict in flight are dropped
+  // (the angel / pop-up outcome and the beat log carry over).
+  S.resetLevel = function () {
+    if (S.verdictTimer) { clearTimeout(S.verdictTimer); S.verdictTimer = null; }
+    S.done = {}; S.walker = null; S.challenge = null; S.verdict = null; S.started = false; S.envelope = false;
   };
 
   // ---- HUD meter --------------------------------------------------------------------------
   var hud = document.getElementById('betHud');
   S.refresh = function () {
     if (!hud) return;
-    var on = S.active() && S.started;
+    var on = S.active() && S.started && !S.econ();   // the rent chip replaces the profit meter (Pass 6)
     hud.hidden = !on;
     if (!on) return;
     var p = S.profit(), c = S.challenge, txt = '👜 $' + p + ' / $' + S.target + (c && !c.done ? ' · 📋 ' + (Sim.stats.served - c.base) + '/10 ' + Math.ceil(c.t) + 's' : '');
@@ -196,7 +207,9 @@
     R.poly([P(-1.8, 0.4, 5), P(1.8, 0.4, 5), P(1.8, 0.4, 6), P(-1.8, 0.4, 6)], '#c9a227');   // gold trim
     if (f >= 1) {
       var b = P(0, 0, 40);
-      var DW = TF.Dialogue && TF.Dialogue.west, txt = '$' + v.profit + '. \u201C' + ((DW && DW[v.won ? 'fri_win' : 'fri_lose']) || (v.won ? 'Gentlemen, I\u2019m investing.' : 'Adorable. My pop-up opens Monday.')) + '\u201D';
+      var DW = TF.Dialogue && TF.Dialogue.west, txt = v.rent
+        ? (v.won ? '$' + v.rent.due + ' rent, on time. \u201CHmph. See you next week, gentlemen.\u201D' : 'Rent short. \u201CMonday, darlings. Again.\u201D')
+        : '$' + v.profit + '. \u201C' + ((DW && DW[v.won ? 'fri_win' : 'fri_lose']) || (v.won ? 'Gentlemen, I\u2019m investing.' : 'Adorable. My pop-up opens Monday.')) + '\u201D';
       R.pill('Mrs. West: ' + txt, b.x, b.y - 10 * z, 10 * z, v.won ? 'rgba(30,110,50,0.95)' : 'rgba(90,20,60,0.95)');
       R.text('SNAP!', b.x + 60 * z, b.y + 14 * z, 12 * z, '#fff', 'rgba(200,150,20,0.95)');
     }
@@ -216,7 +229,7 @@
   S.applyEnding = function (won) {
     if (won) {
       S.angel = true;
-      Sim.stats.money += 100;
+      TF.Ledger.add('angel', 100, 'angel round');
       Sim.events.push({ type: 'toast', text: 'Angel Round: Mrs. West invests $100 for 10% of the stand. ANGEL-BACKED!' });
     } else {
       S.popup = true;

@@ -27,7 +27,8 @@
   L.onPay = function (g, st) {
     if (!record) return 0;
     if (L.mode === 'push' && L.left > 0) {
-      st.stock = Math.max(0, st.stock - 0.15); record.waste += 0.15; record.affected++;
+      if (TF.Econ && TF.Econ.on()) TF.Econ.waste(0.15, st); else st.stock = Math.max(0, st.stock - 0.15);   // Taco Week: real kits
+      record.waste += 0.15; record.affected++;
     }
     if (L.mode !== 'premium' || L.orders <= 0) return 0;
     L.orders--; record.bonus++; record.affected++;

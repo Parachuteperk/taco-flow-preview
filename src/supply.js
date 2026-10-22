@@ -7,9 +7,11 @@
 
   // Parked on the lawn just north of the west walk; the runner loads up standing on the walk,
   // in front of it from the camera's point of view.
-  var VAN = { x0: 0.25, x1: 2.15, y0: 12.95, y1: 13.75, stop: { x: 1.5, y: 14.3 } };
+  var LVAN = World.level && World.level.landmarks.van;   // where the level parks it
+  var VAN = LVAN || { x0: 0.25, x1: 2.15, y0: 12.95, y1: 13.75, stop: { x: 1.5, y: 14.3 }, block: { y: 13, x0: 0, x1: 2 } };
   var S = { van: VAN, trip: null, trips: 0, tripsByStand: [0, 0], soldOutSeconds: 0, idleSpot: null };
-  World.blockedForStand = function (x, y) { return y === 13 && x >= 0 && x <= 2; };   // van parking
+  World.onLoad.push(function () { VAN = (World.level && World.level.landmarks.van) || VAN; S.van = VAN; S.trip = null; });   // the new level parks it
+  World.blockedForStand = function (x, y) { return y === VAN.block.y && x >= VAN.block.x0 && x <= VAN.block.x1; };   // van parking
 
   function hasRunner() { return TF.Crew && TF.Crew.hiredSet.runner; }
   S.active = function () { return hasRunner(); };
@@ -18,12 +20,29 @@
     var g = st.geom;
     return { x: g.cx + (g.n[0] + g.np[0]) * 1.25, y: g.cy + (g.n[1] + g.np[1]) * 1.25 };
   }
+  // A* only: no straight-line fallback through oaks / buildings (C3b). null = no route right now.
   function route(from, to) {
     var t = World.astar(Math.floor(from.x), Math.floor(from.y), Math.floor(to.x), Math.floor(to.y));
-    var pts = (t || []).slice(1).map(function (p) { return { x: p.x + 0.5, y: p.y + 0.5 }; });
+    if (!t) return null;
+    var pts = t.slice(1).map(function (p) { return { x: p.x + 0.5, y: p.y + 0.5 }; });
     pts.push({ x: to.x, y: to.y });
     return pts;
   }
+  // The walkable tile nearest the stand's restock corner (the corner itself can sit on an oak, e.g. stand
+  // (25,5) rot 0 on L1); the runner leaves from and returns to its centre, like the cashier's restock walk.
+  function access(st) {
+    var d = door(st), best = null;
+    for (var dy = -2; dy <= 2; dy++) for (var dx = -2; dx <= 2; dx++) {
+      var x = Math.floor(d.x) + dx, y = Math.floor(d.y) + dy;
+      if (!isFinite(World.cost(x, y)) || World.isStand(x, y)) continue;
+      var dd = Math.hypot(x + 0.5 - d.x, y + 0.5 - d.y);
+      if (!best || dd < best.d) best = { x: x + 0.5, y: y + 0.5, d: dd };
+    }
+    return best;
+  }
+  S.access = access;
+  function standKey(st) { return st.placed ? st.sx + ',' + st.sy + ',' + st.rot : 'off'; }
+  function accessOk(a) { return !!a && isFinite(World.cost(Math.floor(a.x), Math.floor(a.y))) && !World.isStand(Math.floor(a.x), Math.floor(a.y)); }
   // The stand that will run out first (stock as a fraction of its max); the runner serves it.
   function neediest() {
     var list = Sim.stands || [Sim.stand], best = null;
@@ -45,20 +64,36 @@
     if (!r) {
       var st = neediest();
       if (!st) return;
-      var d = door(st);
-      r = S.trip = { st: st, x: d.x, y: d.y, px: d.x, py: d.y, path: route(d, VAN.stop), speed: 2.2, hx: 1, hy: 0, facing: 0, moving: false, anim: 0, offX: 0, offY: 0, phase: 'out', t: 0, carry: false };
+      var d = access(st), out = d && route(d, VAN.stop);
+      if (!out) return;   // no reachable access / route: stay low on stock and look again next step
+      r = S.trip = { st: st, key: standKey(st), x: d.x, y: d.y, px: d.x, py: d.y, access: d, path: out, speed: 2.2, hx: 1, hy: 0, facing: 0, moving: false, anim: 0, offX: 0, offY: 0, phase: 'out', t: 0, carry: false };
       st.needRestock = false;
       return;
     }
     r.px = r.x; r.py = r.y;
+    // The stand moved / was removed, or something now stands on the access tile (C3c): pick a fresh
+    // reachable access; on the way back, re-route from where he is (or wait at the van and retry).
+    if (!r.st.placed) { S.trip = null; return; }
+    if (r.key !== standKey(r.st) || !accessOk(r.access)) {
+      r.key = standKey(r.st); r.access = access(r.st);
+      if (r.phase === 'back') {
+        var re = r.access && route({ x: r.x, y: r.y }, r.access);
+        if (re) r.path = re; else { r.phase = 'load'; r.t = 1; r.path = []; }
+      }
+    }
     if (r.phase === 'load') {
       r.moving = false; r.t -= dt;
-      if (r.t <= 0) { r.phase = 'back'; r.carry = true; r.path = route({ x: r.x, y: r.y }, door(r.st)); }
+      if (r.t <= 0) {
+        if (!r.access) r.access = access(r.st);
+        var back = r.access && route({ x: r.x, y: r.y }, r.access);
+        if (!back) { r.t = 1; return; }   // blocked (a new build?): wait at the van and retry
+        r.phase = 'back'; r.carry = true; r.path = back;
+      }
     } else if (Sim.walkEntity(r, dt, false)) {
       if (r.phase === 'out') { r.phase = 'load'; r.t = 1.5; Sim.floaters.push({ x: r.x, y: r.y, text: 'Got the goods!', t: 0 }); }
       else {
         var max = r.st.mods.stockMax;
-        r.st.stock = max; r.st.needRestock = false;
+        r.st.stock = Sim.refillAmount(r.st); r.st.needRestock = false;
         S.trips++; S.tripsByStand[r.st.idx] = (S.tripsByStand[r.st.idx] || 0) + 1;
         Sim.floaters.push({ x: r.x, y: r.y, text: 'Restocked!', t: 0 });
         S.trip = null;
@@ -77,7 +112,7 @@
       var x = r.px + (r.x - r.px) * alpha, y = r.py + (r.y - r.py) * alpha;
       items.push({ kind: 'supply', what: 'runner', x: x, y: y, k: x + y });
     } else if (Sim.stand.placed) {
-      var d = door(Sim.stand), sx = d.x + 0.35, sy = d.y + 0.35;
+      var d = access(Sim.stand) || door(Sim.stand), sx = d.x, sy = d.y;   // waits on walkable ground
       items.push({ kind: 'supply', what: 'runner', idle: true, x: sx, y: sy, k: sx + sy });
     }
   };

@@ -10,9 +10,9 @@
   var D = TF.Dialogue || {};
   var I = { owned: [], metals: { gold: { units: 0, paid: 0 }, silver: { units: 0, paid: 0 } }, price: { gold: 20, silver: 6 }, lastPrice: { gold: 20, silver: 6 },
     flipDay: {}, pitchDay: {}, flips: { won: 0, lost: 0, net: 0, coins: 0 }, history: [] };
-  I.rng = World.rng(77);
+  I.rng = TF.Rng.market;   // metal prices: the market stream; flips use the wager stream
   var TACO = 5.5;   // average taco price ($4-7)
-  function pick(a, fb) { return a && a.length ? a[Math.floor(I.rng() * a.length)] : fb; }
+  function pick(a, fb) { return a && a.length ? a[Math.floor(Math.random() * a.length)] : fb; }   // cosmetic: never touches saved streams
   I.week = function () { return !!(TF.Week && TF.Week.active()); };
   function base() {   // tacos per day to estimate with: yesterday's, or a first-day guess
     var r = TF.Week && TF.Week.results.filter(Boolean);
@@ -52,6 +52,7 @@
     if (!panel || panel.hidden) return;
     var cash = Sim.stats.money, html = '<div class="tip">' + pick(D.invest, 'Daily margin is the real scoreboard.') + '</div>';
     html += '<div class="permit">' + (TF.Week ? TF.Week.permitLine() : '') + '</div>';
+    if (TF.Mkt) html += TF.Mkt.html();   // the Quad Exchange: GOLD / TACO / NAPZ (C5), first in the panel
     catalog().forEach(function (it) {
       var bl = blockOf(it), est = Math.max(0.5, it.est), pay = Math.ceil(it.cost / est);
       if (bl && /^Day /.test(bl)) { html += '<div class="icard lock"><b>' + it.name + '</b><span>' + bl + '</span></div>'; return; }
@@ -75,13 +76,14 @@
     list.querySelectorAll('[data-buy]').forEach(function (b) { b.addEventListener('click', function () { I.buyMetal(b.getAttribute('data-buy')); }); });
     list.querySelectorAll('[data-sell]').forEach(function (b) { b.addEventListener('click', function () { I.sellMetal(b.getAttribute('data-sell')); }); });
     list.querySelectorAll('[data-flip]').forEach(function (b) { b.addEventListener('click', function () { I.flip(b.getAttribute('data-flip')); }); });
+    if (TF.Mkt) TF.Mkt.bind(list);
   };
 
   // ---- Metals ------------------------------------------------------------------------------------
   I.buyMetal = function (m) {
     var p = I.price[m];
     if (Sim.stats.money < p) return false;
-    Sim.stats.money -= p; I.metals[m].units++; I.metals[m].paid += p;
+    TF.Ledger.add('metal', -p, 'buy ' + m); I.metals[m].units++; I.metals[m].paid += p;
     Sim.events.push({ type: 'toast', text: 'Jared: “' + pick(D.jared && D.jared[m + '_pitch'], 'Physical is forever.') + '” (+1 ' + m + ')' });
     I.render(); return true;
   };
@@ -89,7 +91,7 @@
     var h = I.metals[m];
     if (!h.units) return false;
     var avg = h.paid / h.units, p = I.price[m];
-    h.units--; h.paid -= avg; Sim.stats.money += p;
+    h.units--; h.paid -= avg; TF.Ledger.add('metal', p, 'sell ' + m);
     I.history.push({ m: m, gain: Math.round(p - avg) });
     Sim.events.push({ type: 'toast', text: 'Sold 1 ' + m + ' for $' + p + ' (' + (p - avg >= 0 ? '+' : '-') + '$' + Math.abs(Math.round(p - avg)) + ')' });
     I.render(); return true;
@@ -110,8 +112,12 @@
     var gold = stake === 'coin', amt = gold ? 0 : +stake;
     if (gold ? !I.metals.gold.units : Sim.stats.money < amt) return false;
     I.flipDay[TF.Week.day] = true;
-    var win = I.rng() < 0.5;
-    I.lastFlip = { stake: stake, win: win };
+    var win = TF.Rng.wager() < 0.5, W = TF.Week;
+    // Settle now, on the ledger, under the day + phase it was flipped in (the coin below is only the reveal).
+    if (gold) { if (win) { I.metals.gold.units++; I.flips.coins++; } else { var avg = I.metals.gold.paid / I.metals.gold.units; I.metals.gold.units--; I.metals.gold.paid -= avg; I.flips.coins--; } }
+    else { TF.Ledger.post({ day: W.day, phase: W.phase, cat: 'wager', cents: (win ? amt : -amt) * 100, ref: 'coin flip' }); I.flips.net += win ? amt : -amt; }
+    I.flips[win ? 'won' : 'lost']++;
+    I.lastFlip = { stake: stake, win: win, day: W.day, phase: W.phase };
     if (coin) {
       coin.hidden = false;
       coin.querySelector('.offer').textContent = 'Jared: “' + pick(D.jared && D.jared.coin_flip_offer, 'Heads we win.') + '”';
@@ -123,14 +129,7 @@
       }, 1400);
       setTimeout(function () { coin.hidden = true; }, 3600);
     }
-    // the money moves when the coin lands
-    setTimeout(function () {
-      if (gold) { if (win) { I.metals.gold.units++; I.flips.coins++; } else { var avg = I.metals.gold.paid / I.metals.gold.units; I.metals.gold.units--; I.metals.gold.paid -= avg; I.flips.coins--; } }
-      else { Sim.stats.money += win ? amt : -amt; I.flips.net += win ? amt : -amt; }
-      I.flips[win ? 'won' : 'lost']++;
-      if (TF.Crew) TF.Crew.flash.jared = 2;
-      I.render();
-    }, 1400);
+    if (TF.Crew) TF.Crew.flash.jared = 2;
     I.render();
     return true;
   };

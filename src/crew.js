@@ -46,13 +46,15 @@
     if (t >= 4) m.buyP = Math.min(0.95, m.buyP + 0.1);
     if (h.ali) { m.cookT *= 0.6; m.grill += 1; }
     if (h.phillip) m.cookT *= 0.8;
-    if (h.matt) m.handT = 0.25;
+    // Matt's fast hand-off only while he's at the counter (C4: off fixing a breakdown, Jared covers at x0.8)
+    if (h.matt) m.handT = TF.Handyman && TF.Handyman.away() ? TF.Handyman.coverHandT(m.handT) : 0.25;
     // In Taco Week Antonio makes demand only through his hacks (TF.Hacks), not as a passive boost.
     if (h.antonio && !(TF.Week && TF.Week.active())) { m.zoneR += 2; m.buyP = Math.min(0.95, m.buyP + 0.1); m.spawnMul *= 1.3; }
     if (h.aaron) { m.orderT *= 0.85; m.cookT *= 0.85; m.handT *= 0.85; }
     if (ex.cooler2 && t === 0) m.stockMax *= 2;
     m.cannon = !!(ex.cannon && h.phillip && t >= 3);
     if (m.cannon) m.handT *= 0.5;
+    if (TF.Handyman) TF.Handyman.mods(st, m);   // open breakdowns (grill sputter, banner flicker)
   }
 
   // Second stand: Taco Week Day 4+ (one big buy), max 2. Comes with a Freshman Cashier; the
@@ -61,7 +63,7 @@
   Crew.buyStand2 = function () {
     if (Sim.stands.length >= Sim.MAX_STANDS || Sim.stats.money < Crew.STAND2_PRICE || blocked('stand2') || !Sim.stand.placed) return false;
     if (!reserveOk('stand2', Crew.STAND2_PRICE)) return false;
-    Sim.stats.money -= Crew.STAND2_PRICE;
+    TF.Ledger.add('build', -Crew.STAND2_PRICE, 'stand2');
     if (TF.Week) TF.Week.bought('stand2');
     var st = Sim.addStand();
     if (TF.Invest) TF.Invest.noteBuy('stand2', Crew.STAND2_PRICE, st);
@@ -97,7 +99,7 @@
   };
   Crew.buyObject = function (id, price) {
     if (blocked(id) || Sim.stats.money < price) return false;
-    Sim.stats.money -= price;
+    TF.Ledger.add('build', -price, id);
     if (TF.Week) TF.Week.bought(id);
     Crew.preConfirmed = null;
     Crew.refresh();
@@ -108,7 +110,7 @@
     var x = EXTRAS.filter(function (e) { return e.id === id; })[0];
     if (!x || Crew.extras[id] || !x.needs() || Sim.stats.money < x.price || blocked(id)) return false;
     if (!reserveOk(id, x.price)) return false;
-    Sim.stats.money -= x.price;
+    TF.Ledger.add('upgrade', -x.price, id);
     Crew.extras[id] = true;
     if (TF.Week) TF.Week.bought(id);
     if (id === 'cooler2' && Sim.stand.tier === 0) Sim.stand.stock += C.STOCK_T0;   // it arrives full
@@ -122,7 +124,7 @@
     var r = ROSTER.filter(function (x) { return x.id === id; })[0];
     if (!r || Crew.hiredSet[id] || Sim.stand.tier < r.tier || Sim.stats.money < r.price || blocked(id)) return false;
     if (!reserveOk(id, r.price)) return false;
-    Sim.stats.money -= r.price;
+    TF.Ledger.add('hire', -r.price, id);
     if (TF.Week) TF.Week.bought(id);
     Crew.hiredSet[id] = true;
     Crew.applyMods();
@@ -139,7 +141,7 @@
     // no sales-count gates: stand upgrades are limited only by cash (and, in Taco Week, the daily build permit)
     if (!u || st.tier !== u.tier - 1 || st.building || Sim.stats.money < u.price || blocked(id)) return false;
     if (!reserveOk(id, u.price)) return false;
-    Sim.stats.money -= u.price;
+    TF.Ledger.add('upgrade', -u.price, u.id);
     if (TF.Week) TF.Week.bought(id);
     if (TF.Invest) TF.Invest.noteBuy(u.id, u.price, st);
     st.building = u.id;
@@ -199,7 +201,7 @@
     var cs = (c.x - c.y) * (C.TW / 2), cy = (c.x + c.y) * (C.TH / 2), T = World.T;
     for (var y = Math.floor(c.y) - 1; y <= Math.floor(c.y) + 3; y++) for (var x = Math.floor(c.x) - 1; x <= Math.floor(c.x) + 3; x++) {
       var t = World.get(x, y);
-      if (t !== T.TREE && t !== T.LAMP && t !== T.BENCH && t !== T.PLANTER) continue;
+      if (!World.isProp(t)) continue;
       if (x + y + 1 <= c.x + c.y) continue;   // behind
       var px = (x - y) * (C.TW / 2), py = (x + y + 1) * (C.TH / 2), b = R.propBox(t, 1);
       if (cs + 12 > px + b.l && cs - 12 < px + b.r && cy - 36 < py + b.b && cy > py + b.t) return true;
@@ -212,7 +214,7 @@
   function hiddenBy(c, pieces) {
     var ck = c.x + c.y, cs = (c.x - c.y) * (C.TW / 2);
     return pieces.some(function (p) {
-      return p.x + p.y > ck && Math.abs((p.x - p.y) * (C.TW / 2) - cs) < (HALF_W[p.piece] || 20) + 8;
+      return p.x + p.y > ck && Math.abs((p.x - p.y) * (C.TW / 2) - cs) < (HALF_W[p.piece] || 20) + 12;   // + half a v2 crew sprite (was 8 for the old, narrower art)
     });
   }
   function stationSpots(st) {
@@ -281,17 +283,17 @@
   }
 
   function frameFor(id) {
-    var st = Sim.stand, t = Crew.t;
+    var st = Sim.stand, t = Crew.t, name = 'idle';
     switch (id) {
-      case 'jared': return st.window && !st.window.paid ? 1 : 0;
-      case 'ali': return st.cook.grill.length && !(TF.Events && TF.Events.grillStalled && TF.Events.grillStalled()) ? (Math.floor(t * 3) % 2 ? 2 : 0) : 0;
-      case 'matt': return st.pickup.some(function (g) { return g && g.order && g.order.ready; }) ? 1 : 0;
-      case 'antonio': return 1;
-      case 'phillip': return st.cook.grill.length || st.cook.pending.length ? 1 : 0;
-      case 'west': return Math.floor(t / 0.8) % 2;
-      case 'aaron': return Math.floor(t / 0.7) % 3;
+      case 'jared': if (st.window && !st.window.paid) name = Math.floor(t * 3) % 2 ? 'change' : 'payment'; break;
+      case 'ali': if (st.cook.grill.length && !(TF.Events && TF.Events.grillStalled && TF.Events.grillStalled())) name = Math.floor(t * 3) % 2 ? 'toss' : 'flip'; break;
+      case 'matt': name = st.pickup.some(function (g) { return g && g.order && g.order.ready; }) ? 'handoff' : busy(id) ? 'tray' : 'idle'; break;
+      case 'antonio': name = 'typing'; break;
+      case 'phillip': if (st.cook.grill.length || st.cook.pending.length) name = Math.floor(t * 2) % 2 ? 'plate' : 'chop'; break;
+      case 'west': name = ['fists', 'giggle', 'point', 'wave', 'check'][Math.floor(t / 0.8) % 5]; break;
+      case 'aaron': name = ['point', 'thumbsUp', 'fistBump'][Math.floor(t / 0.7) % 3]; break;
     }
-    return 0;
+    return TF.ArtPeople.pose(id, name);
   }
   function busy(id) {
     var st = Sim.stand;
@@ -323,8 +325,10 @@
     if (!st.placed) return;
     computeSpots();
     var ins = stationSpots(st);
+    var HM = TF.Handyman, mp = HM && HM.away() ? HM.pos() : null;
     Object.keys(ins).forEach(function (id) {
       var p = ins[id];
+      if (id === 'matt' && mp) { items.push({ kind: 'crew', id: 'matt', where: 'job', x: mp.x, y: mp.y, k: mp.x + mp.y }); return; }   // off on a job
       items.push({ kind: 'crew', id: id, where: 'in', st: st, x: p.x, y: p.y, k: p.x + p.y });
     });
     Object.keys(Crew.spots).forEach(function (id) {
@@ -351,15 +355,28 @@
     Crew.lastDrawn.push('cashier');
   }
 
+  // Matt away from the counter (C4): walking his A* route, or the wrench pose on the job.
+  function drawMattOnJob(ctx, p, z, painted) {
+    var HM = TF.Handyman, S = HM.S, P = TF.ArtPeople, h = HM.heading || { x: 1, y: 0 };
+    var walker = { facing: 0, moving: S.mode === 'WALKING', anim: Sim.t * 1.6 };
+    Sim.faceEntity(walker, h.x, h.y);
+    var mir = walker.facing === 1 || walker.facing === 3;
+    if (S.mode === 'FIXING' && painted && P.drawCrewPose) P.drawCrewPose(ctx, 'matt', 'wrench', p.x, p.y, z, mir);
+    else if (!(painted && P.drawWalker(ctx, 'matt', p.x, p.y, z, mir, 0, null, walker))) drawPlaceholderCrew(ctx, 'matt', p.x, p.y, z, mir);
+    R.text(S.mode === 'FIXING' ? 'fixing…' : S.returning ? 'back to the counter' : 'on the way', p.x, p.y - 40 * z, 7 * z, '#fff5d6', 'rgba(20,40,70,0.85)');
+    Crew.lastDrawn.push('matt');
+  }
+
   Crew.draw = function (ctx, it, z) {
     var st = it.st || Sim.stand, P = TF.ArtPeople, painted = TF.Art.painted() && P && P.crew[it.id];
     var p = R.toScreen(it.x, it.y);
     if (it.id === 'cashier') { drawCashier(ctx, it, p, z); return; }
+    if (it.where === 'job') { drawMattOnJob(ctx, p, z, painted); return; }
     if (it.where === 'run') {
       var r = Sim.runner;
       if (!r) return;
-      var mirror = r.facing === 1 || r.facing === 2, swing = r.moving ? Math.sin(r.anim / 0.16 * Math.PI / 2) : 0;
-      if (painted) P.drawWalker(ctx, 'jared', p.x, p.y, z, mirror, swing, TF.Art.img.cooler);
+      var mirror = r.facing === 1 || r.facing === 3, swing = r.moving ? Math.sin(r.anim / 0.16 * Math.PI / 2) : 0;
+      if (painted) P.drawWalker(ctx, 'jared', p.x, p.y, z, mirror, swing, TF.Art.img.cooler, r);
       else { drawPlaceholderCrew(ctx, 'jared', p.x, p.y, z, mirror, r); ctx.fillStyle = '#c62f2f'; ctx.fillRect(p.x - 6 * z, p.y - 17 * z, 12 * z, 8 * z); ctx.fillStyle = '#fff'; ctx.fillRect(p.x - 6 * z, p.y - 18 * z, 12 * z, 2.5 * z); }
       R.text('restocking', p.x, p.y - 40 * z, 7 * z, '#fff5d6', 'rgba(60,30,20,0.85)');
       Crew.lastDrawn.push('jared');
@@ -397,7 +414,8 @@
       R.text('\u25CF LIVE', p.x, p.y - 40 * z, 8 * z * pulse, '#ff3355', 'rgba(0,0,0,0.7)');
       R.text('RAID!', p.x, p.y - 52 * z, 9 * z * pulse, '#c58aff', 'rgba(40,0,60,0.85)');
     } else if (it.id === 'antonio' && Math.floor(Crew.t * (hacking ? 8 : 2)) % 2) R.text('\u25CF LIVE', p.x, p.y - 38 * z, 7 * z, '#ff4a4a', 'rgba(0,0,0,0.6)');
-    if (it.id === 'antonio' && TF.Hacks) TF.Hacks.drawLaptop(ctx, p, z, mir);   // his laptop levels up with him
+    // Antonio's v2 work poses already include a laptop; legacy art still needs the overlay.
+    if (it.id === 'antonio' && TF.Hacks && !(painted && P.crew.antonio.sheet === 'crew_antonio_v2')) TF.Hacks.drawLaptop(ctx, p, z, mir);
     if (TF.Arcs) TF.Arcs.drawCrew(ctx, it.id, p, z, mir);   // rants, the jar / chain, speech bubbles
     if (it.id === 'matt' && TF.Events && TF.Events.shooing()) R.text('SHOO!', p.x, p.y - 44 * z + Math.sin(Crew.t * 20) * 2 * z, 10 * z, '#fff', 'rgba(120,20,20,0.9)');
     if (Crew.flash[it.id]) R.text('★', p.x, p.y - 44 * z, 12 * z, '#ffd23a', 'rgba(0,0,0,0.5)');
@@ -411,7 +429,7 @@
     phillip: { shirt: '#2f6b3a', skin: '#7c4f31', hair: '#2a1b12', pants: '#2d3a5a' },
     antonio: { shirt: '#2f2f3a', skin: '#b07a50', hair: '#111', pants: '#3a3a3a' },
     aaron: { shirt: '#e6dcc4', skin: '#f1c9a5', hair: '#d8b46a', pants: '#2d3a5a' },
-    west: { shirt: '#8e5ba8', skin: '#f1c9a5', hair: '#c9c9c9', pants: '#8e5ba8' },
+    west: { shirt: '#8e5ba8', skin: '#f1c9a5', hair: '#8B3A1E', pants: '#8e5ba8' },
     runner: { shirt: '#c9a227', skin: '#d9a77e', hair: '#3b2a20', pants: '#2d3a5a' }
   };
   Crew.drawPlaceholder = function (ctx, id, x, y, z, mirror, walker) { drawPlaceholderCrew(ctx, id, x, y, z, mirror, walker); };

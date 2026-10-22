@@ -69,7 +69,7 @@
       golden: ['CAMPUS EVENTS', 'OPERATION GOLDEN TACO', 'Operation GOLDEN TACO!'] }[L.id];
     // Antonio's line from assets/dialogue/grok-dialogue.json (TF.Dialogue.antonio.lvlN_...)
     var DA = TF.Dialogue && TF.Dialogue.antonio, key = DA && Object.keys(DA).filter(function (k) { return k.indexOf('lvl' + H.level()) === 0; })[0];
-    var said = key && DA[key].length ? DA[key][Math.floor(Sim.rand() * DA[key].length)] : null;
+    var said = key && DA[key].length ? DA[key][Math.floor(TF.Rng.ambient() * DA[key].length)] : null;
     Sim.events.push({ type: 'hackpop', title: pop[0], body: pop[1], text: pop[2] + (said ? ' Antonio: \u201C' + said + '\u201D' : '') });
     if (L.id === 'earlybell') {
       var W = TF.Week;
@@ -129,6 +129,8 @@
     p.earned++;
     return 1;
   };
+  // new level's Monday: today's hack is available again and nothing from the old map keeps spawning (C3c)
+  H.resetLevel = function () { H.endDay(); H.used = {}; H.typingT = 0; H.outT = 0; H.billboardT = 0; };
   H.endDay = function () { H.buyMul = 1; if (H.run) H.last = H.run; H.run = null; if (H.premium) H.premium.on = false; card.hidden = true; };
 
   // ---- The button --------------------------------------------------------------------------

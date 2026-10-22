@@ -6,6 +6,7 @@
   var ctx = null, mainCtx = null;
 
   R.setContext = function (c) { ctx = mainCtx = c; };
+  World.onLoad.push(function () { R.groundDirty = true; });   // a new level: rebuild the ground cache
 
   // World (tile units) -> screen (CSS px). h lifts the point vertically in px at zoom 1.
   R.toScreen = function (wx, wy, h) {
@@ -58,12 +59,12 @@
 
   // ---- Ground ------------------------------------------------------------
   var PAINT_KEY = {};
-  PAINT_KEY[T.GRASS] = 'grass'; PAINT_KEY[T.PATH] = 'concrete'; PAINT_KEY[T.PLAZA] = 'brick';
+  PAINT_KEY[T.GRASS] = 'grass'; PAINT_KEY[T.PATH] = 'concrete'; PAINT_KEY[T.PLAZA] = 'brick'; PAINT_KEY[T.STAIRS] = 'concrete'; PAINT_KEY[T.RAMP] = 'concrete'; PAINT_KEY[T.PROP] = 'grass';
   PAINT_KEY[T.PLANTER] = 'flowers'; PAINT_KEY[T.TREE] = 'grass'; PAINT_KEY[T.BENCH] = 'grass'; PAINT_KEY[T.LAMP] = 'grass';
 
   // Ground under props: plaza-side lamps stand on brick, everything else on grass.
   function quadKey(t, tx, ty) {
-    if (t === T.PATH) return 'qlime';
+    if (t === T.PATH || t === T.STAIRS || t === T.RAMP) return 'qlime';
     if (t === T.PLAZA) return 'qbrick';
     if ((t === T.LAMP || t === T.PLANTER) && World.nearWalk(tx, ty, 0) === false && [[1, 0], [-1, 0], [0, 1], [0, -1]].some(function (d) { return World.get(tx + d[0], ty + d[1]) === T.PLAZA; })) return 'qbrick';
     return 'qgrass';
@@ -71,6 +72,14 @@
 
   R.drawTile = function (tx, ty) {
     var t = World.get(tx, ty), d = diamond(tx, ty), s = World.shade[ty * World.W + tx], z = R.cam.z;
+    if (t === T.BUILDING) {   // campus buildings (painted into the level plate later): dark slate roofs
+      poly(d, shadeHex('#6e4b3c', 0.92 + s * 0.08), 'rgba(40,20,10,0.25)', Math.max(0.6, z * 0.5));
+      return;
+    }
+    if (t === T.HILL) {   // Chautauqua Hill: darker, steeper lawn (blocked)
+      poly(d, shadeHex('#4d7f37', ((tx + ty) & 1 ? 1.0 : 0.95) * (0.92 + s * 0.08)));
+      return;
+    }
     var qk = quadKey(t, tx, ty);
     if (TF.Art.has(qk)) {
       // Seamless quad tiles (one world scale: 254 sheet px = 1 tile), clipped to the diamond and
@@ -98,7 +107,7 @@
       ctx.restore();
       return;
     }
-    if (t === T.PATH) {
+    if (t === T.PATH || t === T.STAIRS || t === T.RAMP) {
       poly(d, shadeHex('#e6d9b5', 0.97 + s * 0.05));
       ctx.strokeStyle = 'rgba(150,130,90,0.45)'; ctx.lineWidth = Math.max(1, z * 0.8);
       var edges = [[0, -1, 0, 1], [1, 0, 1, 2], [0, 1, 2, 3], [-1, 0, 3, 0]];
@@ -163,7 +172,7 @@
 
   R.drawProp = function (kind, tx, ty, alpha) {
     var z = R.cam.z, p = R.toScreen(tx + 0.5, ty + 0.5), s = World.shade[ty * World.W + tx];
-    var art = PROP_ART[kind];
+    var type = World.propType[ty * World.W + tx], art = TF.Art.has(type) ? type : PROP_ART[kind];   // sprite by prop type first
     if (alpha !== undefined) ctx.globalAlpha = alpha;
     if (TF.Art.has(art)) {
       var im = TF.Art.img[art], sc = C.TW * z / (TF.Art.quadTileW || 254);
@@ -175,6 +184,11 @@
       return;
     }
     if (kind === T.PLANTER) { ctx.globalAlpha = 1; return; }   // placeholder planters are drawn as ground
+    if (kind === T.PROP) {   // a prop type with no painted sprite yet: a labelled crate
+      ctx.fillStyle = '#9a6a3a'; ctx.fillRect(p.x - 8 * z, p.y - 12 * z, 16 * z, 12 * z);
+      text(String(type || '?').slice(0, 6), p.x, p.y - 6 * z, 5 * z, '#fff');
+      ctx.globalAlpha = 1; return;
+    }
     if (kind === T.TREE) {   // live oak: short trunk, broad low canopy
       ctx.fillStyle = 'rgba(0,0,0,0.22)';
       ctx.beginPath(); ctx.ellipse(p.x, p.y, 22 * z, 10 * z, 0, 0, Math.PI * 2); ctx.fill();
@@ -206,17 +220,30 @@
   };
 
   // ---- Old Main (past the top-right edge, entrance facing the quad) ---------
-  var OM = { x0: 9, x1: 19, y0: -5, y1: 0 };
-  var OM_STAIRS = { x: 13.5, y: 0.1 };
-  R.OM_STAIRS = OM_STAIRS;
+  // Old Main: from the level each draw (a level load can move it). Legacy maps: past the top edge;
+  // ASCII maps: its 'M' block on the map, front stairs where they meet the quad.
+  function oldMainGeom() {
+    var lv = World.level, L = lv && lv.landmarks.oldMain, b = World.oldMainBlock;
+    if (b && L) return { x0: b.x0, x1: b.x1 + 1, y0: b.y0, y1: b.y1 + 1, stairs: L.stairs, side: true };
+    if (L && L.x0 !== undefined) return { x0: L.x0, x1: L.x1, y0: L.y0, y1: L.y1, stairs: L.stairs };
+    return { x0: 9, x1: 19, y0: -5, y1: 0, stairs: { x: 13.5, y: 0.1 } };
+  }
+  R.oldMainGeom = oldMainGeom;
   R.drawOldMain = function () {
-    var z = R.cam.z;
+    var z = R.cam.z, OM = oldMainGeom(), OM_STAIRS = OM.stairs;
     if (TF.Art.has('oldmain')) {
       var im = TF.Art.img.oldmain, w = TF.Art.whole.oldmain;
-      var sc = (OM.x1 - OM.x0) * (C.TW / 2) * z / w.longW;
-      // Pin the foot of the front stairs (art px 665,485) to the end of the main walk (x = 13).
+      var sc = (OM.side ? OM.y1 - OM.y0 : OM.x1 - OM.x0) * (C.TW / 2) * z / w.longW;
+      // Pin the foot of the front stairs (art px 665,485) to where the stairs meet the quad. On the
+      // legacy map Old Main sits past the top edge (mirrored: entrance toward the quad); on the ASCII
+      // L1 it sits on the east hill along y, drawn unmirrored so its long face runs along the block.
+      if (OM.side) {   // on its block: the art's bottom vertex (365,565) on the block's front corner
+        var bv = R.toScreen(OM.x1, OM.y1);
+        ctx.drawImage(im, bv.x - 365 * sc, bv.y - 565 * sc, im.width * sc, im.height * sc);
+        return;
+      }
       var a = R.toScreen(OM_STAIRS.x, OM_STAIRS.y);
-      ctx.save(); ctx.translate(a.x, a.y); ctx.scale(-1, 1);   // mirrored: entrance faces the quad
+      ctx.save(); ctx.translate(a.x, a.y); ctx.scale(-1, 1);
       ctx.drawImage(im, -665 * sc, -485 * sc, im.width * sc, im.height * sc);
       ctx.restore();
       return;
@@ -230,7 +257,7 @@
       var u = OM.x0 + 0.6 + i * 1.05;
       poly([P(u, OM.y1, 20 + j * 30), P(u + 0.4, OM.y1, 20 + j * 30), P(u + 0.4, OM.y1, 38 + j * 30), P(u, OM.y1, 38 + j * 30)], '#2c3e50');
     }
-    var lab = P(14, OM.y1, H + 20);
+    var lab = P((OM.x0 + OM.x1) / 2, OM.y1, H + 20);
     text('OLD MAIN', lab.x, lab.y, 11 * z, '#fff5d6', 'rgba(0,0,0,0.6)');
   };
 
@@ -284,7 +311,6 @@
         text('\u26A0 GRILL STALLED', p.x, p.y - 42 * z, 10 * z * pul, '#fff');
       }
     }
-    if (!ghost && (it.piece === 'tablecooler' || it.piece === 'table')) drawStock(p, z, it.st);
     if (!ghost && it.piece === 'banner') { var b = R.toScreen(it.x, it.y, 40); text('TACOS', b.x, b.y, 9 * z, '#ffd23a', 'rgba(80,10,20,0.9)'); }
     ctx.globalAlpha = 1;
   };
@@ -323,14 +349,28 @@
   function drawStock(p, z, st) {
     st = st || Sim.stand;
     if (!st.placed) return;
-    var max = st.mods.stockMax, f = Math.max(0, st.stock) / max, y = p.y - 34 * z;
+    var max = st.mods.stockMax, f = Math.max(0, st.stock) / max;
+    // Below the entire footprint, with room for the label above its bar and the HUD.
+    var size = Math.max(10, 7 * z), y = Math.max(p.y + size * 2 + 8, (R.hudBottom || 0) + size * 2 + 8);
+    if (y > R.vh - 8) return;
     var w = 26 * z;
     ctx.fillStyle = 'rgba(30,20,10,0.75)'; ctx.fillRect(p.x - w / 2 - z, y - z, w + 2 * z, 5 * z);
     ctx.fillStyle = f > 0.25 ? '#6cd06c' : f > 0 ? '#f0b030' : '#e04040';
     ctx.fillRect(p.x - w / 2, y, w * f, 3 * z);
-    var label = st.trip ? 'RESTOCKING' : st.stock <= 0 ? 'SOLD OUT' : st.tier === 0 ? st.stock + '/' + max + ' tacos' : '';
-    if (label) text(label, p.x, y - 6 * z, 7 * z, '#fff5d6', 'rgba(60,30,20,0.85)');
+    // one SOLD OUT only (the window sign); in PREP an empty stand says where its kits are instead (C3b)
+    var prep = prepStock(st);
+    var label = st.trip ? 'RESTOCKING' : prep ? prep : st.stock <= 0 ? '' : st.tier === 0 ? st.stock + '/' + max + ' tacos' : '';
+    if (label) text(label, p.x, y - size, size, '#fff5d6', 'rgba(60,30,20,0.85)');
   }
+
+  // Taco Week PREP with kits: the stand is not sold out, it just hasn't loaded yet.
+  function prepStock(st) {
+    var W = TF.Week, E = TF.Econ;
+    if (!(W && W.active() && W.phase === 'prep' && E && E.on()) || st.stock > 0) return '';
+    var van = E.state().vanKits;
+    return van ? van + ' kits in the van \u00B7 loads at OPEN' : 'No kits: order in STOCK';
+  }
+  R.prepStock = prepStock;
 
   function drawSteam(p0, st) {
     var n = (st || Sim.stand).cook.grill.length, z = R.cam.z;
@@ -408,7 +448,7 @@
       text('\u26A0 ' + nb + ' walked away: line too long', ep.x, ep.y, 9 * z, '#fff', 'rgba(150,20,20,0.9)');
       R.lastGroupedBalk = nb;
     }
-    if (st.stock <= 0) {   // SOLD OUT sign at the window
+    if (st.stock <= 0 && !prepStock(st)) {   // SOLD OUT sign at the window (not in PREP: see prepStock)
       var so = R.toScreen(st.geom.order[0] + 0.5, st.geom.order[1] + 0.5, 46), pz = 1 + 0.08 * Math.sin(performance.now() / 150);
       ctx.fillStyle = '#c62f2f'; ctx.fillRect(so.x - 34 * z * pz, so.y - 9 * z * pz, 68 * z * pz, 18 * z * pz);
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 2 * z; ctx.strokeRect(so.x - 34 * z * pz, so.y - 9 * z * pz, 68 * z * pz, 18 * z * pz);
@@ -520,6 +560,13 @@
 
   // Status icons over a guest's head (shared by both art modes).
   function drawGuestOverlay(g, sx, sy, z) {
+    // continuous-patience meter (Taco Week economy, C4): appears once a third of the patience is gone
+    if ((g.state === 'QUEUE' || (g.state === 'ORDER' && !g.paid)) && g.patience && g.waitT > g.patience * 0.33) {   // until paid
+      var left = Math.max(0, 1 - g.waitT / g.patience), bw = 14 * z, by = sy - 33 * z;
+      ctx.fillStyle = 'rgba(30,20,10,0.7)'; ctx.fillRect(sx - bw / 2 - z, by - z, bw + 2 * z, 4 * z);
+      ctx.fillStyle = left > 0.5 ? '#6cd06c' : left > 0.25 ? '#f0b030' : '#e04040';
+      ctx.fillRect(sx - bw / 2, by, bw * left, 2 * z);
+    }
     if (g.state === 'WAIT_PICKUP' && !g.hasTaco && g.order) {
       var ry = sy - 38 * z, rr = 4.5 * z, prog = g.order.ready ? 1 : g.order.progress;
       ctx.fillStyle = 'rgba(255,255,255,0.9)';
@@ -661,7 +708,7 @@
     var items = [], tx, ty, only = ui.onlyCrew;
     if (!only) for (ty = 0; ty < World.H; ty++) for (tx = 0; tx < World.W; tx++) {
       var t = World.get(tx, ty);
-      if (t !== T.TREE && t !== T.BENCH && t !== T.LAMP && t !== T.PLANTER) continue;
+      if (!World.isProp(t)) continue;
       if (ui.noProps) continue;
       var pp = R.toScreen(tx + 0.5, ty + 0.5);
       if (pp.x < -60 || pp.x > R.vw + 60 || pp.y < -20 || pp.y > R.vh + 90) continue;   // cull
@@ -706,7 +753,17 @@
     }
 
     if (bare) return;
-    Sim.stands.forEach(function (s2) { R.drawLineHints(ui, s2); });
+    Sim.stands.forEach(function (s2) {
+      R.drawLineHints(ui, s2);
+      if (s2.placed && !(ghost && ui.placing && s2 === Sim.selected())) drawStock(R.toScreen(s2.sx + 2, s2.sy + 2), z, s2);
+    });
+    (World.labels || []).forEach(function (l) {   // campus building names (until the painted plate lands)
+      var q = R.toScreen(l.x, l.y, 4);
+      var name = l.name === 'TAYLOR-M' ? 'TAYLOR-MURPHY' : l.name, hw = name.length * 8 * z * 0.36 + 6;
+      // slid inside the screen edge rather than clipped (TAYLOR-MURPHY at the right edge, C3b)
+      // not behind the HUD buttons (DERRICK peeked out as '...ICK' behind the phone's cash chip, C4 polish)
+      if (q.x > -hw && q.x < R.vw + hw && q.y > (R.hudBottom || 0) + 12 && q.y < R.vh + 20) pill(name, Math.max(hw + 4, Math.min(R.vw - hw - 4, q.x)), q.y, 8 * z, 'rgba(80,18,20,0.85)');
+    });
     if (TF.Objects) TF.Objects.drawOverlay(ctx, z);
     if (TF.Story) TF.Story.drawOverlay(ctx, z);
     if (TF.Arcs) TF.Arcs.drawOverlay(ctx, z);

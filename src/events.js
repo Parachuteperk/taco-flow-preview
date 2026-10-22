@@ -7,7 +7,7 @@
     west: null, nextWest: Infinity, westVisits: 0, aliPausedSeconds: 0, aiAliChats: 0,
     hack: { phase: 'idle', t: 0, cooldown: 0, next: Infinity, spawnLeft: 0, spawnT: 0, hacks: 0, lastSpawned: 0, auto: 0 }
   };
-  function rnd(a, b) { return a + (b - a) * Sim.rand(); }
+  function rnd(a, b) { return a + (b - a) * TF.Rng.events(); }   // the events stream (Pass 6)
 
   var TIPS = [
     { text: 'Great tacos, dear! +$5 tip', money: 5 },
@@ -74,7 +74,7 @@
       else { Sim.cookRate = 0; Ev.aliPausedSeconds += dt; }
       if (w.t <= 0) {
         // the $5 tip and a wave; Ali snaps back, flustered for a moment
-        Sim.stats.money += 5; Sim.floaters.push({ x: w.x, y: w.y, text: '+$5 tip', t: 0 });
+        TF.Ledger.add('tips', 5, 'west tip'); Sim.floaters.push({ x: w.x, y: w.y, text: '+$5 tip', t: 0 });
         Ev.flustered = TF.Crew && TF.Crew.extras.aiali ? 0 : 2.5;
         w.phase = 'out'; Sim.cookRate = 1;
         var tiles = World.exitPath(Math.floor(w.x), Math.floor(w.y), w.exit);
@@ -84,7 +84,7 @@
     } else if (Sim.walkEntity(w, dt, false)) {
       if (w.phase === 'in') {
         w.phase = 'chat'; w.t = w.short ? 2.5 : 10; w.ct = 0; w.whereDone = false;
-        var tip = w.tip = TIPS[Math.floor(Sim.rand() * TIPS.length)];
+        var tip = w.tip = TIPS[Math.floor(TF.Rng.events() * TIPS.length)];
         if (tip.boost) Sim.priceBoostT = tip.boost;
       } else {
         Ev.west = null;
@@ -135,7 +135,7 @@
         h.spawnT += 10 / 50;
         h.spawnLeft--;
         var g = Sim.spawnGuest(door);
-        g.x += (Sim.rand() - 0.5) * 0.6; g.px = g.x;
+        g.x += (TF.Rng.events() - 0.5) * 0.6; g.px = g.x;
         g.fromHack = true;
         h.lastSpawned++;
       }
@@ -153,8 +153,8 @@
     if (!Ev.canRaid()) return false;
     var r = Ev.raid;
     r.phase = 'incoming'; r.t = 1.5; r.cooldown = 120; r.raids++;
-    var n = 30 + Math.floor(Sim.rand() * 40);
-    Sim.events.push({ type: 'toast', text: '\uD83D\uDCE3 RAID! ' + RAIDERS[Math.floor(Sim.rand() * RAIDERS.length)] + ' is raiding with ' + n + ' viewers!' });
+    var n = 30 + Math.floor(TF.Rng.events() * 40);
+    Sim.events.push({ type: 'toast', text: '\uD83D\uDCE3 RAID! ' + RAIDERS[Math.floor(TF.Rng.events() * RAIDERS.length)] + ' is raiding with ' + n + ' viewers!' });
     return true;
   };
   function stepRaid(dt) {
@@ -177,7 +177,7 @@
       var door = Sim.oldMainDoor(), edges = World.exits.filter(function (e) { return e !== door; });
       while (r.spawnT <= 0 && r.spawnLeft > 0) {
         r.spawnT += 8 / 36; r.spawnLeft--;
-        var g = Sim.spawnGuest(edges[Math.floor(Sim.rand() * edges.length)]);
+        var g = Sim.spawnGuest(edges[Math.floor(TF.Rng.events() * edges.length)]);
         g.fromRaid = true; r.lastSpawned++; r.fromEdges++;
       }
       if (r.spawnLeft <= 0) r.phase = 'idle';
@@ -189,14 +189,21 @@
   // Every 70-130 s a flock of great-tailed grackles mobs the stand. With Matt hired he shoos them
   // off in ~1.5 s; without him they hang around ~8 s and ordering + hand-off run 50% slower.
   Ev.grackle = { phase: 'idle', t: 0, next: Infinity, birds: [], events: 0, slowSeconds: 0, shooed: 0 };
+  // new level: anything in progress on the old map stops (counters carry over) (C3c)
+  Ev.resetLevel = function () {
+    Ev.west = null; Ev.nextWest = Infinity;
+    Ev.hack.phase = 'idle'; Ev.hack.t = 0; Ev.hack.spawnLeft = 0; Ev.hack.next = Infinity;
+    Ev.raid.phase = 'idle'; Ev.raid.t = 0; Ev.raid.spawnLeft = 0; Ev.raid.next = Infinity;
+    Ev.grackle.phase = 'idle'; Ev.grackle.t = 0; Ev.grackle.birds = []; Ev.grackle.next = Infinity;
+  };
   Ev.startGrackles = function () {
     var g = Ev.grackle, st = Sim.stand;
     if (!st.placed || g.phase !== 'idle') return false;
     g.phase = 'arrive'; g.t = 1.4; g.events++; g.birds = [];
-    var ang = Sim.rand() * Math.PI * 2;
+    var ang = TF.Rng.events() * Math.PI * 2;
     for (var i = 0; i < 7; i++) {
-      var a = ang + (Sim.rand() - 0.5) * 0.8, tx = st.geom.cx + (Sim.rand() - 0.5) * 2.4, ty = st.geom.cy + 1 + (Sim.rand() - 0.5) * 2.4;
-      g.birds.push({ x: tx + Math.cos(a) * 9, y: ty + Math.sin(a) * 9, tx: tx, ty: ty, h: 60, flap: Sim.rand() * 6, hop: Sim.rand() * 6 });
+      var a = ang + (TF.Rng.events() - 0.5) * 0.8, tx = st.geom.cx + (TF.Rng.events() - 0.5) * 2.4, ty = st.geom.cy + 1 + (TF.Rng.events() - 0.5) * 2.4;
+      g.birds.push({ x: tx + Math.cos(a) * 9, y: ty + Math.sin(a) * 9, tx: tx, ty: ty, h: 60, flap: TF.Rng.events() * 6, hop: TF.Rng.events() * 6 });
     }
     Sim.events.push({ type: 'toast', text: 'Grackles! The squad is mobbing the stand' });
     return true;
@@ -228,7 +235,7 @@
       if (g.t <= 0 || (matt && g.t <= 0)) {
         if (matt) { g.shooed++; Sim.events.push({ type: 'toast', text: 'Matt: \u201CSHOO!\u201D' }); if (TF.Arcs) TF.Arcs.grackles('shoo'); }
         g.phase = 'flee'; g.t = 1.6; Sim.serviceSlow = 1;
-        g.birds.forEach(function (b) { var a = Math.atan2(b.y - st.geom.cy, b.x - st.geom.cx) + (Sim.rand() - 0.5); b.vx = Math.cos(a) * 7; b.vy = Math.sin(a) * 7; });
+        g.birds.forEach(function (b) { var a = Math.atan2(b.y - st.geom.cy, b.x - st.geom.cx) + (TF.Rng.events() - 0.5); b.vx = Math.cos(a) * 7; b.vy = Math.sin(a) * 7; });
       }
     } else if (g.phase === 'flee' && g.t <= 0) { g.phase = 'idle'; g.birds = []; }
   }
@@ -285,7 +292,7 @@
     } else {
       if (w.phase === 'out' && w.path.length > 6) R.text('\uD83D\uDC4B', p.x + 10 * z, p.y - 40 * z, 12 * z, '#fff');
       var swing = w.moving ? Math.sin(w.anim / 0.16 * Math.PI / 2) : 0;
-      if (!(TF.Art.painted() && P && P.drawWest(ctx, w, p.x, p.y, z)) && !(painted && P.drawWalker(ctx, 'west', p.x, p.y, z, mirror, swing, null))) TF.Crew.drawPlaceholder(ctx, 'west', p.x, p.y, z, mirror, w);
+      if (!(TF.Art.painted() && P && P.drawWest(ctx, w, p.x, p.y, z)) && !(painted && P.drawWalker(ctx, 'west', p.x, p.y, z, mirror, swing, null, w))) TF.Crew.drawPlaceholder(ctx, 'west', p.x, p.y, z, mirror, w);
     }
   };
   // A great-tailed grackle: glossy black body, long keel tail, yellow eye, flapping when airborne.

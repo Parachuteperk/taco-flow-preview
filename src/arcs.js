@@ -14,7 +14,7 @@
   var D = TF.Dialogue || {};
   var DAYS = ['mon', 'tue', 'wed', 'thu', 'fri'];
   var A = { rant: null, rantAt: {}, said: {}, beats: [], banterDay: {}, wager: null, aliChoice: null, kingOn: false, kingDown: false, kingStole: {}, phillipDay: {} };
-  A.rng = World.rng(91);
+  A.rng = TF.Rng.story;
   Sim.rantRate = 1;
   function pick(a) { return a && a.length ? a[Math.floor(A.rng() * a.length)] : null; }
   function week() { return !!(TF.Week && TF.Week.active()); }
@@ -74,7 +74,7 @@
     if (TF.Invest) TF.Invest.pitchDay[3] = true;   // today Jared pitches the wager instead of metals
     el.querySelector('.txt').textContent = 'Jared: “Weekly wager: $15 says we hit today’s goal (' + W.goal() + ' tacos). Pays $35.”';
     var row = el.querySelector('.btns'); row.innerHTML = '';
-    [['Bet $15', 'wagerYes', function () { Sim.stats.money -= 15; A.wager.on = true; beat('jared', 'wager'); }], ['Pass', 'wagerNo', function () { A.wager.passed = true; }]].forEach(function (b) {
+    [['Bet $15', 'wagerYes', function () { TF.Ledger.add('wager', -15, 'jared weekly wager'); A.wager.on = true; beat('jared', 'wager'); }], ['Pass', 'wagerNo', function () { A.wager.passed = true; }]].forEach(function (b) {
       var btn = document.createElement('button'); btn.textContent = b[0]; btn.id = b[1];
       btn.addEventListener('click', function () { el.hidden = true; b[2](); });
       row.appendChild(btn);
@@ -82,11 +82,13 @@
     el.hidden = false;
   }
   // Called by Week at the end of a day (before the report): settle the wager.
+  // new level: per-day beat schedules restart; the said-lines memory and beat log carry over (C3c)
+  A.resetLevel = function () { A.rant = null; A.rantAt = {}; A.banterDay = {}; A.phillipDay = {}; A.kingOn = false; A.kingDown = false; A.kingStole = {}; A.wager = null; A.nextFree = undefined; };
   A.endDay = function (r) {
     var w = A.wager;
     if (w && w.on && !w.settled && r.day === 3) {
       w.settled = true; w.won = r.hit;
-      if (r.hit) Sim.stats.money += 35;
+      if (r.hit) TF.Ledger.add('wager', 35, 'jared weekly wager won');
       Sim.events.push({ type: 'toast', text: 'Jared’s wager: ' + (r.hit ? '+$35. “' + (pick(D.jared && D.jared.coin_win) || 'Called it.') + '”' : 'lost the $15. “' + (pick(D.jared && D.jared.coin_lose) || 'Next time.') + '”') });
     }
     A.rant = null; Sim.rantRate = 1;
@@ -106,7 +108,7 @@
     }], ['Take her tip', 'aliTip', function () {
       A.aliChoice.pick = 'tip';
       if (TF.Events) TF.Events.startWestNow(true);
-      Sim.stats.money += 10; Sim.floaters.push({ x: Sim.stand.geom.cx, y: Sim.stand.geom.cy, text: '+$10 West tip', t: 0 });
+      TF.Ledger.add('tips', 10, 'west tip (ali)'); Sim.floaters.push({ x: Sim.stand.geom.cx, y: Sim.stand.geom.cy, text: '+$10 West tip', t: 0 });
       beat('ali', 'took the tip');
     }]].forEach(function (b) {
       var btn = document.createElement('button'); btn.textContent = b[0]; btn.id = b[1];

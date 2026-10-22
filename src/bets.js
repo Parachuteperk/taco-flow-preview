@@ -8,7 +8,7 @@
     day: 1, dayStart: 0, dayEarn: 0, policy: 'ask', card: null, cardT: 0, holding: null, offeredToday: false, betAt: 60,
     bets: { placed: 0, up: 0, down: 0, net: 0 }, flips: { offered: 0, flipped: 0, won: 0, lost: 0, skipped: 0, net: 0 }
   };
-  function rnd(a, b) { return a + (b - a) * Sim.rand(); }
+  function rnd(a, b) { return a + (b - a) * TF.Rng.events(); }
   var el = document.getElementById('betCard');
 
   function showCard(kind, text, buttons) {
@@ -40,7 +40,7 @@
     return true;
   };
   function place(metal, amt) {
-    Sim.stats.money -= amt;
+    TF.Ledger.add('metal', -amt, 'jared stash');
     B.holding = { metal: metal, amt: amt };
     B.bets.placed++;
     toast('Jared stashed $' + amt + ' in ' + metal);
@@ -49,9 +49,9 @@
   function resolveBet() {
     var h = B.holding;
     if (!h) return;
-    var up = Sim.rand() < 0.75, r = h.metal === 'gold' ? 0.4 : 0.2;
+    var up = TF.Rng.wager() < 0.75, r = h.metal === 'gold' ? 0.4 : 0.2;
     var back = Math.round(h.amt * (up ? 1 + r : 1 - r));
-    Sim.stats.money += back;
+    TF.Ledger.add('metal', back, 'jared stash back');
     B.bets[up ? 'up' : 'down']++;
     B.bets.net += back - h.amt;
     toast((up ? '📈 ' : '📉 ') + h.metal + ' ' + (up ? 'up' : 'down') + ': $' + h.amt + ' → $' + back);
@@ -72,8 +72,8 @@
     return true;
   };
   function flip(stake) {
-    var win = Sim.rand() < 0.5;
-    Sim.stats.money += win ? stake : -stake;
+    var win = TF.Rng.wager() < 0.5;
+    TF.Ledger.add('wager', win ? stake : -stake, 'coin flip');
     B.flips.flipped++;
     B.flips[win ? 'won' : 'lost']++;
     B.flips.net += win ? stake : -stake;
@@ -82,7 +82,7 @@
 
   B.endDay = function () {
     resolveBet();
-    if (Sim.rand() < 0.35) B.offerFlip();
+    if (TF.Rng.events() < 0.35) B.offerFlip();
     B.day++; B.dayStart = Sim.t; B.dayEarn = 0; B.offeredToday = false; B.betAt = rnd(40, 120);
   };
 

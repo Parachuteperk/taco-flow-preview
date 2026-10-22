@@ -24,20 +24,20 @@
   var MAJOR = { grill: 1, banner: 1, serving: 1, canopy: 1, stand2: 1, picnic: 1 };
   // Old Main class bells (item 7): seconds into OPEN. Each rings after a 5 s countdown and sends
   // a wave of students out; a Banner makes the wave bigger, Antonio's hype timed into it bigger still.
-  var BELLS = [[90], [60, 135], [55, 130], [70, 140], [45, 120]];
+  var BELLS = (TF.World && TF.World.level && TF.World.level.spawn.bells) || [[90], [60, 135], [55, 130], [70, 140], [45, 120]];   // from the level file
   var BELL_WARN = 5, BELL_WAVE = 12, BELL_T = 20;
 
   var W = {
     mode: /[?&]mode=free/.test(location.search) ? 'free' : 'week',
     day: 1, phase: 'prep', t: 0, overtime: 0, majorUsed: false, openMinorUsed: false, eventsToday: 0,
-    results: [], today: null, ended: false
+    results: [], today: null, ended: false, gen: 0
   };
 
   // Day 1 starts with SIFE seed money from the club treasury, so the first upgrade can happen in
   // the very first PREP. Mrs. West's profit meter counts from it (seed money isn't profit).
   W.SEED = 60;
   if (/[?&]mode=free/.test(location.search) === false) {
-    Sim.stats.money = W.SEED;
+    TF.Ledger.add('seed', W.SEED, 'SIFE seed money');
     setTimeout(function () { Sim.events.push({ type: 'toast', text: '\uD83C\uDF93 SIFE seed money: $' + W.SEED + ' from the club treasury. Tap \uD83D\uDCB0 INVEST to upgrade the stand!' }); }, 600);
   }
   W.active = function () { return W.mode === 'week'; };
@@ -106,14 +106,30 @@
   W.openDay = function () {
     if (!W.active() || W.phase !== 'prep' || !(TF.Onboard ? TF.Onboard.allConnected() : Sim.stand.connected)) return false;
     W.phase = 'open'; W.t = 0; W.eventsToday = 0; W.necks = {};
-    W.bells = BELLS[W.day - 1].slice(); W.bell = null; W.bellsRung = 0;
+    var lvBells = TF.World.level && TF.World.level.spawn && TF.World.level.spawn.bells;   // read now: a level load can change them
+    W.bells = ((lvBells || BELLS)[W.day - 1] || []).slice(); W.bell = null; W.bellsRung = 0;
     W.today = snap();
     if (TF.Bets) TF.Bets.dayStart = Sim.t;
     Sim.closing = false;
+    if (TF.Econ) TF.Econ.openDay(W.day);   // kits / prices / rent (Pass 6 C3)
     TF.ui.api.play();
     Sim.events.push({ type: 'toast', text: 'Day ' + W.day + ': ' + W.dayName() + ' — sell ' + W.goal() + ' tacos!' });
     W.refresh();
     return true;
+  };
+
+  // A level load (Pass 6 C3b): back to that level's Monday PREP, whatever phase the old level was in, so Week,
+  // Stock and the HUD agree (was: Week open/day 2 while Stock was prep/day 1, and sales failed).
+  W.resetForLevel = function () {
+    if (!W.active()) return;
+    W.day = 1; W.phase = 'prep'; W.t = 0; W.overtime = 0; W.majorUsed = false; W.openMinorUsed = false; W.eventsToday = 0;
+    W.results = []; W.today = null; W.ended = false; W.bell = null; W.bells = []; W.necks = {};
+    card.hidden = true; $('endCard').hidden = true;
+    Sim.closing = false; Sim.demandMul = 1;
+    W.gen++;   // async work from the old level (the Friday verdict) checks this and stands down
+    [TF.Hacks, TF.Story, TF.Arcs, TF.Events, TF.Ambient].forEach(function (m) { if (m && m.resetLevel) m.resetLevel(); });
+    if (TF.ui && TF.ui.api) TF.ui.api.pause();
+    W.refresh();
   };
 
   W.step = function (dt) {
@@ -178,6 +194,7 @@
     if (TF.Hacks) TF.Hacks.endDay();
     var objDay = TF.Objects ? TF.Objects.endDay() : null;   // upkeep + drink costs
     Sim.flushQueue();   // overtime is up: anyone still waiting leaves politely
+    var econDay = TF.Econ ? TF.Econ.endDay(W.day) : null;   // spoilage + Friday rent
     TF.ui.api.pause();
     W.phase = 'report';
     if (TF.Crew) TF.Crew.cheer();
@@ -188,7 +205,7 @@
     var r = {
       day: W.day, name: W.dayName(), goal: W.goal(), sold: b.served - a.served, cash: b.earn - a.earn,
       lost: diffLost(a.lost, b.lost),
-      neck: neck ? { name: neck, secs: Math.round(W.necks[neck]) } : null, betNet: betNet, hadBet: false, obj: objDay, invest: TF.Invest ? TF.Invest.report() : []
+      neck: neck ? { name: neck, secs: Math.round(W.necks[neck]) } : null, betNet: betNet, hadBet: false, obj: objDay, econ: econDay, invest: TF.Invest ? TF.Invest.report() : []
     };
     r.hit = r.sold >= r.goal;
     if (Sim.stands.length > 1) r.standSold = Sim.stands.map(function (st, i) { return (st.served || 0) - (a.stSold[i] || 0); });
@@ -213,6 +230,7 @@
     'PICKUP FULL': ['matt', 'serving', 'cannon'],
     'NO STOCK': ['runner', 'cooler2', 'grill'],
     'gave up waiting': ['runner', 'cooler2', 'grill', 'ali', 'phillip'],
+    'sold out': ['runner', 'cooler2', 'grill'],
     'GRILL STALLED': ['aiali', 'phillip', 'aaron'],
     'SLOW KITCHEN': ['ali', 'phillip', 'aaron', 'grill'],
     'too pricey': ['banner', 'antonio', 'canopy'],
@@ -235,7 +253,7 @@
       if (id === 'stand2') return Sim.stands.length < 2 ? { name: 'Second stand', price: C.STAND2_PRICE } : null;
       return null;
     }
-    var WHY = { 'line full': 'the line was full', 'gave up waiting': 'people gave up waiting', 'too pricey': 'tacos felt too pricey', 'closing time': 'closing time turned people away' };
+    var WHY = { 'line full': 'the line was full', 'gave up waiting': 'people gave up waiting', 'too pricey': 'tacos felt too pricey', 'sold out': 'you ran out of taco kits (order more in STOCK)', 'closing time': 'closing time turned people away' };
     var when = W.day >= 5 ? 'In Free Play' : 'Tomorrow';
     for (var i = 0; i < order.length; i++) {
       var o = info(order[i]);
@@ -264,6 +282,8 @@
       '<div class="row"><span>Customers lost</span><b>' + lostN + '</b></div>' + (lost.length ? '<div class="why">' + lost.join(' · ') + '</div>' : '') +
       '<div class="row"><span>Biggest bottleneck</span><b>' + (r.neck ? r.neck.name + ' (' + r.neck.secs + 's)' : 'none — smooth day!') + '</b></div>' +
       (r.standSold ? '<div class="row"><span>Best stand</span><b>Stand ' + (r.standSold[1] > r.standSold[0] ? 2 : 1) + ' (' + r.standSold.join(' vs ') + ' sold)</b></div>' : '') +
+      (r.econ ? '<div class="row"><span>\uD83D\uDDD1 Spoiled at close</span><b>' + r.econ.spoiledKits + ' kits (\u2212$' + (r.econ.spoiledCents / 100).toFixed(2) + ')</b></div>' : '') +
+      (r.econ && r.econ.rent ? '<div class="row"><span>Rent to Mrs. West</span><b>' + (r.econ.rent.paid ? '\u2714 paid' : '\u2718 short') + '</b></div>' : '') +
       investRows(r.invest) +
       '<div class="brief" id="briefing"><b>Briefing:</b> ' + r.suggest.text + '</div>' +
       (r.obj && (r.obj.drinks || r.obj.upkeep) ? '<div class="row"><span>Drinks / upkeep</span><b>' + r.obj.drinks + ' drinks +$' + r.obj.drinkRev + ' \u00B7 costs -$' + (r.obj.upkeep + r.obj.drinkCost) + '</b></div>' : '') +
@@ -271,12 +291,14 @@
       (r.hadBet ? '<div class="row"><span>Jared’s bets</span><b>' + (r.betNet === 0 ? 'no change' : (r.betNet > 0 ? '+$' : '-$') + Math.abs(r.betNet)) + '</b></div>' : '') +
       '<button id="btnNextDay">' + (r.day < 5 ? 'Next day →' : 'See how the week went →') + '</button>';
     card.hidden = false;
+    if (TF.Save) TF.Save.write('report');   // auto-save after REPORT: resumes into the next day's PREP, or Friday's verdict (C6)
     $('btnNextDay').addEventListener('click', function () {
       TF.Audio.unlock();
       if (r.day < 5) { nextDay(); return; }
       // Friday: Mrs. West's limo pulls up for the verdict, then the ending
       card.hidden = true;
-      if (TF.Story && TF.Story.started) TF.Story.playVerdict(function () { showEnding(); }); else showEnding();
+      var gen = W.gen;
+      if (TF.Story && TF.Story.started) TF.Story.playVerdict(function () { if (gen === W.gen) showEnding(); }); else showEnding();
     });
     W.refresh();
   }
@@ -295,11 +317,47 @@
   function nextDay() {
     card.hidden = true;
     W.day++; W.phase = 'prep'; W.majorUsed = false; W.openMinorUsed = false; W.t = 0;
+    if (TF.Econ) TF.Econ.nextDay(W.day);
     Sim.closing = false;
     Sim.reopenStand();
+    Sim.newDay();   // a clean quad each morning (C6: what a resumed day starts from too)
     Sim.events.push({ type: 'toast', text: 'Day ' + W.day + ' PREP: ' + W.dayName() + '. Goal ' + W.goal() + ' tacos. Buy upgrades, then OPEN.' });
     if (TF.Crew) TF.Crew.refresh();
     W.refresh();
+    if (TF.Save) TF.Save.write('prep');   // auto-save at PREP (C6)
+  }
+  // Resume (C6): the saved day's PREP. An after-REPORT save moves on through the normal next-day step.
+  W.setDayForResume = function (d, afterReport) {
+    card.hidden = true; $('endCard').hidden = true; W.ended = false; W.gen++;
+    W.day = d;
+    if (afterReport && d >= 5) { W.phase = 'report'; showEnding(); }   // Friday: the week's verdict (and its retry)
+    else if (afterReport) { W.phase = 'report'; nextDay(); }
+    else {
+      W.phase = 'prep'; W.t = 0; W.overtime = 0; W.majorUsed = false; W.openMinorUsed = false; W.eventsToday = 0; W.bell = null; W.today = null;
+      Sim.closing = false; Sim.reopenStand(); Sim.newDay();
+      if (TF.Econ && TF.Econ.on()) TF.Econ.K.setPhase('prep', TF.Econ.abs(d));
+      if (TF.Crew) TF.Crew.refresh();
+      W.refresh();
+    }
+    if (TF.ui && TF.ui.api) TF.ui.api.pause();
+  };
+
+  // The weekend verdict (Pass 6A C5): the rent scene (Grok's lines, data/story.js), where the money came
+  // from (operating profit / trading gains / capital spent, the ledger's split), the stock summary and
+  // how the Star's tips did this week.
+  function verdictRows(paid) {
+    var L = TF.Ledger.split(), d = function (c) { return (c < 0 ? '\u2212$' : '$') + (Math.abs(c) / 100).toFixed(2); }, h = '';
+    var scene = TF.STORY && TF.STORY.rent && TF.STORY.rent.L1 && TF.STORY.rent.L1[paid ? 'paid' : 'short'];
+    if (scene) h += '<div class="scene">' + scene.slice(0, 4).map(function (l) { return '<div><b>' + l.who.toUpperCase() + ':</b> ' + l.text + '</div>'; }).join('') + '</div>';
+    h += '<div class="row"><span>Operating profit</span><b>' + d(L.operating) + '</b></div>' +
+      '<div class="row"><span>Trading gains</span><b>' + d(L.trading) + '</b></div>' +
+      '<div class="row"><span>Capital spent</span><b>' + d(L.capital) + '</b></div>';
+    var sm = TF.Mkt ? TF.Mkt.summary() : [];
+    if (sm.length) h += '<div class="row small"><span>Stocks</span><b>' + sm.map(function (x) { return x.sym + ' ' + x.shares + ' sh @ $' + (x.cents / 100).toFixed(2) + ' (' + (x.pct >= 0 ? '+' : '') + x.pct + '%)'; }).join(' \u00B7 ') + '</b></div>';
+    var sc = TF.Mkt ? TF.Mkt.scorecard() : null;
+    if (sc && sc.star && sc.star.total) h += '<div class="row small"><span>The Star\u2019s tips</span><b>' + sc.star.hits + ' / ' + sc.star.total + ' right</b></div>';
+    W.verdict = { operating: L.operating, trading: L.trading, capital: L.capital, stocks: sm, star: sc && sc.star };
+    return h;
   }
 
   function showEnding() {
@@ -309,27 +367,39 @@
     var total = W.results.reduce(function (s, r) { return s + (r ? r.sold : 0); }, 0);
     var cash = W.results.reduce(function (s, r) { return s + (r ? r.cash : 0); }, 0);
     var win = hits >= 4;
-    W.won = win;
-    var end = $('endCard'), Sy = TF.Story, profit = Sy ? Sy.profit() : 0, bet = Sy && Sy.started ? profit >= Sy.target : null;
-    W.betWon = bet;
+    // Taco Week with the economy: the week is decided by Friday's rent to Mrs. West (PLAN §1b), not goals.
+    var econ = TF.Econ && TF.Econ.on(), rentPaid = econ ? TF.Econ.rentPaid() : null;
+    if (econ) win = rentPaid;
+    W.won = win; W.rentPaid = rentPaid;
+    var end = $('endCard'), Sy = TF.Story, profit = Sy ? Sy.profit() : 0, bet = Sy && Sy.started && !econ ? profit >= Sy.target : null;
+    W.betWon = bet;   // the Pass 5 profit term sheet; with the economy on, rent decides the week instead (C3b)
     if (bet === true) end.innerHTML = '<h2>\uD83D\uDCBC The Angel Round! \uD83C\uDF2E</h2><p>Mrs. West signs her term sheet: \u201C$' + profit + ' in five days. Gentlemen, I\u2019m investing.\u201D</p>' +
       '<div class="comic"><div><b>\uD83D\uDE97</b>The limo pulls up.</div><div><b>\uD83D\uDC5C</b>SNAP. A gold check.</div><div><b>\u2728</b>ANGEL-BACKED tacos.</div></div>' +
       '<div class="row"><span>Angel Round</span><b>+$100 for 10% of the stand</b></div>';
     else if (bet === false) end.innerHTML = '<h2>\uD83C\uDFEC WEST & CO. opens next door</h2><p>\u201C$' + profit + '? Adorable.\u201D Her Designer Pop-Up sells $29 artisanal tacos. To nobody.</p>' +
       '<div class="comic"><div><b>\uD83D\uDE97</b>The limo pulls up.</div><div><b>\uD83D\uDC5C</b>SNAP. \u201CAdorable.\u201D</div><div><b>\uD83C\uDFEC</b>$29 tacos. Zero customers. Jared smirks.</div></div>';
-    else end.innerHTML = '';
-    end.innerHTML += win
+    else if (econ) {
+      var due = TF.Econ.M.rentDue() / 100, have = Sim.stats.money;
+      end.innerHTML = rentPaid
+        ? '<h2>\uD83C\uDFE0 Rent paid. The stand stays!</h2><p>Mrs. West counts $' + due + ' twice. \u201CHmph. On time. See you next week, gentlemen.\u201D</p>'
+        : '<h2>\uD83D\uDCB8 Rent short</h2><p>$' + have.toFixed(2) + ' of $' + due + '. Mrs. West snaps her purse: \u201CMonday, darlings. Again.\u201D</p>';
+      end.innerHTML += '<div class="row"><span>Rent to Mrs. West</span><b>' + (rentPaid ? '\u2714 $' + due + ' paid on Friday' : '\u2718 short $' + Math.max(0, due - have).toFixed(2) + ': retry the week') + '</b></div>';
+      end.innerHTML += verdictRows(rentPaid);
+    } else end.innerHTML = '';
+    end.innerHTML += econ ? '' : win
       ? '<p><b>\uD83C\uDF2E Taco Week Champions!</b> The Quad will be talking about this for semesters.</p>'
       : '<p><b>Well\u2026 it was a week.</b> The grackles ate well and Jared is already planning a comeback.</p>';
     end.innerHTML += (bet !== null ? '<div class="row"><span>Mrs. West\u2019s term sheet</span><b>$' + profit + ' / $' + Sy.target + (bet ? ' \u2714 won' : ' \u2718 lost') + '</b></div>' : '') +
-      '<div class="row"><span>Goals hit</span><b>' + hits + ' / 5</b></div>' +
+      '<div class="row"><span>' + (econ ? 'Goals hit (bonus)' : 'Goals hit') + '</span><b>' + hits + ' / 5</b></div>' +
       '<div class="row"><span>Tacos sold</span><b>' + total + '</b></div>' +
       '<div class="row"><span>Cash earned</span><b>$' + cash + '</b></div>' +
       '<div class="row"><span>Score</span><b>' + (total * 10 + cash + hits * 100) + '</b></div>' +
-      '<div class="btns"><button id="btnPlayAgain">Play again</button><button id="btnFreePlay">Free play</button></div>';
+      (econ && !rentPaid ? '<div class="btns"><button id="btnRetryWeek">\uD83D\uDD01 Retry the week (Monday)</button><button id="btnPlayAgain">Start over</button></div>'
+        : '<div class="btns"><button id="btnPlayAgain">Play again</button><button id="btnFreePlay">Free play</button></div>');
     end.hidden = false;
+    if ($('btnRetryWeek')) $('btnRetryWeek').addEventListener('click', function () { TF.Checkpoint.retry(); });
     $('btnPlayAgain').addEventListener('click', function () { location.href = location.pathname; });
-    $('btnFreePlay').addEventListener('click', function () {
+    if ($('btnFreePlay')) $('btnFreePlay').addEventListener('click', function () {
       end.hidden = true; if (TF.Story && bet !== null) TF.Story.applyEnding(bet); W.mode = 'free'; Sim.closing = false; Sim.reopenStand(); TF.ui.api.play(); W.refresh(); if (TF.Crew) TF.Crew.refresh();
     });
     W.refresh();
@@ -352,7 +422,8 @@
   }
   W.refresh = function () {
     refreshLost();
-    if (TF.Arcs) TF.Arcs.refresh();   // banter + Wednesday's wager (before Jared's metals pitch)
+    if (TF.Arcs) TF.Arcs.refresh();
+    if (TF.Econ) TF.Econ.refresh();   // banter + Wednesday's wager (before Jared's metals pitch)
     if (TF.Invest) TF.Invest.refresh();
     if (TF.Story) TF.Story.refresh();
     if (!W.active()) {   // Free Play: the chip just counts tacos

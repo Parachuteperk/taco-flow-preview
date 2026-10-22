@@ -20,14 +20,31 @@
       var walk = 0;
       for (var wy = -4; wy <= 4; wy++) for (var wx = -4; wx <= 4; wx++) if (Math.hypot(wx, wy) <= 4 && World.isWalkway(x + 1 + wx, y + 1 + wy)) walk++;
       if (walk < 14) continue;
-      cands.push({ sx: x, sy: y, rot: rot, line: line, score: Math.hypot(x + 1 - 12.5, y + 1 - 13) - walk * 0.05 });
+      var cq = (World.level && World.level.landmarks.quad && World.level.landmarks.quad.center) || { x: World.W / 2 - 0.5, y: World.H / 2 };
+      cands.push({ sx: x, sy: y, rot: rot, line: line, score: Math.hypot(x + 1 - cq.x, y + 1 - cq.y) - walk * 0.05 });
     }
     cands.sort(function (a, b) { return a.score - b.score; });
-    var out = [];
-    cands.forEach(function (c) {
-      if (out.length >= 3) return;
-      if (out.every(function (o) { return Math.hypot(o.sx - c.sx, o.sy - c.sy) >= 6; }) && World.validateStand(c.sx, c.sy, c.rot).ok) out.push(c);
+    // the level's stand slots come first (when they pass the validator and get a line)
+    var slots = World.standSlots && World.standSlots.length ? World.standSlots.map(function (s) { return { id: s.id, x: s.x, y: s.y, rot: 0 }; }) : ((World.level && World.level.landmarks.quad && World.level.landmarks.quad.slots) || []);
+    slots.slice().reverse().forEach(function (sl) {
+      var rot = World.validateStand(sl.x, sl.y, sl.rot).ok ? sl.rot : World.bestRotation(sl.x, sl.y, sl.rot);
+      var line = rot === null ? null : TF.planLine(sl.x, sl.y, rot, 4);
+      if (line) cands.unshift({ sx: sl.x, sy: sl.y, rot: rot, line: line, slot: sl.id });
     });
+    // spots with no live oak on or right around the footprint first (the canopy hid the stand, C4 polish)
+    function treeNear(c) {
+      for (var y = c.sy - 1; y <= c.sy + 2; y++) for (var x = c.sx - 1; x <= c.sx + 2; x++) if (World.get(x, y) === World.T.TREE) return true;
+      return false;
+    }
+    var out = [];
+    [false, true].forEach(function (allowTrees) {
+      cands.forEach(function (c) {
+        if (out.length >= 3 || out.indexOf(c) >= 0 || (!allowTrees && treeNear(c))) return;
+        if (out.every(function (o) { return Math.hypot(o.sx - c.sx, o.sy - c.sy) >= 6; }) && World.validateStand(c.sx, c.sy, c.rot).ok) out.push(c);
+      });
+    });
+    // the first time the pins appear, open the camera on the first (main) slot
+    if (out.length && !O.centered && !(TF.Week && TF.Week.day > 1)) { O.centered = true; R.centerOn(out[0].sx + 1, out[0].sy + 1.5); }
     O.spots = out;
     pinBox.innerHTML = '';
     O.pins = out.map(function (s, i) {
@@ -84,7 +101,9 @@
   // A pin whose spot is off-screen sticks to the screen edge with an arrow; tapping it pans there.
   function pin(el, s) {
     var p = R.toScreen(s.sx + 1, s.sy + 1), y = p.y - 40 * R.cam.z, m = 70;
-    var cx = Math.max(m, Math.min(R.vw - m, p.x)), cy = Math.max(m + 60, Math.min(R.vh - 20, y));
+    if (!el._hw) el._hw = el.offsetWidth / 2;   // the pin's own half-width (~80 px on a phone), measured once
+    var mx = Math.max(m, (el._hw || 0) + 22);       // + room for the edge arrow, so the label never clips (C4 polish)
+    var cx = Math.max(mx, Math.min(R.vw - mx, p.x)), cy = Math.max(Math.max(m + 60, (R.hudBottom || 0) + 56), Math.min(R.vh - 20, y));   // never over the HUD (it wraps on phones)
     var off = cx !== p.x || cy !== y;
     if (off !== (el.dataset.edge === '1')) {
       el.dataset.edge = off ? '1' : '';

@@ -1,6 +1,8 @@
 // Boot, fixed-timestep loop, pointer input (mouse + touch), HUD and the window.__flow debug hook.
 (function (TF) {
   var C = TF.C, World = TF.World, Sim = TF.Sim, R = TF.Render, Audio = TF.Audio;
+  // a touch-first device (phones / tablets): keyboard hints are left out
+  function touchUI() { return !!(window.matchMedia && matchMedia('(pointer: coarse)').matches) || 'ontouchstart' in window; }
 
   var canvas = document.getElementById('c');
   var ctx = canvas.getContext('2d');
@@ -38,16 +40,34 @@
     if (!R.vw0) { R.cam.z = Math.max(1.1, Math.min(2.0, Math.min(R.vw, R.vh) / 520)); R.defaultZ = R.cam.z; }
     R.centerOn(oldCenter.x, oldCenter.y);
     R.vw0 = R.vw; R.vh0 = R.vh;
+    makeCamera();
+  }
+  // ---- 6B camera (src/camera.js): zoom buckets [whole quad, default, close-up], pinch about the fingers,
+  // inertia, and the view clamped to the level. R.cam *is* the camera's {x,y,z}, so the renderer, onboarding
+  // and FX keep reading it as before. Re-made on resize (the whole-quad zoom depends on the viewport) and on
+  // a level load, keeping the view where it was. Without src/camera.js (unit tests) the old code runs.
+  var CAM = null;
+  function makeCamera() {
+    if (!TF.Camera) return null;
+    var lo = minimumZoom(), mid = Math.max(lo * 1.05, R.defaultZ || 1.2), hi = Math.max(mid * 1.05, 2.6);
+    var z = Math.max(lo, Math.min(hi, R.cam.z)), x = R.cam.x, y = R.cam.y;
+    CAM = TF.Camera.create({ W: World.W, H: World.H, width: R.vw, height: R.vh, tileWidth: C.TW, tileHeight: C.TH, zoomLevels: [lo, mid, hi], zoom: z });
+    CAM.cam.x = x; CAM.cam.y = y; CAM.clamp();
+    R.cam = CAM.cam;
+    R.centerOn = function (wx, wy) { CAM.snapTo(wx, wy); };   // centred where the bounds allow
+    if (TF.ui) TF.ui.camera = CAM;
+    return CAM;
   }
   window.addEventListener('resize', resize);
   resize();
+  World.onLoad.push(function () { makeCamera(); });
 
   // ---- HUD ---------------------------------------------------------------
   function defaultHint() {
     var sel = Sim.selected();
     if (TF.Week && TF.Week.active() && TF.Week.phase === 'prep' && TF.Onboard && TF.Onboard.allConnected()) return 'Day ' + TF.Week.day + ' PREP: buy upgrades in Stand & crew, then press OPEN.';
     var who = Sim.stands.length > 1 ? 'Stand ' + (sel.idx + 1) + ': ' : '';
-    if (!sel.placed) return who + 'Tap a glowing spot (or Place stand, then open ground). R rotates.';
+    if (!sel.placed) return who + 'Tap a glowing spot (or Place stand, then open ground).' + (touchUI() ? '' : ' R rotates.');   // no R key on a phone
     if (!sel.line.length) return who + 'Tap \u201CUse suggested line\u201D or Build line from the ORDER window to a path.';
     if (!sel.connected) return who + 'Keep painting: the line\u2019s end must touch a footpath.';
     var other = Sim.stands.filter(function (o) { return o.placed && !o.connected; })[0];
@@ -78,7 +98,7 @@
     state.mode = m;
     if (m !== 'idle' && m !== 'object') state.buildOpen = true;
     state.ghost = null; state.hover = null;
-    if (m === 'place') setHint('Tap open ground to place the stand. R / ↻ rotates. Green = OK.');
+    if (m === 'place') setHint('Tap open ground to place the stand. ' + (touchUI() ? '↻' : 'R / ↻') + ' rotates. Green = OK.');
     else if (m === 'build') setHint('Tap or drag tile by tile from the ORDER window to a footpath. Tap a line tile to remove it and the rest.');
     else setHint(defaultHint());
     refreshButtons();
@@ -92,6 +112,10 @@
   });
   el.debug.addEventListener('click', function () { el.debugBar.hidden = !el.debugBar.hidden; el.debug.classList.toggle('active', !el.debugBar.hidden); });
   // Camera: a stand close-up (about 1.25x the default zoom) or the whole quad.
+  function minimumZoom() {
+    var mw = (World.W + World.H) * (C.TW / 2), mh = (World.W + World.H) * (C.TH / 2);
+    return Math.max(0.12, Math.min(R.vw * 0.94 / mw, (R.vh - 70) * 0.94 / mh));
+  }
   state.view = 'default';
   el.focus.addEventListener('click', function () {
     if (state.view !== 'stand') {
@@ -100,8 +124,10 @@
       if (st.placed) R.centerOn(st.geom.cx, st.geom.cy + 0.5); else R.centerOn(World.W / 2, World.H / 2 - 2);
       state.view = 'stand'; el.focus.textContent = '\uD83D\uDDFA Quad';
     } else {
-      R.cam.z = Math.max(0.5, Math.min(R.vw, R.vh * 2) / ((World.W + World.H) * (C.TW / 2)));
-      R.centerOn(World.W / 2, World.H / 2 - 1);
+      // the whole level, with a small margin, below the HUD (bigger maps in Pass 6)
+      R.cam.z = minimumZoom();
+      R.centerOn(World.W / 2, World.H / 2);
+      R.cam.y += 30;   // nudge below the HUD
       state.view = 'overview'; el.focus.textContent = '\uD83D\uDD0D Stand';
     }
     if (TF.Onboard) TF.Onboard.userPanned = true;
@@ -120,23 +146,35 @@
   function standAt(cx, cy) { return tileAt(cx, cy); }
 
   function setZoom(nz, cx, cy) {
-    nz = Math.max(0.6, Math.min(2.6, nz));
+    if (CAM) { CAM.zoomAt(Math.max(minimumZoom(), Math.min(2.6, nz)), cx, cy); return; }
+    nz = Math.max(minimumZoom(), Math.min(2.6, nz));   // bigger levels (Pass 6) zoom out further
     if (cx === undefined) { cx = R.vw / 2; cy = R.vh / 2; }
     var w = R.toWorld(cx, cy);
     R.cam.z = nz;
     var p = R.toScreen(w.x, w.y);
     R.cam.x += cx - p.x; R.cam.y += cy - p.y;
   }
-  el.zin.addEventListener('click', function () { setZoom(R.cam.z * 1.25); });
-  el.zout.addEventListener('click', function () { setZoom(R.cam.z / 1.25); });
-  canvas.addEventListener('wheel', function (e) { e.preventDefault(); setZoom(R.cam.z * (e.deltaY < 0 ? 1.12 : 1 / 1.12), e.clientX, e.clientY); }, { passive: false });
+  // +/- and the wheel step through the camera's three zoom buckets (pinch stays smooth)
+  el.zin.addEventListener('click', function () { if (CAM) CAM.wheel(-1); else setZoom(R.cam.z * 1.25); });
+  el.zout.addEventListener('click', function () { if (CAM) CAM.wheel(1); else setZoom(R.cam.z / 1.25); });
+  canvas.addEventListener('wheel', function (e) {
+    e.preventDefault();
+    if (CAM) CAM.wheel(e.deltaY, e.clientX, e.clientY); else setZoom(R.cam.z * (e.deltaY < 0 ? 1.12 : 1 / 1.12), e.clientX, e.clientY);
+  }, { passive: false });
   el.crowd.addEventListener('click', function () { api.setCrowd(Sim.crowd === 'normal' ? 'high' : Sim.crowd === 'high' ? 'low' : 'normal'); });
   el.hack.addEventListener('click', function () { Audio.unlock(); api.hack(); });
   el.raid.addEventListener('click', function () { Audio.unlock(); api.raid(); });
 
   var toastTimer = null;
+  function toastTop() {
+    var bc = $('betCard'), y = R.hudBottom || 0;
+    if (bc && !bc.hidden) y = Math.max(y, bc.getBoundingClientRect().bottom);
+    return Math.round(y + 8);
+  }
   function toast(text) {
     el.toast.textContent = text; el.toast.hidden = false;
+    // phone: below the (wrapped) HUD, so a breakdown toast never covers the MATT chip it points at (C4)
+    el.toast.style.top = innerWidth < 480 && R.hudBottom ? toastTop() + 'px' : '';
     clearTimeout(toastTimer); toastTimer = setTimeout(function () { el.toast.hidden = true; }, 2600);
   }
   var popupTimer = null;
@@ -176,10 +214,12 @@
     return r.ok;
   }
 
-  var touches = {}, pinch = null;
+  var touches = {}, pinch = null, mmPointers = {};   // world pointers (pinch pairs come only from these) / minimap pointers
   canvas.addEventListener('pointerdown', function (e) {
     Audio.unlock();
-    canvas.setPointerCapture(e.pointerId);
+    try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* synthetic / already-ended pointer */ }
+    if (TF.Minimap6 && TF.Minimap6.tap(e.clientX, e.clientY)) { mmPointers[e.pointerId] = true; return; }   // the minimap's own: never a world pointer
+    if (CAM) CAM.pointerDown(e.pointerId, e.clientX, e.clientY, e.timeStamp);
     touches[e.pointerId] = { x: e.clientX, y: e.clientY };
     var ids = Object.keys(touches);
     if (ids.length === 2) {   // second finger: pinch zoom, cancel whatever the first was doing
@@ -198,7 +238,9 @@
     }
   });
   canvas.addEventListener('pointermove', function (e) {
+    if (mmPointers[e.pointerId]) return;   // a minimap tap
     if (touches[e.pointerId]) touches[e.pointerId] = { x: e.clientX, y: e.clientY };
+    if (pinch && CAM) { CAM.pointerMove(e.pointerId, e.clientX, e.clientY, e.timeStamp); if (TF.Onboard) TF.Onboard.userPanned = true; return; }
     if (pinch) {
       var ids = Object.keys(touches);
       if (ids.length === 2) {
@@ -218,6 +260,8 @@
         drag.tile = t; drag.del = null;
         if (!World.isLine(t.x, t.y)) lineAt(e.clientX, e.clientY);
       }
+    } else if (CAM && !(state.mode === 'place' && drag.type !== 'mouse')) {
+      if (CAM.pointerMove(e.pointerId, e.clientX, e.clientY, e.timeStamp)) { drag.moved = true; if (TF.Onboard) TF.Onboard.userPanned = true; }
     } else if (drag.moved && !(state.mode === 'place' && drag.type !== 'mouse')) {
       R.cam.x += e.clientX - drag.lx; R.cam.y += e.clientY - drag.ly;
       if (TF.Onboard) TF.Onboard.userPanned = true;
@@ -225,6 +269,8 @@
     drag.lx = e.clientX; drag.ly = e.clientY;
   });
   function endPointer(e, cancelled) {
+    if (CAM) CAM.pointerUp(e.pointerId, e.timeStamp, cancelled);
+    if (mmPointers[e.pointerId]) { delete mmPointers[e.pointerId]; return; }   // a minimap tap
     delete touches[e.pointerId];
     if (pinch) { if (!Object.keys(touches).length) pinch = null; return; }
     if (!drag || drag.id !== e.pointerId) return;
@@ -244,6 +290,8 @@
   }
   canvas.addEventListener('pointerup', function (e) { endPointer(e, false); });
   canvas.addEventListener('pointercancel', function (e) { endPointer(e, true); });
+  canvas.addEventListener('lostpointercapture', function (e) { if (CAM) CAM.pointerUp(e.pointerId, e.timeStamp, true); });
+  if (document.addEventListener) document.addEventListener('visibilitychange', function () { if (document.hidden && CAM) CAM.cancel(); });
   // A finger lifting also "leaves" the canvas: keep a touch ghost (e.g. a rejected spot and its
   // red tile + fix) on screen; only the mouse clears it by leaving.
   canvas.addEventListener('pointerleave', function (e) { if (!drag && e.pointerType === 'mouse') { if (state.mode === 'place') state.ghost = null; state.hover = null; } });
@@ -278,6 +326,13 @@
       handleEvents();
     }
     if (TF.FX) TF.FX.frame(real, state.running && !(TF.Title && TF.Title.active) && !(TF.CallLine && TF.CallLine.active));
+    if (CAM) CAM.update(real);
+    R.hudBottom = $('hud').getBoundingClientRect().bottom;
+    // phones: Jared's card sits just below the HUD, however many rows it wraps to
+    var bc = $('betCard');
+    if (bc && !bc.hidden && R.vw <= 480) { var top = Math.round(R.hudBottom + 8) + 'px'; if (bc.style.top !== top) bc.style.top = top; }
+    // phone toasts stack under the HUD and under Jared's card when it's up (it used to cover them, C4 final review)
+    if (!el.toast.hidden && innerWidth < 480) el.toast.style.top = toastTop() + 'px';
     R.draw(state.running ? state.acc / C.DT : 1, { placing: state.mode === 'place', building: state.mode === 'build', ghost: state.ghost, hover: state.hover, lineBad: state.lineBad });
 
     var target = Sim.stats.money;
@@ -402,13 +457,17 @@
         build: TF.Build ? { started: TF.Build.started, finished: TF.Build.finished, jobs: TF.Build.jobs.map(function (j) { return { id: j.id, phase: j.phase, t: Math.round(j.t * 10) / 10 }; }), log: TF.Build.log.slice() } : null,
         permit: TF.Week ? { majorUsed: TF.Week.majorUsed, openMinorUsed: TF.Week.openMinorUsed } : null, confirmId: TF.Crew ? TF.Crew.confirmId : null,
         objects: TF.Objects ? { list: TF.Objects.list.map(function (o) { return { kind: o.kind, x: o.x, y: o.y, st: o.st ? o.st.idx : null, ready: o.ready }; }), day: TF.Objects.day, totals: TF.Objects.totals, placing: TF.Objects.placing ? TF.Objects.placing.kind : null, shade: TF.Objects.shadeStats, litter: TF.Objects.litter.length, litterStats: TF.Objects.litterStats, litterMul: Sim.stands.map(function (st) { return Math.round((st.litterMul || 1) * 100) / 100; }), eating: Sim.guests.filter(function (g) { return g.state === 'EAT'; }).length, spots: TF.Objects.placing ? TF.Objects.placing.spots.length : 0 } : null,
-        story: TF.Story ? { started: TF.Story.started, profit: TF.Story.profit(), target: TF.Story.target, log: TF.Story.log, walker: TF.Story.walker ? TF.Story.walker.kind + ':' + TF.Story.walker.phase : null, challenge: TF.Story.challenge, verdict: TF.Story.verdict ? { won: TF.Story.verdict.won, profit: TF.Story.verdict.profit } : null, angel: TF.Story.angel, popup: TF.Story.popup, hud: document.getElementById('betHud').textContent } : null,
+        story: TF.Story ? { started: TF.Story.started, profit: TF.Story.profit(), target: TF.Story.target, log: TF.Story.log, walker: TF.Story.walker ? TF.Story.walker.kind + ':' + TF.Story.walker.phase : null, challenge: TF.Story.challenge, verdict: TF.Story.verdict ? { won: TF.Story.verdict.won, profit: TF.Story.verdict.profit, rent: TF.Story.verdict.rent } : null, angel: TF.Story.angel, popup: TF.Story.popup, hud: document.getElementById('betHud').textContent } : null,
         ladder: TF.Hacks ? { level: TF.Hacks.level(), log: TF.Hacks.log, run: TF.Hacks.run ? { id: TF.Hacks.run.id, spawned: TF.Hacks.run.spawned } : null, last: TF.Hacks.last ? { id: TF.Hacks.last.id, spawned: TF.Hacks.last.spawned, bailed: TF.Hacks.last.bailed, wait: TF.Hacks.last.wait, shifted: TF.Hacks.last.shifted } : null, premium: TF.Hacks.premium, buyMul: TF.Hacks.buyMul, card: !document.getElementById('hackCard').hidden, btn: document.getElementById('btnHack').textContent } : null,
         invest: TF.Invest ? { owned: TF.Invest.owned.map(function (o) { return { id: o.id, cost: o.cost, earned: Math.round(TF.Invest.earned(o)) }; }), metals: TF.Invest.metals, price: TF.Invest.price, flips: TF.Invest.flips, lastFlip: TF.Invest.lastFlip || null, ready: !!TF.Invest.ready, pitched: TF.Invest.pitched || 0, report: TF.Week && TF.Week.active() ? TF.Invest.report() : [] } : null,
         arcs: TF.Arcs ? { beats: TF.Arcs.beats, rants: TF.Arcs.rants || 0, ranting: TF.Arcs.ranting(), rantRate: Sim.rantRate, wager: TF.Arcs.wager, aliChoice: TF.Arcs.aliChoice, kingOn: TF.Arcs.kingOn, kingDown: TF.Arcs.kingDown, banter: TF.Arcs.lastBanter || null, prototype: !!TF.Arcs.prototype } : null,
+        ledger: TF.Ledger ? { reconcile: TF.Ledger.reconcile(), split: TF.Ledger.split(), byCat: TF.Ledger.byCat(), rngState: TF.Rng.getState() } : null,
+        econ: TF.Econ ? TF.Econ.stats() : null,
+        market: TF.Market ? { day: TF.Market.getState().day, phase: TF.Market.getState().phase, board: TF.Market.board(), hold: TF.Market.portfolio(), value: TF.Market.portfolioValueCents(), verdict: TF.Week.verdict || null } : null,
+        handyman: TF.Handyman && TF.Handyman.S ? { mode: TF.Handyman.S.mode, faults: TF.Handyman.S.faults.map(function (f) { return f.breakdown; }), fixes: TF.Handyman.fixes, seen: TF.Handyman.faultsSeen, handT: Sim.stand.mods.handT, chip: document.getElementById('mattChip').textContent } : null,
         lost: JSON.parse(JSON.stringify(Sim.lost)), lostTotal: Sim.lostTotal(), lostThenServed: Sim.stats.lostThenServed, lostHud: document.getElementById('lostHud').textContent, noline: Sim.stats.noline, closedTurnaway: Sim.stats.closedTurnaway,
         week: TF.Week ? { mode: TF.Week.mode, day: TF.Week.day, phase: TF.Week.phase, t: Math.round(TF.Week.t * 10) / 10, soldToday: TF.Week.soldToday(), goal: TF.Week.goal(),
-          majorUsed: TF.Week.majorUsed, betWon: TF.Week.betWon, eventsToday: TF.Week.eventsToday, bellsRung: TF.Week.bellsRung || 0, bellCountdown: TF.Week.bellCountdown(), bellSpawned: TF.Week.bellSpawned || 0, hud: document.getElementById('dayHud').textContent, results: TF.Week.results, won: TF.Week.won } : null
+          majorUsed: TF.Week.majorUsed, betWon: TF.Week.betWon, rentPaid: TF.Week.rentPaid, won2: TF.Week.won, eventsToday: TF.Week.eventsToday, bellsRung: TF.Week.bellsRung || 0, bellCountdown: TF.Week.bellCountdown(), bellSpawned: TF.Week.bellSpawned || 0, hud: document.getElementById('dayHud').textContent, results: TF.Week.results, won: TF.Week.won } : null
       };
     },
     // Test helpers (client pixels).
@@ -450,11 +509,20 @@
     },
     hire: function (id) { return TF.Crew.hire(id); },
     buyTier: function (id) { return TF.Crew.buyTier(id); },
-    grantMoney: function (n) { Sim.stats.money += n; },   // test helper only
+    grantMoney: function (n) { TF.Ledger.add('test', n, 'grantMoney'); },   // test helper only (cat 'test')
     // Test helper: fast-forward the sim synchronously (deterministic A/B comparisons).
     simFor: function (secs) { for (var i = 0, n = Math.round(secs / C.DT); i < n; i++) Sim.step(C.DT); return Sim.t; },
     // Taco Week test helpers: jump to day n's PREP (unlocks), or move the OPEN clock to t seconds.
-    weekDay: function (n) { if (TF.Week.phase === 'prep') { TF.Week.day = n; TF.Week.refresh(); if (TF.Crew) TF.Crew.refresh(); } return TF.Week.day; },
+    // a test jump to day n: the Exchange settles every day it skips (closes land, the next PREP pre-rolls) and
+    // the kit / rent clocks follow (C5 review: Friday used to see an unsettled Day 2 market)
+    weekDay: function (n) {
+      if (TF.Week.phase === 'prep') {
+        TF.Week.day = n;
+        if (TF.Econ && TF.Econ.on()) { TF.Econ.K.setPhase('prep', TF.Econ.abs(n)); if (TF.Mkt) TF.Mkt.advanceTo(TF.Econ.abs(n)); }
+        TF.Week.refresh(); if (TF.Crew) TF.Crew.refresh();
+      }
+      return TF.Week.day;
+    },
     weekTime: function (t) { if (TF.Week.phase === 'open') TF.Week.t = t; return TF.Week.t; },
     setCrowd: function (c) {
       Sim.crowd = C.CROWD[c] ? c : 'normal';
@@ -510,7 +578,7 @@
   };
   window.__flow = api;
   TF.planLine = planLine;
-  TF.ui = { refresh: refreshButtons, setHint: setHint, setMode: setMode, state: state, api: api, setZoom: setZoom };
+  TF.ui = { refresh: refreshButtons, setHint: setHint, setMode: setMode, state: state, api: api, setZoom: setZoom, camera: CAM };
 
   setMode('idle');
   TF.Art.load(function (ok) {

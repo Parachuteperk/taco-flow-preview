@@ -247,8 +247,14 @@
   function isWalker(o) { return o.state === 'WANDER' || o.state === 'LEAVE' || o.state === 'TO_QUEUE' || o.state === 'TO_PICKUP' || o.state === 'PAID_WAIT'; }
 
   // Walkers bucketed by tile once per step, so following checks only the 3x3 tiles around.
-  var GW = World.W + 4, GH = World.H + 4, grid = [];
-  for (var gi = 0; gi < GW * GH; gi++) grid.push([]);
+  var GW, GH, grid;
+  function sizeGrid() {   // sized to the map; rebuilt when a level loads (L2+ are bigger than L1)
+    GW = World.W + 4; GH = World.H + 4; grid = [];
+    for (var gi = 0; gi < GW * GH; gi++) grid.push([]);
+  }
+  sizeGrid();
+  World.onLoad.push(sizeGrid);
+  Sim.gridSize = function () { return [GW, GH]; };
   function bucket(x, y) { return (Math.max(0, Math.min(GH - 1, Math.floor(y) + 2))) * GW + Math.max(0, Math.min(GW - 1, Math.floor(x) + 2)); }
   function buildGrid() {
     for (var i = 0; i < grid.length; i++) grid[i].length = 0;
@@ -345,6 +351,36 @@
     g.path = pts;
   }
   Sim.routeToExit = routeToExit;
+  // Kits a finished restock walk puts in the stand: Taco Week takes them from the van (TF.Econ);
+  // Free Play refills to the stand's max as before.
+  Sim.refillAmount = function (st) { return TF.Econ && TF.Econ.on() ? TF.Econ.refill(st) : st.mods.stockMax; };
+  // A new level (World.loadLevel): new ground. Stands, lines, queues, guests, restock trips and
+  // construction jobs belong to the old map and are cleared; cash (ledger), the portfolio and the crew
+  // roster carry over (PLAN §1a). Stand 2 goes back to unbought.
+  // The economy ramp row for the loaded level: its economyLevel, else the number in its id (generated
+  // L2-L4 files have only id 'L2'..; they were all getting L1's $180 rent, C3c).
+  Sim.levelNo = function () {
+    var lv = World.level;
+    return (lv && lv.economyLevel) || (lv && +((/\d+/.exec(lv.id || '') || [])[0])) || 1;
+  };
+  Sim.resetForLevel = function () {
+    Sim.guests = []; Sim.flyers = []; Sim.floaters = [];
+    Sim.stands.length = 1;
+    var st = Sim.stand;
+    st.placed = false; st.line = []; st.queue = []; st.window = null; st.trip = null; st.needRestock = false;
+    st.tier = 0; st.stock = 0; st.building = null;   // upgrades reset per level (PLAN §1a)
+    if (TF.Week && TF.Week.resetForLevel) TF.Week.resetForLevel();   // Monday PREP of the new level
+    if (TF.Econ) TF.Econ.resetLevel(Sim.levelNo());
+    // purchased extras (second cooler, cannon, AI Ali) are upgrades: they reset with the stand; the roster stays
+    if (TF.Crew) { TF.Crew.extras = {}; TF.Crew.applyMods(); TF.Crew.spotKey = ''; }
+    for (var k = 0; k < st.pickup.length; k++) st.pickup[k] = null;
+    st.cook.grill = []; st.cook.pending = [];
+    Sim.sel = 0;
+    syncWorld(); rebuildLines();
+    if (TF.Build) TF.Build.jobs = [];
+    if (TF.Supply) TF.Supply.trip = null;
+  };
+  World.onLoad.push(function () { Sim.resetForLevel(); });
   Sim.pathTo = pathTo;
 
   // Taco Week closing: people still walking over turn back; at the end of overtime anyone still
@@ -370,6 +406,18 @@
     Sim.stands.forEach(function (st) { st.cook.pending.length = 0; st.cook.grill.length = 0; });
   };
   Sim.reopenStand = function () { Sim.closing = false; };
+  // Overnight: last night's walkers, lines, orders and restock walks are gone; the morning starts clean
+  // (C6: a resumed day starts from exactly this state, so a replay gives the same ledger).
+  Sim.newDay = function () {
+    Sim.guests = []; Sim.floaters = []; Sim.flyers = [];
+    Sim.stands.forEach(function (st) {
+      st.queue = []; st.window = null; st.trip = null;
+      for (var k = 0; k < st.pickup.length; k++) st.pickup[k] = null;
+      st.cook.pending = []; st.cook.grill = [];
+    });
+    if (TF.Supply) TF.Supply.trip = null;
+    (Sim.newDayHooks || []).forEach(function (f) { f(); });   // e.g. the background crowd (6B)
+  };
 
   // What is holding a stand back right now (one label), or null when it flows.
   TF.bottleneckOf = function (st) {
@@ -442,6 +490,7 @@
         if (Sim.rand() < st.mods.buyP * weekDemand() * (TF.Objects ? TF.Objects.litterMul(st) : 1) * (TF.Hacks ? TF.Hacks.buyMul : 1)) {   // litter puts people off; TACO-NET pulls them in
           if (Sim.closing) { /* closing time: no new joiners */ }
           else if (!st.connected) { g.emote = 'noline'; g.emoteT = 1.6; Sim.stats.noline++; loseSale(g, st, 'no line'); }
+          else if (TF.Econ && TF.Econ.on() && TF.Econ.soldOutAll(st)) { g.emote = 'slow'; g.emoteT = 1.6; loseSale(g, st, 'sold out'); }   // no kits anywhere
           else if (g.maxPay < Sim.menuPrice(st)) { think(g, 'pricey'); loseSale(g, st, 'too pricey'); }
           else if (st.queue.length + enrouteCount(st) < st.cap) { if (goToQueue(g, st)) return; }
           else {
@@ -473,7 +522,7 @@
   // Lost-sales ledger (Pass 5 item 1): every student who walks away without a taco is counted
   // once, with the reason, the moment it happens. If they later join another stand's line the
   // entry is taken back, so a customer is never both lost and served.
-  Sim.LOST_REASONS = ['line full', 'gave up waiting', 'too pricey', 'no line', 'closing time'];
+  Sim.LOST_REASONS = ['line full', 'gave up waiting', 'too pricey', 'sold out', 'no line', 'closing time'];
   Sim.lost = {};
   Sim.LOST_REASONS.forEach(function (k) { Sim.lost[k] = 0; });
   Sim.lostTotal = function () { return Sim.LOST_REASONS.reduce(function (s, k) { return s + Sim.lost[k]; }, 0); };
@@ -512,6 +561,7 @@
   Sim.think = think;
   // Rough menu price a guest compares against what they're willing to pay.
   Sim.menuPrice = function (st) {
+    if (TF.Econ && TF.Econ.on()) return TF.Econ.priceDollars();   // Taco Week: the price tier (Cheap / Fair / Bougie)
     var p = (C.PRICE_MIN + C.PRICE_MAX) / 2 + ((st || Sim.stand).mods.priceAdd || 0);
     return Sim.priceBoostT > 0 ? p * 1.1 : p;
   };
@@ -532,17 +582,27 @@
   }
 
   function pay(g) {
-    var st = g.st;
-    var price = C.PRICE_MIN + Math.floor(Sim.rand() * (C.PRICE_MAX - C.PRICE_MIN + 1)) + (st.mods.priceAdd || 0);
-    if (Sim.priceBoostT > 0) price += Math.max(1, Math.round(price * 0.1));
-    if (TF.CallLine) price += TF.CallLine.onPay(g, st);
+    var st = g.st, econ = TF.Econ && TF.Econ.on(), base = 0, extra = 0;
+    if (econ) {   // Taco Week: the rules layer prices the sale (tier) and posts it to the ledger
+      var sale = TF.Econ.sell(g);
+      if (sale.reason) {   // out of kits, or the price went up while they waited
+        loseSale(g, st, sale.reason === 'tooPricey' ? 'too pricey' : 'sold out');
+        if (sale.reason === 'tooPricey') think(g, 'pricey');
+        var wi = st.queue.indexOf(g); if (wi >= 0) st.queue.splice(wi, 1); if (st.window === g) st.window = null; leavePolitely(g); return;
+      }
+      base = sale.dollars;
+    }
+    var price = econ ? base : C.PRICE_MIN + Math.floor(Sim.rand() * (C.PRICE_MAX - C.PRICE_MIN + 1)) + (st.mods.priceAdd || 0);
+    if (Sim.priceBoostT > 0) { var bo = Math.max(1, Math.round(price * 0.1)); price += bo; extra += bo; }
+    if (TF.CallLine) { var cl = TF.CallLine.onPay(g, st); price += cl; extra += cl; }
     g.paid = true;
     g.paidAt = Sim.t;
     var drink = TF.Objects ? TF.Objects.onPay(g, st) : 0;   // + a $2 agua fresca
-    if (drink) { Sim.stats.money += drink; if (TF.Week) TF.Week.earn(drink); var wp = Sim.windowPos(st); Sim.floaters.push({ x: wp.x + 0.3, y: wp.y - 0.4, text: '+$' + drink + ' \uD83E\uDD64', t: 0 }); }
+    if (drink) { TF.Ledger.add('drinks', drink, 'agua fresca'); if (TF.Week) TF.Week.earn(drink); var wp = Sim.windowPos(st); Sim.floaters.push({ x: wp.x + 0.3, y: wp.y - 0.4, text: '+$' + drink + ' \uD83E\uDD64', t: 0 }); }
     var prem = TF.Hacks ? TF.Hacks.onPay() : 0;   // GOLDEN TACO +$1 event premium
-    if (prem) { price += prem; }
-    Sim.stats.money += price;
+    if (prem) { price += prem; extra += prem; }
+    if (!econ) TF.Ledger.add('sales', price, 'taco');
+    else if (extra) TF.Ledger.add('premium', extra, 'add-ons');   // the base sale was posted by the rules layer
     st.rev = (st.rev || 0) + price + drink;   // revenue per stand (investment tallies)
     st.sold = (st.sold || 0) + 1;
     if (TF.Bets) TF.Bets.earn(price);
@@ -553,8 +613,10 @@
     if (TF.FX) TF.FX.cash(g, st);
     g.order = { guest: g, t: st.mods.cookT, total: st.mods.cookT, ready: false, progress: 0, handT: 0 };
     st.cook.pending.push(g.order);
-    st.stock = Math.max(0, st.stock - 1);
-    if (st.stock === 0) st.needRestock = true;
+    if (!econ) {
+      st.stock = Math.max(0, st.stock - 1);
+      if (st.stock === 0) st.needRestock = true;
+    }
   }
 
   function updateGuest(g, dt) {
@@ -600,6 +662,9 @@
       case 'ORDER':
         faceTo = { x: -st.geom.n[0], y: -st.geom.n[1] };
         g.moving = false;
+        // C4: unpaid at the window still counts (econ: continuous), and it's checked before the payment, so a
+        // customer whose patience runs out on the same step leaves instead of paying (C4 final review)
+        if (!g.paid) { impatience(g, dt); if (g.state !== 'ORDER') break; }
         if (!g.paid) { g.timer -= dt / slow; if (g.timer <= 0) pay(g); }
         if (g.paid && !st.mods.serving) { g.state = 'WAIT_PICKUP'; g.atWindow = true; }   // no serving station: wait at the table
         else if (g.paid && freeSpot(st) >= 0) {
@@ -696,31 +761,62 @@
   // map with the cooler and comes back refilled.
   Sim.isOpen = function (st) { st = st || Sim.stand; return st.placed && !st.trip && st.stock > 0 && !st.constructing; };
 
+  // Pass 6 C4 (PLAN §1c): with the economy on, patience is the continuous unpaid wait from joining the
+  // line (the level's base, 28 s on L1, +-3 s per person, + picnic shade, - a tipped trash can nearby).
+  // Free Play keeps the old rule (only time the stand is closed counts).
+  Sim.patienceFor = function (g) {
+    var lv = TF.Economy && TF.Economy.levels[Sim.levelNo() - 1];
+    var base = lv ? lv.patienceS : C.PATIENCE;
+    var shade = TF.Objects ? TF.Objects.patienceBonus(g) : 0;
+    var fault = TF.Handyman ? TF.Handyman.patienceDelta(g) : 0;
+    return base + ((g.variant % 7) - 3) + shade + fault;
+  };
   function impatience(g, dt) {
     var st = g.st;
+    if (TF.Econ && TF.Econ.on()) {
+      g.waitT = (g.waitT || 0) + dt;
+      var lim = g.patience = Sim.patienceFor(g);
+      if (g.waitT > lim * 0.6 && !g.thoughtSlow) { g.thoughtSlow = true; think(g, 'slow'); }
+      var sh = TF.Objects ? TF.Objects.patienceBonus(g) : 0;   // shade kept someone who'd have left
+      if (sh && !g.shadeKept && g.waitT > lim - sh) { g.shadeKept = true; TF.Objects.shadeStats.kept++; }
+      if (g.waitT > lim) giveUp(g, st);
+      return;
+    }
     if (Sim.isOpen(st)) { g.closedT = 0; return; }
     g.closedT = (g.closedT || 0) + dt;
     if (g.closedT > 8 && !g.thoughtSlow) { g.thoughtSlow = true; think(g, 'slow'); }
     var shade = TF.Objects ? TF.Objects.patienceBonus(g) : 0;   // picnic shade: +8 s for 4 nearby
     if (shade && !g.shadeKept && g.closedT > C.PATIENCE + (g.variant % 7)) { g.shadeKept = true; TF.Objects.shadeStats.kept++; }
-    if (g.closedT > C.PATIENCE + (g.variant % 7) + shade) {
-      var i = st.queue.indexOf(g);
-      if (i >= 0) st.queue.splice(i, 1);
-      if (st.window === g) st.window = null;
-      Sim.stats.gaveUp++;
-      noteBalk(st, 'slow'); loseSale(g, st, 'gave up waiting');
-      leavePolitely(g);
-      g.emote = 'slow'; g.emoteT = 1.8;
-    }
+    if (g.closedT > C.PATIENCE + (g.variant % 7) + shade) giveUp(g, st);
+  }
+  function giveUp(g, st) {
+    var i = st.queue.indexOf(g);
+    if (i >= 0) st.queue.splice(i, 1);
+    if (st.window === g) st.window = null;
+    Sim.stats.gaveUp++;
+    noteBalk(st, 'slow'); loseSale(g, st, 'gave up waiting');
+    leavePolitely(g);
+    g.emote = 'slow'; g.emoteT = 1.8;
   }
 
+  // The exit closest to `from`; if that tile itself is blocked (e.g. a tree at the stand's corner on a
+  // bigger map), start from the nearest walkable tile around it.
   function nearestExit(from) {
-    var best = null;
-    World.exits.forEach(function (e) {
-      var dd = World.exitDist(Math.floor(from.x), Math.floor(from.y), e);
-      if (dd < Infinity && (!best || dd < best.d)) best = { e: e, d: dd };
-    });
-    if (best) best.t = World.exitPath(Math.floor(from.x), Math.floor(from.y), best.e);
+    var fx = Math.floor(from.x), fy = Math.floor(from.y), best = null;
+    for (var r = 0; r <= 3 && !best; r++) {
+      for (var dy = -r; dy <= r; dy++) for (var dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        var x = fx + dx, y = fy + dy;
+        World.exits.forEach(function (e) {
+          var dd = World.exitDist(x, y, e) + r;
+          if (dd < Infinity && (!best || dd < best.d)) best = { e: e, d: dd, x: x, y: y };
+        });
+      }
+    }
+    if (best) {
+      best.t = World.exitPath(best.x, best.y, best.e);
+      if (!best.t) return null;
+    }
     return best;
   }
 
@@ -731,10 +827,10 @@
     var handing = st.window && st.window.paid;
     if (st.needRestock && !st.trip && !busyCook && !handing && st.pickup.every(function (p) { return !p; })) {
       var d = cornerPos(st), ex = nearestExit(d);
-      if (!ex) { st.stock = st.mods.stockMax; st.needRestock = false; return; }
+      if (!ex) return;   // No route: stay sold out and retry; never refill through terrain.
       var r = st.trip = {
-        x: d.x, y: d.y, px: d.x, py: d.y, offX: 0, offY: 0, pOffX: 0, pOffY: 0, path: [], speed: 1.8,
-        hx: 1, hy: 0, facing: 0, moving: false, anim: 0, phase: 'out', exit: ex.e, timer: 0
+        x: ex.x + 0.5, y: ex.y + 0.5, px: ex.x + 0.5, py: ex.y + 0.5, offX: 0, offY: 0, pOffX: 0, pOffY: 0, path: [], speed: 1.8,
+        hx: 1, hy: 0, facing: 0, moving: false, anim: 0, phase: 'out', exit: ex.e, access: { x: ex.x, y: ex.y }, timer: 0
       };
       r.path = ex.t.slice(1).map(center);
       r.path.push({ x: ex.e.x + 0.5 + ex.e.ox, y: ex.e.y + 0.5 + ex.e.oy });
@@ -747,14 +843,19 @@
       r2.moving = false;
       r2.timer -= dt;
       if (r2.timer <= 0) {
-        var dd = cornerPos(st), back = World.astar(r2.exit.x, r2.exit.y, Math.floor(dd.x), Math.floor(dd.y));
+        if (!r2.access) {
+          var retryAccess = nearestExit(cornerPos(st));
+          if (retryAccess) r2.access = { x: retryAccess.x, y: retryAccess.y };
+        }
+        var start = r2.returnStart || r2.exit;
+        var back = r2.access && World.astar(start.x, start.y, r2.access.x, r2.access.y);
+        if (!back) { r2.timer = 1; return; }   // Wait off-map and retry if the route is blocked.
         r2.phase = 'back';
-        r2.path = (back || []).map(center);
-        r2.path.push(dd);
+        r2.path = back.map(center);
       }
     } else if (walk(r2, dt, false)) {
       if (r2.phase === 'out') { r2.phase = 'away'; r2.timer = C.RESTOCK_AWAY; }
-      else { st.trip = null; st.stock = st.mods.stockMax; st.restocks++; Sim.events.push({ type: 'restock' }); }
+      else { st.trip = null; st.stock = Sim.refillAmount(st); st.restocks++; Sim.events.push({ type: 'restock' }); }
     }
     if (r2.moving) setFacingFromHeading(r2, r2.hx, r2.hy);
   }
@@ -765,7 +866,7 @@
     st.tier = tier;
     if (TF.Crew) TF.Crew.applyMods();
     // The grill brings fresh ingredients that last much longer than a cooler of tacos.
-    if (was < 1 && tier >= 1) { st.stock = st.mods.stockMax; st.needRestock = false; }
+    if (was < 1 && tier >= 1 && !(TF.Econ && TF.Econ.on())) { st.stock = st.mods.stockMax; st.needRestock = false; }   // Taco Week: kits cost money, no free refill
   };
 
   Sim.step = function (dt) {
@@ -838,7 +939,18 @@
     if (!wasPlaced) return v;
 
     for (var k = 0; k < st.pickup.length; k++) st.pickup[k] = null;
-    if (st.trip && st.trip.phase === 'back') { var rd = cornerPos(st); pathTo(st.trip, { x: Math.floor(rd.x), y: Math.floor(rd.y) }, rd); }
+    if (st.trip) {
+      var access = nearestExit(cornerPos(st));
+      st.trip.access = access ? { x: access.x, y: access.y } : null;
+      if (st.trip.phase === 'back') {
+        var route = access && World.astar(Math.floor(st.trip.x), Math.floor(st.trip.y), access.x, access.y);
+        st.trip.path = route ? route.map(center) : [];
+        if (!route) {
+          st.trip.returnStart = { x: Math.floor(st.trip.x), y: Math.floor(st.trip.y) };
+          st.trip.phase = 'away'; st.trip.timer = 1;
+        }
+      }
+    }
     Sim.guests.forEach(function (g) {
       var t = tileOf(g);
       if (World.isStand(t.x, t.y)) {
@@ -893,7 +1005,10 @@
   Sim.faceEntity = setFacingFromHeading;
   Sim.routeTo = pathTo;
   Sim.nearestExit = nearestExit;
-  Sim.oldMainDoor = function () { return World.exits.filter(function (e) { return e.y === 0 && e.x === 13; })[0] || World.exits[0]; };
+  Sim.oldMainDoor = function () {
+    var d = World.level ? World.level.landmarks.oldMain.door : { x: 13, y: 0 };
+    return World.exits.filter(function (e) { return e.y === d.y && e.x === d.x; })[0] || World.exits[0];
+  };
 
   syncWorld();
   TF.Sim = Sim;
