@@ -385,7 +385,7 @@
     ctx.fillRect(p.x - w / 2, y, w * f, 3 * z);
     // one SOLD OUT only (the window sign); in PREP an empty stand says where its kits are instead (C3b)
     var prep = prepStock(st);
-    var label = st.trip ? 'RESTOCKING' : prep ? prep : st.stock <= 0 ? '' : st.tier === 0 ? st.stock + '/' + max + ' tacos' : '';
+    var label = (st.trip || (TF.Econ && TF.Econ.on() && TF.Econ.stockStatus(st) === 'restocking')) ? 'RESTOCKING…' : prep ? prep : st.stock <= 0 ? '' : st.tier === 0 ? st.stock + '/' + max + ' tacos' : '';
     if (label) text(label, p.x, y - size, size, '#fff5d6', 'rgba(60,30,20,0.85)');
   }
 
@@ -397,6 +397,11 @@
     return van ? van + ' kits in the van \u00B7 loads at OPEN' : 'No kits: order in STOCK';
   }
   R.prepStock = prepStock;
+  R.stockLabel = function (st) {
+    if (prepStock(st)) return '';
+    var E = TF.Econ, status = E && E.on() ? E.stockStatus(st) : st.stock > 0 ? 'available' : 'soldOut';
+    return status === 'available' ? '' : status === 'restocking' ? 'restocking…' : status === 'arriving' ? 'delivery…' : 'SOLD OUT';
+  };
 
   function drawSteam(p0, st) {
     var n = (st || Sim.stand).cook.grill.length, z = R.cam.z;
@@ -474,11 +479,11 @@
       text('\u26A0 ' + nb + ' walked away: line too long', ep.x, ep.y, 9 * z, '#fff', 'rgba(150,20,20,0.9)');
       R.lastGroupedBalk = nb;
     }
-    if (st.stock <= 0 && !prepStock(st)) {   // SOLD OUT sign at the window (not in PREP: see prepStock)
+    if (R.stockLabel(st)) {   // SOLD OUT sign at the window (not in PREP: see prepStock)
       var so = R.toScreen(st.geom.order[0] + 0.5, st.geom.order[1] + 0.5, 46), pz = 1 + 0.08 * Math.sin(performance.now() / 150);
       ctx.fillStyle = '#c62f2f'; ctx.fillRect(so.x - 34 * z * pz, so.y - 9 * z * pz, 68 * z * pz, 18 * z * pz);
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 2 * z; ctx.strokeRect(so.x - 34 * z * pz, so.y - 9 * z * pz, 68 * z * pz, 18 * z * pz);
-      text('SOLD OUT', so.x, so.y, 11 * z * pz, '#fff');
+      text(R.stockLabel(st), so.x, so.y, 11 * z * pz, '#fff');
     }
     var L = st.line;
     if (!L.length) {

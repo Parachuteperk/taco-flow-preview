@@ -15,7 +15,7 @@
     { id: 'ali', name: 'Ali', role: 'Grill', effect: 'Grill 40% faster', price: 20, tier: 1, spot: 'in' },
     { id: 'antonio', name: 'Antonio', role: 'Laptop + stream', effect: 'Hype: more students', price: 40, tier: 2, spot: 'out' },
     { id: 'phillip', name: 'Phillip', role: 'Prep', effect: 'Cooking 20% faster', price: 30, tier: 2, spot: 'out' },
-    { id: 'matt', name: 'Matt', role: 'Hand-off', effect: 'Instant hand-off', price: 25, tier: 3, spot: 'in' },
+    { id: 'matt', name: 'Matt', role: 'Hand-off', effect: 'Fast hand-off, serves drinks quickly and repairs breakdowns', price: 25, tier: 3, spot: 'in' },
     { id: 'aaron', name: 'Aaron', role: 'SIFE', effect: '+8s nearby patience, bulk orders; $8/day', price: 40, tier: 0, spot: 'out' },
     { id: 'runner', name: 'Freshman Runner', role: 'Supply runs', effect: 'Restocks from the van', price: 50, tier: 0, spot: 'none' }
   ];
@@ -112,8 +112,9 @@
     TF.Ledger.add('upgrade', -x.price, id);
     Crew.extras[id] = true;
     if (TF.Week) TF.Week.bought(id);
-    if (id === 'cooler2' && Sim.stand.tier === 0) Sim.stand.stock += C.STOCK_T0;   // it arrives full
+    if (id === 'cooler2' && Sim.stand.tier === 0 && !(TF.Econ && TF.Econ.on())) Sim.stand.stock += C.STOCK_T0;   // it arrives full
     Crew.applyMods();
+    if (TF.Econ && TF.Econ.on()) TF.Econ.sync();
     if (Sim.stand.placed) Sim.floaters.push({ x: Sim.stand.geom.cx, y: Sim.stand.geom.cy, text: x.name + '!', t: 0 });
     Crew.refresh();
     return true;
@@ -447,12 +448,12 @@
   var list = document.getElementById('crewList');
   Crew.buildMenu = function () {
     if (!panel) return;
-    var html = '<div id="permitLine" class="soon permit" hidden></div><div id="soonLine" class="soon" hidden></div><details open class="sec"><summary>Stand upgrades <button id="btnSelStand" class="mini" hidden></button></summary>';
+    var html = '<div id="permitLine" class="soon permit" hidden></div><div id="soonLine" class="soon" hidden></div><details open class="sec" data-section="build"><summary>Build & upgrades <button id="btnSelStand" class="mini" hidden></button></summary>';
     TIERS.forEach(function (u) {
       html += '<div class="card up"><div class="info"><b>' + u.tier + '. ' + u.name + '</b><div class="fx">' + u.effect + '</div></div><button data-tier="' + u.id + '"></button></div>';
     });
     html += '<div class="card up"><div class="info"><b>Second stand</b><div class="fx">Own stock, line and tiers. A Freshman Cashier runs it.</div></div><button id="btnBuyStand2"></button></div>';
-    html += '</details><details open class="sec"><summary>Extras</summary>';
+    html += '</details><details open class="sec" data-section="build"><summary>Buildings & extras</summary>';
     if (TF.Objects) Object.keys(TF.Objects.KINDS).forEach(function (id) {
       var k = TF.Objects.KINDS[id];
       html += '<div class="card up"><div class="info"><b>' + k.name + '</b><div class="fx">' + k.effect + ' \u00B7 $' + k.upkeep + '/day</div></div><button data-obj="' + id + '"></button></div>';
@@ -460,10 +461,10 @@
     EXTRAS.forEach(function (x) {
       html += '<div class="card up"><div class="info"><b>' + x.name + '</b><div class="fx">' + x.effect + '</div></div><button data-extra="' + x.id + '"></button></div>';
     });
-    html += '</details><details open class="sec"><summary>Hire crew</summary>';
+    html += '</details><details open class="sec" data-section="hire"><summary>Hire crew</summary>';
     ROSTER.forEach(function (r) {
       html += '<div class="card"><canvas class="portrait" data-portrait="' + r.id + '" width="44" height="64"></canvas>' +
-        '<div class="info"><b>' + r.name + '</b> <small>' + r.role + '</small><div class="fx">' + r.effect + '</div></div>' +
+        '<div class="info"><b>' + r.name + '</b> <small>' + r.role + '</small><div class="fx">' + r.effect + ' · $' + r.price + ' to hire</div></div>' +
         '<button data-hire="' + r.id + '"></button></div>';
     });
     html += '</details><details class="sec"><summary>Jared\u2019s coin flip</summary><div class="card up"><div class="info"><div class="fx">Double-or-nothing on a quarter of the take.</div></div>' +
@@ -513,7 +514,7 @@
     var offer = Crew.affordable();
     Crew.ready = !!offer;
     if (btn) {
-      btn.textContent = offer ? 'Upgrade • $' + offer.price : 'Stand & crew';
+      btn.textContent = 'Hire / Crew';
       btn.classList.toggle('buy-ready', !!offer);
       btn.title = offer ? offer.name + ': ' + offer.effect : 'Stand upgrades and helpers';
     }
@@ -556,11 +557,11 @@
     });
     list.querySelectorAll('[data-hire]').forEach(function (b) {
       var r = ROSTER.filter(function (x) { return x.id === b.getAttribute('data-hire'); })[0];
-      var h = Crew.hiredSet[r.id], locked = st.tier < r.tier;
+      var h = Crew.hiredSet[r.id], locked = Sim.stand.tier < r.tier;
       var hb = blocked(r.id);
       b.textContent = h ? 'Hired' : hb ? hb : locked ? 'Needs ' + TIER_NAME[r.tier] : label(r.id, 'Hire $' + r.price);
       b.disabled = h || locked || !!hb || money < r.price;
-      show(b, !h && !locked && !dayLock(hb), r.name, !h && (dayLock(hb) ? hb : locked && 'needs ' + TIER_NAME[r.tier]));
+      show(b, true, r.name, false);
     });
     var fp = document.getElementById('flipPolicy');   // in Taco Week the coin flip lives in the Invest panel
     if (fp) fp.closest('details').hidden = !!(TF.Week && TF.Week.active());
@@ -572,13 +573,18 @@
     line.textContent = keys.length ? 'Coming: ' + parts.slice(0, 2).join(' \u00B7 ') + (parts.length > 2 ? ' +' + (parts.length - 2) + ' more' : '') : '';
   };
   function dayLock(why) { return !!why && /^Day /.test(why); }
-  Crew.open = function (on) {
+  Crew.open = function (on, section) {
+    if (!panel) return;
+    Crew.section = section || 'hire';
+    list.querySelectorAll('[data-section]').forEach(function (el) { el.hidden = el.getAttribute('data-section') !== Crew.section; });
+    var heading = panel.querySelector('.head b'); if (heading) heading.textContent = Crew.section === 'build' ? 'Build' : 'Hire / Crew';
     panel.hidden = !on;
+    if (!on && TF.ui && TF.ui.state) { TF.ui.state.buildOpen = false; if (TF.ui.refresh) TF.ui.refresh(); }
     if (on) { Crew.drawPortraits(); Crew.refresh(); }
   };
 
   if (panel) {
-    document.getElementById('btnCrew').addEventListener('click', function () { TF.Audio.unlock(); Crew.open(panel.hidden); });
+    document.getElementById('btnCrew').addEventListener('click', function () { TF.Audio.unlock(); Crew.open(panel.hidden || Crew.section !== 'hire', 'hire'); });
     document.getElementById('btnCrewClose').addEventListener('click', function () { Crew.open(false); });
     setInterval(function () { Crew.refresh(); }, 250);
   }

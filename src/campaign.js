@@ -15,6 +15,7 @@
   CA.live = function (phaseOverride) {
     var s = TF.LevelFlow.fromLive({ Econ: TF.Econ, Week: { day: TF.Week.day, phase: phaseOverride || TF.Week.phase }, Ledger: TF.Ledger,
       Crew: TF.Crew, Rng: TF.Rng, World: World, Market: TF.Market, standTier: Sim.stand.tier, flags: {} });
+    if (TF.Objects && TF.Objects.stock) s.flags.drinkStock = JSON.parse(JSON.stringify(TF.Objects.stock));
     if (TF.CastExtra) s.flags.cast = TF.CastExtra.getState();
     if (TF.Invest) s.flags.invest = JSON.parse(JSON.stringify({ metals: TF.Invest.metals, price: TF.Invest.price, lastPrice: TF.Invest.lastPrice }));
     if (TF.Aaron && TF.Aaron.live) {
@@ -44,7 +45,7 @@
       (p.line || []).forEach(function (t) { if (!Sim.addLineTile(t.x, t.y, st).ok) throw new Error('Retry line rejected'); });
       st.tier = p.tier;
     });
-    if (TF.Objects) TF.Objects.restore(s.buildings || []);
+    if (TF.Objects) { TF.Objects.restore(s.buildings || []); if (TF.Objects.stock) TF.Objects.stock = JSON.parse(JSON.stringify(s.flags.drinkStock || { drinks: 0, pending: [] })); }
     // advance: placements reset per level, so physical investment records (a stand / an object) go too; retry remaps Monday's
     if (TF.Invest) TF.Invest.owned = (s.flags.owned || []).filter(function (o) { return s.retrying || (o.st === null && !(o.obj >= 0)); }).map(function (o) {
       return Object.assign({}, o, { st: o.st === null ? null : Sim.stands[o.st], obj: TF.Objects && o.obj >= 0 ? TF.Objects.list[o.obj] : null });

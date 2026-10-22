@@ -18,6 +18,7 @@
       rng: TF.Rng.getState(),
       aaron: TF.Aaron && TF.Aaron.live ? TF.Aaron.live.getState() : null,
       cast: TF.CastExtra ? TF.CastExtra.getState() : null,
+      drinkStock: TF.Objects ? TF.Objects.stock : null,
       stock: EC && EC.K ? EC.K.getState() : null,
       market: TF.Market ? TF.Market.getState() : null,
       invest: I ? { metals: I.metals, price: I.price, lastPrice: I.lastPrice } : null,
@@ -33,6 +34,7 @@
     }
     L.rows = d.ledger.rows; L.cash = d.ledger.cash; L.seedCents = d.ledger.seedCents; L.unrouted = 0;
     TF.Rng.setState(d.rng);
+    if (TF.Objects && TF.Objects.stock) TF.Objects.stock = copy(d.drinkStock || { drinks: 0, pending: [] });
     if (TF.CastExtra) TF.CastExtra.setState(d.cast);
     if (EC && EC.K && d.stock) { EC.K.setState(d.stock); EC.K.setPhase('prep', EC.abs(W.day)); }
     if (EC && EC.M && d.west) { EC.M.setState(d.west); EC.M.startLevel(d.level, { retry: true }); }

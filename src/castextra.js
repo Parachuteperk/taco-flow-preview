@@ -165,8 +165,9 @@
         if (E && E.on()) { if (st.idx === 0) { var ks = E.state(); ks.standKits -= b.tacos; E.K.setState(ks); } else st.ekits -= b.tacos; E.sync(); }
         else st.stock -= b.tacos;
       }
-      w.said = b.tacos ? 'Eight tacos. B+, see me.' : 'Sold out? See me after class.';
-      Sim.events.push({ type: 'toast', text: '📚 Prof. Bigorder steps to the front (politely): ' + (b.tacos ? b.tacos + ' tacos, +$' + (b.row.cents / 100).toFixed(2) : 'sold out') });
+      var waiting = E && E.on() && E.stockStatus && !E.soldOutAll(st);
+      w.said = b.tacos ? 'Eight tacos. B+, see me.' : waiting ? 'Restocking? I will come back.' : 'Sold out? See me after class.';
+      Sim.events.push({ type: 'toast', text: '📚 Prof. Bigorder steps to the front (politely): ' + (b.tacos ? b.tacos + ' tacos, +$' + (b.row.cents / 100).toFixed(2) : waiting ? 'restocking…' : 'sold out') });
     } else if (k === 'brendan') {
       var aaron = !!(TF.Crew && TF.Crew.hiredSet.aaron), o = iou(CX.brendan, aaron, E && E.on() ? E.K.price() : 550, CX.day, E && E.on() ? E.kits(st) : st.stock);
       if (o) {

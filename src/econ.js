@@ -21,10 +21,15 @@
   EC.state = function () { return EC.K ? EC.K.getState() : null; };
   // Each stand has its own kits + capacity; only the van is shared. Stand 1's kits live in the rules
   // layer (K.standKits); stand 2 keeps its own count (st.ekits) and refills from the same van.
-  EC.kits = function (st) { st = st || Sim.stand; return st.idx === 0 ? EC.state().standKits : (st.ekits || 0); };
+  EC.kits = function (st) { st = st || Sim.stand; var state = EC.state(); return st.idx === 0 ? (state ? state.standKits : st.stock || 0) : (st.ekits || 0); };
   function pendingKits(s) { return s.pending.reduce(function (a, p) { return a + p.kits; }, 0); }
-  EC.kitsLeft = function () { var s = EC.state(); return s ? s.standKits + s.vanKits + pendingKits(s) + Sim.stands.slice(1).reduce(function (a, st) { return a + (st.ekits || 0); }, 0) : 0; };
-  EC.soldOutAll = function (st) { var s = EC.state(); return !!s && EC.kits(st) === 0 && s.vanKits === 0 && !s.pending.length; };
+  EC.kitsLeft = function () { var s = EC.state(); return s ? s.standKits + s.vanKits + Sim.stands.slice(1).reduce(function (a, st) { return a + (st.ekits || 0); }, 0) : 0; };
+  EC.stockStatus = function (st) {
+    var s = EC.state();
+    if (!s || EC.kits(st) > 0) return 'available';
+    return s.vanKits > 0 ? 'restocking' : s.pending.some(function (p) { return p.kits > 0; }) ? 'arriving' : 'soldOut';
+  };
+  EC.soldOutAll = function (st) { return EC.stockStatus(st) === 'soldOut'; };
   function setVan(n) { var s = EC.state(); s.vanKits = n; EC.K.setState(s); }
   EC.priceDollars = function () { return EC.K.price() / 100; };
 
@@ -73,6 +78,7 @@
   // 'tooPricey'} (the price can go up while someone waits in line).
   EC.sell = function (g) {
     var st = g.st || Sim.stand, r;
+    if (EC.kits(st) === 0 && !EC.soldOutAll(st)) { st.needRestock = EC.needsRefill(st); return { reason: 'restocking' }; }
     if (st.idx === 0) r = EC.K.trySell(Math.round(g.maxPay * 100));
     else {   // stand 2: same tier price, its own kits
       var price = EC.K.price();
@@ -242,11 +248,35 @@
       '<p>Too pricey: <b>' + EC.lostToday('too pricey') + '</b> lost sales today. Lower prices attract more budgets.</p>';
     var O = TF.Objects, cooler = O && O.list.some(function (o) { return o.kind === 'drinks' && o.ready; });
     menuBody.innerHTML += '<p><b>🥤 Agua fresca · ' + money(100 * (O.day.price || O.DRINK.price)) + '</b><br>' +
-      (cooler ? (O.DRINK.perDay - O.day.drinks) + ' drinks left today · cooler refills daily; $0.50 cost per sale.' : 'Buy a Drink cooler in Stand & crew to sell drinks (25/day).') + '</p>' +
+      (cooler ? (O.stock ? O.stock.drinks : 0) + ' drinks left · buy stock in Restock ($0.50 each).' : 'Build a Drink cooler to sell purchased drinks.') + '</p>' +
       [1, 2, 3].map(function (p) { return '<button data-drink-price="' + p + '" aria-pressed="' + ((O.day.price || O.DRINK.price) === p) + '"' + (editable ? '' : ' disabled') + '>' + money(p * 100) + '</button>'; }).join('') +
-      '<p>Cheaper drinks get more takers; drinks add pickup time.</p>';
+      '<p>Cheaper drinks get more takers; drinks add pickup time.</p>' + EC.drinkControls();
+    EC.bindDrinks();
     menuBody.querySelectorAll('[data-menu-tier]').forEach(function (b) { b.onclick = function () { EC.setTier(b.dataset.menuTier); EC.renderMenu(); }; });
     menuBody.querySelectorAll('[data-drink-price]').forEach(function (b) { b.onclick = function () { EC.setDrinkPrice(Number(b.dataset.drinkPrice)); }; });
+  };
+  EC.drinkControls = function () {
+    var O = TF.Objects, stock = O.stock || { drinks: 0, pending: [] }, rush = TF.Week.phase === 'open';
+    var allowed = /^(prep|open|report)$/.test(TF.Week.phase), n = EC.drinkWant || 10;
+    var cents = Math.round(n * (O.DRINK.cost || 0.5) * 100 * (rush ? TF.Economy.rushMult : 1));
+    return '<div class="drink-stock"><b>🥤 Drink stock: ' + stock.drinks + ' left</b>' +
+      stock.pending.map(function (p) { return ' · ' + p.drinks + ' arriving in ' + Math.ceil(p.etaS) + 's'; }).join('') +
+      '<div class="restock-actions"><button data-drink-minus aria-label="Fewer drinks">−</button><b>' + n + ' drinks</b><button data-drink-plus aria-label="More drinks">+</button>' +
+      '<button data-drink-buy' + (!allowed || cents > cash() ? ' disabled' : '') + '>' + (rush ? 'RUSH +20%' : 'Buy') + ' ' + money(cents) + '</button></div><small>$0.50 each · leftovers keep overnight</small></div>';
+  };
+  EC.bindDrinks = function () {
+    [menuBody, restock].forEach(function (root) {
+      if (!root) return;
+      root.querySelectorAll('[data-drink-minus]').forEach(function (b) { b.onclick = function () { EC.drinkWant = Math.max(5, (EC.drinkWant || 10) - 5); EC.restockSig = null; EC.refresh(); EC.renderMenu(); }; });
+      root.querySelectorAll('[data-drink-plus]').forEach(function (b) { b.onclick = function () { EC.drinkWant = Math.min(200, (EC.drinkWant || 10) + 5); EC.restockSig = null; EC.refresh(); EC.renderMenu(); }; });
+      root.querySelectorAll('[data-drink-buy]').forEach(function (b) { b.onclick = function () { EC.buyDrinks(); }; });
+    });
+  };
+  EC.buyDrinks = function () {
+    var r = TF.Objects.buyDrinks(EC.drinkWant || 10);
+    Sim.events.push({ type: 'toast', text: r.ok ? '🥤 Drinks ' + (TF.Week.phase === 'open' ? 'arrive in 20s' : 'stock purchased') + ' (' + money(r.costCents) + ')' : 'Drinks: ' + r.reason });
+    if (r.ok && TF.Save && /^(prep|report)$/.test(TF.Week.phase)) TF.Save.write(TF.Week.phase);
+    EC.restockSig = null; EC.refresh(); EC.renderMenu(); return r;
   };
   EC.setDrinkPrice = function (price) {
     if (!/^(prep|open|close)$/.test(TF.Week.phase) || [1, 2, 3].indexOf(price) < 0) return false;
@@ -264,10 +294,12 @@
     if (EC.restockKey !== key) { EC.restockKey = key; EC.restockWant = null; EC.restockSig = null; }
     var o = EC.restockOffer(), s = EC.state();
     rushBtn.hidden = W.phase !== 'open' || o.kitsLeft > 3;
+    var empty = Sim.stands.some(function (st) { return st.placed && EC.stockStatus(st) === 'restocking'; });
     rushBtn.disabled = !o.canBuy;
     rushBtn.textContent = 'RUSH restock (+20%) · ' + o.want + ' kits ' + money(o.cost);
+    if (W.phase === 'open' && empty) { rushBtn.hidden = false; rushBtn.disabled = true; rushBtn.textContent = 'Restocking… kits in the van'; }
     // Deliveries stay visible so sold-out players know help is coming.
-    if (W.phase === 'open' && s.pending.length) {
+    if (W.phase === 'open' && s.pending.length && !empty) {
       rushBtn.hidden = false; rushBtn.disabled = true;
       rushBtn.textContent = 'Restock arriving in ' + Math.ceil(s.pending[0].etaS) + 's';
     }
@@ -276,20 +308,23 @@
     if (restock.parentNode !== parent) {
       if (inReport) parent.insertBefore(restock, $('btnNextDay')); else parent.appendChild(restock);
     }
-    restock.hidden = !/^(prep|close|report)$/.test(W.phase) || EC.restockSkipped === key;
-    var sig = [key, o.kitsLeft, o.want, o.suggested, cash()].join('|');
+    restock.hidden = !/^(prep|open|close|report)$/.test(W.phase) || EC.restockSkipped === key;
+    var ds = TF.Objects.stock || { drinks: 0, pending: [] };
+    if (W.phase === 'open' && o.kitsLeft > 3 && !(TF.Objects.list.some(function (o) { return o.kind === 'drinks'; }) && ds.drinks <= 3)) restock.hidden = true;
+    var sig = [key, o.kitsLeft, o.want, o.suggested, cash(), ds.drinks, ds.pending.map(function (p) { return Math.ceil(p.etaS); }).join(',')].join('|');
     if (!restock.hidden && sig !== EC.restockSig) {
       EC.restockSig = sig;
-      restock.innerHTML = '<b>' + (W.phase === 'prep' ? 'Restock before OPEN' : W.day === 5 ? 'Restock at the next location' : 'Restock for tomorrow') + '</b> · ' + o.kitsLeft + ' kits left' +
+      restock.innerHTML = '<b>' + (W.phase === 'open' ? 'RUSH restock (+20%)' : W.phase === 'prep' ? 'Restock before OPEN' : W.day === 5 ? 'Restock at the next location' : 'Restock for tomorrow') + '</b> · ' + o.kitsLeft + ' kits left' +
         '<small>Suggested: ' + o.suggested + ' kits (' + money(o.suggested * o.unit) + '). ' + (W.day === 5 && W.phase !== 'prep' ? 'Kits reset at the next location. Restock in its PREP.' : W.phase === 'close' ? 'Buy after closing; leftovers spoil first.' : 'Adjust to your budget; or skip.') + '</small>' +
         '<div class="restock-actions"><button id="restockMinus" aria-label="Fewer kits">−</button><b>' + o.want + ' kits</b><button id="restockPlus" aria-label="More kits">+</button>' +
-        '<button id="restockBuy"' + (o.canBuy ? '' : ' disabled') + '>Buy ' + money(o.cost) + '</button><button id="restockSkip">Skip</button></div>';
+        '<button id="restockBuy"' + (o.canBuy ? '' : ' disabled') + '>Buy ' + money(o.cost) + '</button><button id="restockSkip">Skip</button></div>' + EC.drinkControls();
+      EC.bindDrinks();
       $('restockMinus').onclick = function () { EC.restockWant = Math.max(0, o.want - 5); EC.refresh(); };
       $('restockPlus').onclick = function () { EC.restockWant = Math.min(200, o.want + 5); EC.refresh(); };
       $('restockBuy').onclick = EC.buyRestock;
       $('restockSkip').onclick = function () { EC.restockSkipped = key; restock.hidden = true; };
     }
-    var ms = [key, EC.K.price(), TF.Objects.day.price, TF.Objects.day.drinks, o.kitsLeft, EC.lostToday('too pricey'), TF.Objects.list.map(function (o) { return o.ready; }).join(',')].join('|');
+    var ms = [key, EC.K.price(), TF.Objects.day.price, TF.Objects.day.drinks, ds.drinks, ds.pending.map(function (p) { return Math.ceil(p.etaS); }).join(','), o.kitsLeft, EC.lostToday('too pricey'), TF.Objects.list.map(function (o) { return o.ready; }).join(',')].join('|');
     if (EC.menuSig !== ms) { EC.menuSig = ms; EC.renderMenu(); }
   };
 

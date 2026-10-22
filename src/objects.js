@@ -139,27 +139,49 @@
   }
 
   // ---- Drinks ----------------------------------------------------------------------------
-  // Called when a student pays: 35% add a $2 drink while today's 25 last. A drink adds ~2 s to the
+  // Called when a student pays: 35% add a $2 drink while purchased stock lasts. A drink adds ~2 s to the
   // hand-off unless someone mans the pickup (Matt).
-  O.DRINK = { p: 0.35, price: 2, cost: 0.5, perDay: 25, slow: 2 };
+  O.DRINK = { p: 0.35, price: 2, cost: 0.5, slow: 2 };
+  O.stock = { drinks: 0, pending: [] };
+  O.buyDrinks = function (n) {
+    var W = TF.Week, phase = W && W.phase, rush = phase === 'open';
+    var cost = Math.round(n * O.DRINK.cost * 100 * (rush ? TF.Economy.rushMult : 1));
+    if (!Number.isSafeInteger(n) || n <= 0 || !Number.isSafeInteger(cost)) return { ok: false, reason: 'invalid quantity' };
+    if (phase !== 'prep' && phase !== 'report' && !rush) return { ok: false, reason: 'PREP or OPEN only' };
+    if (TF.Ledger.cash < cost) return { ok: false, reason: 'insufficient cash' };
+    TF.postTransaction({ day: TF.Econ.abs(W.day), phase: phase, cat: 'supplies', cents: -cost, ref: (rush ? 'RUSH ' : 'ORDER ') + n + ' drinks' });
+    if (rush) O.stock.pending.push({ drinks: n, etaS: TF.Economy.rushDelayS });
+    else O.stock.drinks += n;
+    O.totals.drinkCost += cost / 100;
+    return { ok: true, costCents: cost };
+  };
+  O.tickDrinks = function (dt) {
+    O.stock.pending = O.stock.pending.filter(function (p) {
+      p.etaS = Math.max(0, p.etaS - dt);
+      if (p.etaS > 1e-9) return true;
+      O.stock.drinks += p.drinks;
+      Sim.events.push({ type: 'toast', text: '🥤 Rush drinks arrived!' });
+      return false;
+    });
+  };
   O.rng = TF.Rng.objects;   // its own stream: buying a cooler doesn't reshuffle the crowd
   O.onPay = function (g, st) {
     var c = O.of('drinks', st);
-    if (!c || O.day.drinks >= O.DRINK.perDay || (TF.Handyman && TF.Handyman.fault('cooler')) || O.rng() >= O.DRINK.p * O.DRINK.price / (O.day.price || O.DRINK.price)) return 0;   // a jammed cooler sells nothing (C4)
+    if (!c || O.stock.drinks <= 0 || (TF.Handyman && TF.Handyman.fault('cooler')) || O.rng() >= O.DRINK.p * O.DRINK.price / (O.day.price || O.DRINK.price)) return 0;   // a jammed cooler sells nothing (C4)
     g.drink = true;
     var price = O.day.price || O.DRINK.price;
-    O.day.drinks++; O.day.drinkRev += price; O.totals.drinks++; O.totals.drinkRev += price;
+    O.stock.drinks--; O.day.drinks++; O.day.drinkRev += price; O.totals.drinks++; O.totals.drinkRev += price;
     return price;
   };
   O.handExtra = function (g, st) { return g.drink && !(TF.Crew && TF.Crew.hiredSet.matt && st.idx === 0) ? O.DRINK.slow : 0; };
 
-  // End of a Taco Week day: upkeep + drink costs come out of the till; returns the summary.
+  // End of day: charge building upkeep; drink supplies were paid for at purchase.
   O.endDay = function () {
     var up = 0;
     O.list.forEach(function (o) { up += O.KINDS[o.kind].upkeep; });
-    var costCents = Math.round(O.day.drinks * O.DRINK.cost * 100), cost = costCents / 100;   // exact cents ($0.50 a drink)
-    if (up) TF.Ledger.add('upkeep', -up, 'buildings'); if (costCents) TF.Ledger.post({ cat: 'supplies', cents: -costCents, ref: 'drinks x' + O.day.drinks });
-    O.totals.upkeep += up; O.totals.drinkCost += cost;
+    var cost = 0; // supplies are posted when purchased, never charged twice
+    if (up) TF.Ledger.add('upkeep', -up, 'buildings');
+    O.totals.upkeep += up;
     var r = { drinks: O.day.drinks, drinkRev: O.day.drinkRev, upkeep: up, drinkCost: cost, litter: O.litter.length, litterPct: Math.round((1 - Math.min.apply(null, Sim.stands.map(function (st) { return st.litterMul || 1; }))) * 100) };
     O.day = { drinks: 0, drinkRev: 0, price: O.day.price || O.DRINK.price };
     return r;
@@ -222,6 +244,7 @@
   O.litterMul = function (st) { return st.litterMul || 1; };
 
   O.step = function (dt) {
+    if (TF.Week && /^(open|close)$/.test(TF.Week.phase)) O.tickDrinks(dt);
     for (var i = O.litter.length - 1; i >= 0; i--) { O.litter[i].t += dt; if (O.litter[i].t > O.LITTER.life) { O.litter.splice(i, 1); O.litterStats.expired++; } }
     O.list.forEach(function (o) { if (o.flash > 0) o.flash -= dt; });
     Sim.stands.forEach(function (st) {
@@ -329,7 +352,7 @@
       ctx.fillStyle = col; ctx.fillRect(q.x - 2 * z, q.y - 3 * z, 4 * z, 6 * z);
       ctx.fillStyle = '#fff'; ctx.fillRect(q.x - 2 * z, q.y - 4 * z, 4 * z, 1.2 * z);
     });
-    if (o.ready && O.day.drinks >= O.DRINK.perDay) R.text('SOLD OUT', c.x, c.y - 30 * z, 7 * z, '#fff', 'rgba(160,30,30,0.9)');
+    if (o.ready && O.stock.drinks <= 0) R.text(O.stock.pending.length ? 'DRINKS ARRIVING' : 'NO DRINKS', c.x, c.y - 30 * z, 7 * z, '#fff', 'rgba(160,30,30,0.9)');
   }
 
   TF.plugins.push(O);

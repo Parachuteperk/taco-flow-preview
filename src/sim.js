@@ -456,7 +456,9 @@
   // What is holding a stand back right now (one label), or null when it flows.
   TF.bottleneckOf = function (st) {
     if (!st || !st.placed) return null;
-    if (st.stock <= 0 || st.trip) return 'NO STOCK';
+    if (TF.Econ && TF.Econ.on() && TF.Econ.stockStatus(st) === 'restocking') return 'RESTOCKING';
+    if (st.trip) return 'RESTOCKING';
+    if (TF.Econ && TF.Econ.on() ? TF.Econ.kits(st) <= 0 : st.stock <= 0) return 'NO STOCK';
     var main = st === Sim.stand;
     if (main && ((Sim.cookRate === 0 && (st.cook.grill.length || st.cook.pending.length)) || Sim.serviceSlow > 1)) return 'GRILL STALLED';
     if (st.window && st.window.paid && st.window.state === 'ORDER') return 'PICKUP FULL';
@@ -620,6 +622,7 @@
     var st = g.st, econ = TF.Econ && TF.Econ.on(), base = 0, extra = 0;
     if (econ) {   // Taco Week: the rules layer prices the sale (tier) and posts it to the ledger
       var sale = TF.Econ.sell(g);
+      if (sale.reason === 'restocking') return;
       if (sale.reason) {   // out of kits, or the price went up while they waited
         loseSale(g, st, sale.reason === 'tooPricey' ? 'too pricey' : 'sold out');
         if (sale.reason === 'tooPricey') think(g, 'pricey');
@@ -795,7 +798,7 @@
   // Open = the stand's cashier is there and there is stock. When the cooler empties (and no
   // Freshman Runner is hired) the cashier finishes the orders in hand, walks the paths off the
   // map with the cooler and comes back refilled.
-  Sim.isOpen = function (st) { st = st || Sim.stand; return st.placed && !st.trip && st.stock > 0 && !st.constructing; };
+  Sim.isOpen = function (st) { st = st || Sim.stand; return st.placed && !st.trip && (TF.Econ && TF.Econ.on() ? TF.Econ.kits(st) > 0 : st.stock > 0) && !st.constructing; };
 
   // Pass 6 C4 (PLAN §1c): with the economy on, patience is the continuous unpaid wait from joining the
   // line (the level's base, 28 s on L1, +-3 s per person, + picnic shade, - a tipped trash can nearby).
@@ -861,11 +864,10 @@
   function updateRestock(st, dt) {
     // With a Freshman Runner hired he fetches stock from the supply van and the cashier keeps selling.
     if (TF.Crew && TF.Crew.hiredSet.runner && !st.trip) { st.needRestock = false; return; }
-    var busyCook = st.cook.grill.length || st.cook.pending.length;
     var handing = st.window && st.window.paid;
     // The 25% signal also schedules the runner. The cashier must sell the remaining
     // kits before leaving, including when a larger cooler raises that threshold.
-    if (st.needRestock && st.stock <= 0 && !st.trip && !busyCook && !handing && st.pickup.every(function (p) { return !p; })) {
+    if (st.needRestock && st.stock <= 0 && !st.trip && !handing) {
       var d = cornerPos(st), ex = nearestExit(d);
       if (!ex) return;   // No route: stay sold out and retry; never refill through terrain.
       var r = st.trip = {

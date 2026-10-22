@@ -18,6 +18,9 @@
     ]},
     {sym: 'MAVS', name: 'Mavs Grief ETF', joke: "Ali's emotional support index (they traded LUKA)", startCents: 2500, risePct: 50, v: 0.10, opensDay: 6, catalysts: []},
     {sym: 'HACKR', name: "Antonio's Next Unicorn Fund", joke: 'Pre-revenue, pre-product, pre-Antonio', startCents: 500, risePct: 50, v: 0.08, opensDay: 6, catalysts: []},
+    {sym: 'COIN', name: 'Double-or-Nothing Coin Flip Index', joke: "Jared’s favorite: pure 50/50, big swings.", startCents: 1000, risePct: 50, v: 0.50, opensDay: 1, catalysts: []},
+    {sym: 'SHADE', name: 'Picnic Shade Proptech', joke: 'Canopies lift it; rain sinks it.', startCents: 1200, risePct: 50, v: 0.02, opensDay: 1, catalysts: []},
+    {sym: 'QUAD', name: 'San Marcos Quad Real Estate', joke: 'Every permanent build adds a little value.', startCents: 2000, risePct: 50, v: 0.005, opensDay: 1, catalysts: []},
     {sym: 'BOBA', name: 'Boba Bros. (failed boba startup)', joke: 'Pivoting to tapioca NFTs', startCents: 400, risePct: 35, v: 0.06, opensDay: 6, catalysts: []}
   ];
 }));

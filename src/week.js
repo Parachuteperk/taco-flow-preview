@@ -271,7 +271,7 @@
       if (id === 'stand2') return Sim.stands.length < 2 ? { name: 'Second stand', price: C.STAND2_PRICE } : null;
       return null;
     }
-    var WHY = { 'line full': 'the line was full', 'gave up waiting': 'people gave up waiting', 'too pricey': 'tacos felt too pricey', 'sold out': 'you ran out of taco kits (order more in STOCK)', 'closing time': 'closing time turned people away' };
+    var WHY = { 'line full': 'the line was full', 'gave up waiting': 'people gave up waiting', 'too pricey': 'tacos felt too pricey', 'sold out': 'a selling stand ran out of kits (buy stock in Restock)', 'closing time': 'closing time turned people away' };
     var when = W.day >= 5 ? 'In Free Play' : 'Tomorrow';
     for (var i = 0; i < order.length; i++) {
       var o = info(order[i]);

@@ -1,9 +1,5 @@
-// Investments (Pass 5, SIFE business theme). A big INVEST button in the HUD opens cards for
-// everything that makes money: the next stand tier, the second stand, the drink cooler, picnic
-// shade, trash cans, and Jared's gold + silver. Each card shows cost, an estimated $/day and the
-// payback in days. Placed investments carry a floating +$ tally of what they've earned so far, and
-// the day report ranks them by ROI. Jared pitches metals every PREP, and once a day he'll flip a
-// coin with you (double or nothing, cash or a gold coin). Tallies for stand tiers are estimates.
+// Financial assets: the Quad Exchange plus Jared's metals and wagers.
+// Physical purchases live in Build; their existing ROI records remain in the report.
 (function (TF) {
   var Sim = TF.Sim, R = TF.Render, World = TF.World;
   var $ = function (id) { return document.getElementById(id); };
@@ -14,35 +10,8 @@
   var TACO = 5.5;   // average taco price ($4-7)
   function pick(a, fb) { return a && a.length ? a[Math.floor(Math.random() * a.length)] : fb; }   // cosmetic: never touches saved streams
   I.week = function () { return !!(TF.Week && TF.Week.active()); };
-  function base() {   // tacos per day to estimate with: yesterday's, or a first-day guess
-    var r = TF.Week && TF.Week.results.filter(Boolean);
-    return Math.max(12, r && r.length ? r[r.length - 1].sold : 15);
-  }
-
   // ---- What you can invest in --------------------------------------------------------------------
   var TIER_SHARE = { grill: 0.30, banner: 0.15, serving: 0.20, canopy: 0.10 };   // share of later stand revenue credited to the tier
-  function catalog() {
-    var C = TF.Crew, st = Sim.selected(), out = [], b = base();
-    var next = C.TIERS.filter(function (u) { return u.tier === st.tier + 1; })[0];
-    if (next) out.push({ id: next.id, name: next.name + (Sim.stands.length > 1 ? ' (stand ' + (st.idx + 1) + ')' : ''), cost: next.price, est: b * (TIER_SHARE[next.id] + 0.1) * TACO * 0.6,
-      note: next.effect, buy: function () { return C.buyTier(next.id); }, major: true });
-    if (Sim.stands.length < 2) out.push({ id: 'stand2', name: 'Second stand', cost: C.STAND2_PRICE, est: b * 0.6 * TACO * 0.6, note: 'Its own line + Freshman Cashier', buy: function () { I.close(); return C.buyStand2(); }, major: true });
-    var O = TF.Objects;
-    if (O) Object.keys(O.KINDS).forEach(function (k) {
-      var K = O.KINDS[k];
-      var est = k === 'drinks' ? Math.min(25, b * 0.35) * (O.DRINK.price - O.DRINK.cost) - K.upkeep : k === 'picnic' ? 3 * TACO - K.upkeep : b * 0.04 * TACO - K.upkeep;
-      out.push({ id: k, name: K.name, cost: K.price, est: est, note: K.effect, buy: function () { I.close(); return C.startObject(k); }, major: K.major, obj: k });
-    });
-    return out;
-  }
-  function blockOf(it) {
-    var C = TF.Crew, st = Sim.selected();
-    if (it.obj) return TF.Objects.blockReason(it.obj) || C.blocked(it.id);
-    if (it.id === 'stand2') return !Sim.stand.placed ? 'Place stand 1' : C.blocked('stand2');
-    if (st.building) return 'Building…';
-    return !st.placed ? 'Place the stand' : C.blocked(it.id);
-  }
-
   // ---- The panel -------------------------------------------------------------------------------
   var panel = $('investPanel'), list = $('investList');
   I.open = function () { if (!panel) return; panel.hidden = false; I.sig = null; I.render(); };
@@ -53,13 +22,6 @@
     var cash = Sim.stats.money, html = '<div class="tip">' + pick(D.invest, 'Daily margin is the real scoreboard.') + '</div>';
     html += '<div class="permit">' + (TF.Week ? TF.Week.permitLine() : '') + '</div>';
     if (TF.Mkt) html += TF.Mkt.html();   // the Quad Exchange: GOLD / TACO / NAPZ (C5), first in the panel
-    catalog().forEach(function (it) {
-      var bl = blockOf(it), est = Math.max(0.5, it.est), pay = Math.ceil(it.cost / est);
-      if (bl && /^Day /.test(bl)) { html += '<div class="icard lock"><b>' + it.name + '</b><span>' + bl + '</span></div>'; return; }
-      html += '<div class="icard"><div><b>' + it.name + '</b> <small>' + it.note + '</small>' +
-        '<div class="nums">Cost <b>$' + it.cost + '</b> · est. <b>+$' + Math.round(est) + '/day</b> · payback <b>' + pay + ' day' + (pay === 1 ? '' : 's') + '</b></div></div>' +
-        '<button data-inv="' + it.id + '"' + (bl || cash < it.cost ? ' disabled' : '') + '>' + (bl || (cash < it.cost ? 'Need $' + it.cost : (TF.Crew.confirmId === it.id ? 'Confirm?' : 'Invest'))) + '</button></div>';
-    });
     // Jared's metals: prices move every day
     ['gold', 'silver'].forEach(function (m) {
       var h = I.metals[m], p = I.price[m], ch = p - I.lastPrice[m], val = h.units * p;
@@ -72,7 +34,6 @@
     html += '<div class="icard flip"><div><b>🪙 Jared’s coin flip</b> <small>double or nothing, once a day</small></div>' +
       '<span class="pair"><button data-flip="10"' + (used || cash < 10 ? ' disabled' : '') + '>$10</button><button data-flip="25"' + (used || cash < 25 ? ' disabled' : '') + '>$25</button><button data-flip="coin"' + (used || !I.metals.gold.units ? ' disabled' : '') + '>1 gold</button></span></div>';
     list.innerHTML = html;
-    list.querySelectorAll('[data-inv]').forEach(function (b) { b.addEventListener('click', function () { var it = catalog().filter(function (x) { return x.id === b.getAttribute('data-inv'); })[0]; if (it) it.buy(); I.render(); }); });
     list.querySelectorAll('[data-buy]').forEach(function (b) { b.addEventListener('click', function () { I.buyMetal(b.getAttribute('data-buy')); }); });
     list.querySelectorAll('[data-sell]').forEach(function (b) { b.addEventListener('click', function () { I.sellMetal(b.getAttribute('data-sell')); }); });
     list.querySelectorAll('[data-flip]').forEach(function (b) { b.addEventListener('click', function () { I.flip(b.getAttribute('data-flip')); }); });
@@ -195,7 +156,7 @@
     if (!on) return;
     var cash = Sim.stats.money, W = TF.Week, live = W.phase === 'prep' || W.phase === 'open';
     // glow when something is affordable and allowed right now (a big build while the permit is unused counts most)
-    var ready = live && catalog().some(function (it) { return !blockOf(it) && cash >= it.cost; });
+    var ready = live && cash >= Math.min(I.price.gold, I.price.silver);
     btn.classList.toggle('glow', !!ready);
     I.ready = !!ready;
     I.maybePitch();

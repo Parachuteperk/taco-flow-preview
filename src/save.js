@@ -38,7 +38,7 @@
     var rows = l.rows || [], cut = Math.max(0, rows.length - 512), groups = new Map(), old = [];
     for (var i = 0; i < cut; i++) {
       var r = rows[i];
-      if (r.cat === 'rent' || r.cat === 'seed') { old.push(copy(r)); continue; }
+      if (r.cat === 'rent' || r.cat === 'seed' || r.cat === 'build' || r.cat === 'upgrade') { old.push(copy(r)); continue; }
       var cast = /^cast:([^ ]+)/.exec(r.ref || '');
       var ref = cast ? 'cast:' + cast[1] + ' archive' : 'archive';
       var key = JSON.stringify([r.day, r.phase, r.cat, ref]), a = groups.get(key);
@@ -82,7 +82,7 @@
       crew: { hired: TF.Crew.hired(), extras: copy(TF.Crew.extras) },
       sim: sim, stats: stats,
       flags: {
-        objects: O ? { day: O.day, totals: O.totals, litterStats: O.litterStats, shadeStats: O.shadeStats, litter: O.litter } : null,   // overnight litter stays (it cuts demand)
+        objects: O ? { stock: O.stock, day: O.day, totals: O.totals, litterStats: O.litterStats, shadeStats: O.shadeStats, litter: O.litter } : null,   // overnight litter stays (it cuts demand)
         invest: I ? plain(I, ['owned', 'sig', 'rng']) : null,
         owned: I ? I.owned.map(function (o) { return { id: o.id, cost: o.cost, st: o.st ? o.st.idx : null, rev0: o.rev0, obj: o.obj && O ? O.list.indexOf(o.obj) : -1, day: o.day, name: o.name }; }) : [],
         story: plain(TF.Story, ['walker', 'verdict', 'verdictTimer']),
@@ -118,7 +118,7 @@
     var keys = Object.keys(live);
     for (var i = 0; i < keys.length; i++) {
       var k = keys[i];
-      if (k === 'scheduledCatalysts' && saved[k] === undefined) continue; // pre-inspection saves
+      if ((k === 'scheduledCatalysts' || k === 'buildCounts') && saved[k] === undefined) continue; // pre-inspection saves
       if (!(k in saved)) return path + '.' + k + ' missing';
       // keyed-by-day / -by-symbol maps hold whatever days or tickers there are: check only fixed-shape objects
       if (/^(holdings|prices|preRolls|publicCatalysts|fineDays|weeks|weeklyCounts|active|permits|ctx|openPrices)$/.test(k)) continue;
@@ -157,6 +157,8 @@
     var lv = TF.LEVELS[d.level && d.level.id] || (d.level && d.level.data);
     if (!d.level || typeof d.level.id !== 'string' || !lv || !int(lv.w) || !int(lv.h)) return 'level';
     var W = lv.w, H = lv.h;
+    var drinks = d.flags && d.flags.objects && d.flags.objects.stock;
+    if (drinks !== undefined && (!drinks || !int(drinks.drinks) || drinks.drinks < 0 || !Array.isArray(drinks.pending) || !drinks.pending.every(function (p) { return p && int(p.drinks) && p.drinks > 0 && Number.isFinite(p.etaS) && p.etaS >= 0; }))) return 'drink stock';
     if (d.flags && d.flags.objects && d.flags.objects.day && d.flags.objects.day.price !== undefined && [1, 2, 3].indexOf(d.flags.objects.day.price) < 0) return 'drink price';
     if (d.flags && d.flags.objects && (!Array.isArray(d.flags.objects.litter) || !d.flags.objects.litter.every(function (l) { return l && ['x','y','t','rot'].every(function (k) { return Number.isFinite(l[k]); }) && typeof l.col === 'string'; }))) return 'litter';
     if (!d.sim || typeof d.sim !== 'object' || typeof d.sim.t !== 'number' || !d.stats || typeof d.stats !== 'object') return 'sim / stats';
@@ -323,7 +325,7 @@
       apply(Sim, d.sim); apply(Sim.stats, d.stats);
       W.results = d.week.results; W.earnTotal = d.week.earnTotal; W.bellSpawned = d.week.bellSpawned;
       var f = d.flags || {};
-      if (O && f.objects) apply(O, f.objects);
+      if (O && f.objects) { if (O.stock) O.stock = { drinks: 0, pending: [] }; apply(O, f.objects); }
       if (I && f.invest) { apply(I, f.invest); I.owned = (f.owned || []).map(function (o) { return { id: o.id, cost: o.cost, st: o.st === null ? null : Sim.stands[o.st], rev0: o.rev0, obj: O && o.obj >= 0 ? O.list[o.obj] : null, day: o.day, name: o.name }; }); }
       apply(TF.Story, f.story); apply(TF.Arcs, f.arcs); apply(TF.Bets, f.bets); apply(TF.Hacks, f.hacks); apply(TF.Events, f.events);
       if (TF.Supply && f.supply) apply(TF.Supply, f.supply);

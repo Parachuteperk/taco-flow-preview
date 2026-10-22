@@ -67,6 +67,9 @@
   #investPanel .head span { font-size: 11px; flex: 1 1 100%; order: 3; color: #6a4a3a; }
   #investPanel .head button { margin-left: auto; padding: 4px 9px; }
   #endCard .scene { line-height: 1.5; background: #fff5d6; border-radius: 8px; padding: 6px 8px; margin: 6px 0; font-size: 14px; text-align: left; color: #2a1810; }
+  #investPanel .icard.tick { display:grid; grid-template-columns:minmax(0,1fr); gap:8px; }
+  #investPanel .trade-buttons { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:4px; }
+  #investPanel .trade-buttons button { min-width:0; min-height:44px; padding:6px 3px; font-size:12px; }
   #investPanel .exch { background: #1d3b2a; color: #f4efe4; } #investPanel .icard.exch small, #investPanel .icard.exch b { color: #e6f4ea; } #investPanel .tick .star { font-size: 11px; color: #5a4a2a; margin-top: 2px; }
   #investPanel .tip { font-size: 12px; font-style: italic; color: #7a5a10; margin-bottom: 4px; }
   #investPanel .permit { font-size: 11px; font-weight: 700; background: #fde8a6; border-radius: 6px; padding: 3px 6px; margin-bottom: 6px; }
@@ -220,7 +223,7 @@
   <button id="btnManage" aria-controls="manageSheet" aria-expanded="false" hidden>Manage</button>
   <button id="btnSpeed">1&times;</button>
   <button id="btnBuild" title="Move the stand / draw the queue line">&#128296; Build</button>
-  <button id="btnCrew">Stand &amp; crew</button>
+  <button id="btnCrew">Hire / Crew</button>
   <button id="btnHack" hidden>Hack agenda</button>
   <button id="btnRaid" hidden>Raid</button>
   <span class="viewControls" style="display:inline-flex;gap:6px">
@@ -272,7 +275,7 @@
   <div class="body"><b>Classes dismissed early!</b><small>All afternoon sections cancelled. Enjoy the Quad :)</small></div>
 </div>
 <div id="crewPanel" hidden>
-  <div class="head"><b>Stand &amp; crew</b><button id="btnCrewClose" aria-label="Close">&times;</button></div>
+  <div class="head"><b>Hire / Crew</b><button id="btnCrewClose" aria-label="Close">&times;</button></div>
   <div id="crewList"></div>
 </div>
 <script src="src/config.js?v=202610220851"></script>

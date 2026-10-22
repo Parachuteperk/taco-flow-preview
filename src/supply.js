@@ -47,7 +47,7 @@
   function neediest() {
     var list = Sim.stands || [Sim.stand], best = null;
     list.forEach(function (st) {
-      if (!st.placed) return;
+      if (!st.placed || (TF.Econ && TF.Econ.on() && !TF.Econ.needsRefill(st))) return;
       var max = st.mods.stockMax, f = st.stock / max;
       if (f <= 0.25 && (!best || f < best.f)) best = { st: st, f: f };
     });
@@ -57,7 +57,7 @@
   S.step = function (dt) {
     var list = Sim.stands || [Sim.stand];
     list.forEach(function (st) {
-      if (st.placed && st.stock <= 0 && (!TF.Week || !TF.Week.active() || TF.Week.phase === 'open' || TF.Week.phase === 'close')) S.soldOutSeconds += dt;
+      if (st.placed && st.stock <= 0 && (!TF.Econ || !TF.Econ.on() || TF.Econ.soldOutAll(st)) && (!TF.Week || !TF.Week.active() || TF.Week.phase === 'open' || TF.Week.phase === 'close')) S.soldOutSeconds += dt;
     });
     if (!hasRunner()) { S.trip = null; return; }
     var r = S.trip;

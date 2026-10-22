@@ -65,13 +65,14 @@
     var exchangeShape = Exchange.create({ seed: s.seed }).getState();
     // Keep legacy full-board campaigns and pass6's three-ticker market intact.
     // Never recreate a live Exchange: that would lose its portfolio and pre-rolls.
-    var liveMarket = s.exchange && Array.isArray(s.exchange.tickers) && s.exchange.tickers.length === 3;
+    var liveMarket = s.exchange && Array.isArray(s.exchange.tickers) && [3, 6].includes(s.exchange.tickers.length);
     if (liveMarket) {
       var liveTickers = exchangeShape.tickers.filter(function (t) {
-        return ['GOLD', 'TACO', 'NAPZ'].indexOf(t.sym) >= 0;
+        return (s.exchange.tickers.length === 3 ? ['GOLD', 'TACO', 'NAPZ'] : ['GOLD', 'TACO', 'NAPZ', 'COIN', 'SHADE', 'QUAD']).indexOf(t.sym) >= 0;
       }).map(function (t) { t.opensDay = 1; return t; });
       exchangeShape = Exchange.create({ seed: s.seed ^ 0xE8C4, tickers: liveTickers }).getState();
     }
+    if (s.exchange && s.exchange.tickers.length === 10) exchangeShape = Exchange.create({ seed: s.seed, tickers: exchangeShape.tickers.filter(function (t) { return !['COIN', 'SHADE', 'QUAD'].includes(t.sym); }) }).getState();
     shape(exchangeShape, s.exchange, 'exchange');
     var w = s.west, k = s.stock, x = s.exchange;
     if (w.mood < 0 || w.mood > 10 || !whole(w.mood) || w.attempts.length !== 4 ||
@@ -314,7 +315,7 @@
   ];
   var labels = { grill: 'Grill', banner: 'Banner', serving: 'Serving station', drinks: 'Drinks',
     trashCans: 'Trash cans', coinFlip: 'Coin flip', hireAaron: 'Hire Aaron (Day 3)',
-    fullBoard: 'All 10 Exchange tickers', picnicShade: 'Picnic shade', merchTable: 'Merch table',
+    fullBoard: 'All 13 Exchange tickers', picnicShade: 'Picnic shade', merchTable: 'Merch table',
     cornhole: 'Cornhole court', salsaBar: 'Salsa bar', stringLights: 'String lights',
     spikeball: 'Spikeball', stand2: 'Stand 2 (Day 12)', foodTruck: 'Food truck (tier 5)',
     tier6: 'Stand tier 6', tier7: 'Stand tier 7' };

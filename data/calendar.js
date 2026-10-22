@@ -135,7 +135,7 @@
           (f.id !== 'presidentPass' || (level === 2 && n <= 9) || (level === 4 && n <= 17));
       }).map(function (f) { return f.id; }), priceMult: ramp ? ramp.favorMult : mults[level - 1] },
       cast: { guaranteed: guaranteed, pool: pool, max: 3 },
-      exchange: { opens: n === 1 ? ['GOLD', 'SLVR'] : n === 6 ?
+      exchange: { opens: n === 1 ? ['GOLD', 'SLVR', 'COIN', 'SHADE', 'QUAD'] : n === 6 ?
         ['WEST', 'WCO', 'TACO', 'NAPZ', 'TUBE', 'MAVS', 'HACKR', 'BOBA'] : [],
         catalysts: catalysts, hackDay: hack, rantDay: !!rant, rantDir: rant ? rant.dir : null,
         tieIns: (notes[n] || []).map(function (p) { return { sym: p[0], note: p[1] }; }) },

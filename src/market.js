@@ -7,7 +7,7 @@
 // picked to match the engine's 80 %-accurate hint), the INVEST panel section and the weekend summary.
 (function (TF) {
   var Sim = TF.Sim, W = function () { return TF.Week; };
-  var SYMS = ['GOLD', 'TACO', 'NAPZ'];
+  var SYMS = ['GOLD', 'TACO', 'NAPZ', 'COIN', 'SHADE', 'QUAD'];
   var MK = { X: null, open: {}, weekStart: {}, log: [] };
 
   function econ() { return !!(TF.Econ && TF.Econ.on()); }
@@ -25,6 +25,20 @@
   };
   function phase() { return MK.X ? MK.X.getState().phase : null; }
   function day() { return MK.X ? MK.X.getState().day : 0; }
+  MK.context = function () {
+    var rows = TF.Ledger.rows || [], shade = 0, builds = 0, level = TF.Econ.levelNo || 1;
+    // Prior locations remain part of the property market; today's value comes from
+    // actual placed structures, so buying an unplaced stand never moves QUAD.
+    rows.forEach(function (r) {
+      if (r.day <= (level - 1) * 5 && (r.cat === 'build' || r.cat === 'upgrade') && /^(grill|banner|serving|canopy|stand2|drinks|picnic|trash)$/.test(r.ref)) {
+        builds++; if (r.ref === 'canopy' || r.ref === 'picnic') shade++;
+      }
+    });
+    Sim.stands.forEach(function (st) { if (st.placed) { builds += 1 + st.tier; if (st.tier >= 4) shade++; } });
+    if (TF.Objects) TF.Objects.list.forEach(function (o) { builds++; if (o.kind === 'picnic') shade++; });
+    var calendar = TF.Calendar && TF.Calendar.day(abs());
+    return { shadeBuilds: shade, permanentBuilds: builds + level - 1, rain: !!(calendar && calendar.weather === 'rain') };
+  };
   // PREP of a day: the engine pre-rolls every close now, before any hint is read.
   MK.openDay = function () {
     if (!MK.X || !econ()) return;
@@ -34,14 +48,14 @@
     if (day() >= d) return;
     // no TACO hack-day catalyst in L1: Antonio is on the crew all Taco Week (hacks.js), so it would make
     // every day a p = 80 % day; the month's hack calendar brings it back (6B)
-    MK.X.openPrep(d, {});
+    MK.X.openPrep(d, MK.context());
     MK.open = {};
     MK.X.board().forEach(function (q) { MK.open[q.sym] = q.cents; if (MK.weekStart[q.sym] === undefined) MK.weekStart[q.sym] = q.cents; });
   };
   // REPORT: the pre-rolled closes land.
   MK.closeDay = function () {
     if (!MK.X || !econ() || phase() !== 'prep' || day() !== abs()) return null;
-    var c = MK.X.close(abs());
+    var c = MK.X.close(abs(), MK.context());
     MK.log.push(c);
     if (MK.log.length > 20) MK.log.shift();
     return c;
@@ -75,12 +89,14 @@
   MK.syncPrices = function () { MK.open = {}; MK.weekStart = {}; MK.X.board().forEach(function (q) { MK.open[q.sym] = MK.weekStart[q.sym] = q.cents; }); };
 
   // ---- trading: PREP only, 1 whole share a tap -------------------------------------------------------
-  MK.trade = function (sym, buying) {
+  MK.trade = function (sym, buying, n) {
+    n = n === undefined ? 1 : n;
     if (!MK.X) return { ok: false, reason: 'Market closed' };
     if (W().phase !== 'prep') return { ok: false, reason: 'PREP only' };   // the engine can't tell OPEN from PREP
-    var r = buying ? MK.X.buy(sym, 1) : MK.X.sell(sym, 1);
-    Sim.events.push({ type: 'toast', text: r.ok ? (buying ? '📈 Bought 1 ' : '📉 Sold 1 ') + sym + ' @ $' + (MK.X.quote(sym).cents / 100).toFixed(2) + ' (+$1 fee)'
+    var r = buying ? MK.X.buy(sym, n) : MK.X.sell(sym, n);
+    Sim.events.push({ type: 'toast', text: r.ok ? (buying ? '📈 Bought ' : '📉 Sold ') + n + ' ' + sym + ' @ $' + (MK.X.quote(sym).cents / 100).toFixed(2) + ' (+$1 fee)'
       : 'Can’t ' + (buying ? 'buy' : 'sell') + ' ' + sym + ': ' + r.reason });
+    if (r.ok && TF.Save) TF.Save.write('prep');
     if (TF.Invest) TF.Invest.render();
     return r;
   };
@@ -103,20 +119,20 @@
     var prep = W().phase === 'prep', hold = MK.X.portfolio(), c = cash();
     var h = '<div class="icard exch"><div><b>📈 Quad Exchange</b> <small>' + (prep ? 'PREP only · whole shares · $1 a trade · max 20' : 'trading reopens at the next PREP') + '</small></div></div>';
     MK.X.board().forEach(function (q) {
-      var open = MK.open[q.sym] || q.cents, ch = q.cents - open, n = hold[q.sym] || 0, st = prep ? MK.star(q.sym) : null;
-      var arrow = st ? (st.dir === 'up' ? '↑' : st.dir === 'down' ? '↓' : '→') : '';
-      h += '<div class="icard tick" data-sym="' + q.sym + '"><div><b>' + q.sym + '</b> <b>' + $(q.cents) + '</b>' + (ch ? ' <small>(' + (ch > 0 ? '+' : '') + $(ch).replace('$-', '-$') + ')</small>' : '') +
-        ' · you hold <b>' + n + '</b>' + (n ? ' = ' + $(n * q.cents) : '') +
-        (st ? '<div class="star">📰 Star: “' + st.text + '” ' + arrow + '</div>' : '') + '</div>' +
-        '<span class="pair"><button data-ex-buy="' + q.sym + '"' + (!prep || n >= 20 || c < q.cents + 100 ? ' disabled' : '') + '>Buy</button>' +
-        // sell needs the $1 fee covered by cash + this sale's proceeds (the engine's rule, C5 review)
-        '<button data-ex-sell="' + q.sym + '"' + (!prep || !n || c + q.cents < 100 ? ' disabled' : '') + '>Sell</button></span></div>';
+      var open = MK.open[q.sym] || q.cents;
+      var pct = (q.cents - open) / open * 100;
+      var n = hold[q.sym] || 0;
+      h += '<div class="icard tick" data-sym="' + q.sym + '"><div><b>' + q.sym + ' · ' + $(q.cents) + '</b> <span>' + (pct >= 0 ? '↑ +' : '↓ ') + pct.toFixed(1) + '% today</span>' +
+        '<div>Owned: <b>' + n + '</b> · Value: <b>' + $(n * q.cents) + '</b></div></div><span class="trade-buttons">' +
+        [1,5].map(function (qty) { return '<button data-ex-buy="' + q.sym + '" data-qty="' + qty + '"' + (!prep || !q.listed || n + qty > 20 || c < q.cents * qty + 100 ? ' disabled' : '') + '>Buy ' + qty + '</button>'; }).join('') +
+        '<button data-ex-sell="' + q.sym + '" data-qty="1"' + (!prep || !n || c + q.cents < 100 ? ' disabled' : '') + '>Sell</button>' +
+        '<button data-ex-sell="' + q.sym + '" data-qty="' + n + '"' + (!prep || !n || c + n * q.cents < 100 ? ' disabled' : '') + '>Sell all</button></span></div>';
     });
     return h;
   };
   MK.bind = function (list) {
-    list.querySelectorAll('[data-ex-buy]').forEach(function (b) { b.addEventListener('click', function () { MK.trade(b.getAttribute('data-ex-buy'), true); }); });
-    list.querySelectorAll('[data-ex-sell]').forEach(function (b) { b.addEventListener('click', function () { MK.trade(b.getAttribute('data-ex-sell'), false); }); });
+    list.querySelectorAll('[data-ex-buy]').forEach(function (b) { b.addEventListener('click', function () { MK.trade(b.getAttribute('data-ex-buy'), true, Number(b.getAttribute('data-qty')) || 1); }); });
+    list.querySelectorAll('[data-ex-sell]').forEach(function (b) { b.addEventListener('click', function () { MK.trade(b.getAttribute('data-ex-sell'), false, Number(b.getAttribute('data-qty')) || 1); }); });
   };
 
   // ---- the weekend verdict's numbers ------------------------------------------------------------------

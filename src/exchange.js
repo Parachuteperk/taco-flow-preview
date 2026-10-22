@@ -57,8 +57,17 @@
     function price(cents) { return clamp(Math.round(cents), 100, 50000); }
     function finalClose(sym, r) {
       var cents = r.failedHack ? state.prices[sym] : Math.round(state.prices[sym] * (1 + (r.dir === 'up' ? r.v : -r.v)));
+      if (sym === 'SHADE') {
+        var shade = Math.max(0, (state.ctx.shadeBuilds || 0) - (state.buildCounts ? state.buildCounts.shade : 0));
+        if (state.ctx.rain) cents = Math.round(r.fromCents * 0.90);
+        else if (shade) cents = Math.round(r.fromCents * (1.02 + shade * 0.08));
+      }
+      if (sym === 'QUAD') {
+        var builds = Math.max(0, (state.ctx.permanentBuilds || 0) - (state.buildCounts ? state.buildCounts.permanent : 0));
+        cents = Math.round(r.fromCents * (1.005 + builds * 0.01));
+      }
       state.catalysts.forEach(function (e) {
-        if (e.sym === sym && e.jump) cents = e.public ? cents + Math.round(r.fromCents * e.jump / 2) : Math.round(cents * (1 + e.jump));
+        if (e.sym === sym && sym !== 'COIN' && e.jump) cents = e.public ? cents + Math.round(r.fromCents * e.jump / 2) : Math.round(cents * (1 + e.jump));
       });
       return price(cents);
     }
@@ -99,8 +108,8 @@
       tickers.forEach(function (t) {
         if (!listed(t)) return;
         var shifts = state.catalysts.filter(function (e) { return e.sym === t.sym; }).map(function (e) { return e.shift || 0; });
-        var p = clampP(t.risePct, shifts);
-        state.preRolls[t.sym] = {p: p, dir: rng.next() < p / 100 ? 'up' : 'down', v: t.v,
+        var p = t.sym === 'COIN' ? 50 : clampP(t.risePct, shifts);
+        state.preRolls[t.sym] = {p: p, dir: (['COIN', 'SHADE', 'QUAD'].indexOf(t.sym) >= 0 ? hash(state.seed, day, t.sym, 'daily') : rng.next()) < p / 100 ? 'up' : 'down', v: t.v,
           fromCents: state.prices[t.sym], failedHack: false};
       });
       var rolls = state.preRolls;
@@ -179,9 +188,14 @@
       });
       return headlines;
     }
-    function close(day) {
+    function close(day, ctx) {
       if (state.phase === 'close' && day === state.day) return copy(state.lastClose);
       if (state.phase !== 'prep' || day !== state.day) throw new Error('No PREP for this day');
+      if (ctx) state.ctx = Object.assign({}, state.ctx, copy(ctx));
+      ['SHADE', 'QUAD'].forEach(function (sym) {
+        var r = state.preRolls[sym];
+        if (r) { r.finalCents = finalClose(sym, r); r.outcome = outcome(r.fromCents, r.finalCents); }
+      });
       var moves = [];
       tickers.forEach(function (t) {
         var r = state.preRolls[t.sym];
@@ -191,6 +205,7 @@
         moves.push({sym: t.sym, dir: outcome(r.fromCents, state.prices[t.sym]), fromCents: r.fromCents, toCents: state.prices[t.sym]});
         if (t.sym !== 'GOLD' && state.prices[t.sym] <= r.fromCents * 0.85) state.goldBoostDay = day + 1;
       });
+      state.buildCounts = { shade: state.ctx.shadeBuilds || 0, permanent: state.ctx.permanentBuilds || 0 };
       state.phase = 'close';
       if (day % 5 === 0 && state.preRolls.WEST) post('dividend', 100 * state.holdings.WEST, 'WEST Friday dividend', 'close');
       var week = Math.ceil(day / 5);
@@ -218,7 +233,18 @@
     close: close, hint: hint, starHeadlines: starHeadlines,
     scorecard: function () { return {week: copy(state.scores.weeks[Math.ceil(state.day / 5)] || emptyScores()), month: copy(state.scores.month)}; },
     getState: function () { state.rngState = rng.getState(); return copy(state); },
-    setState: function (s) { state = copy(s); state.scheduledCatalysts = state.scheduledCatalysts || []; tickers = state.tickers; rng.setState(state.rngState); }};
+    setState: function (s) { state = copy(s); state.scheduledCatalysts = state.scheduledCatalysts || []; tickers = state.tickers;
+      defaultTickers.filter(function (t) { return ticker('GOLD') && ticker('TACO') && ticker('NAPZ') && ['COIN', 'SHADE', 'QUAD'].indexOf(t.sym) >= 0; }).forEach(function (t) {
+        if (ticker(t.sym)) return;
+        tickers.push(copy(t)); state.prices[t.sym] = t.startCents; state.holdings[t.sym] = 0;
+        if (state.day >= t.opensDay && state.phase === 'prep') {
+          var r = state.preRolls[t.sym] = { p: 50, dir: hash(state.seed, state.day, t.sym, 'migration') < 0.5 ? 'up' : 'down', v: t.v, fromCents: t.startCents, failedHack: false };
+          r.finalCents = finalClose(t.sym, r); r.outcome = outcome(r.fromCents, r.finalCents);
+          state.openPrices = state.openPrices || {}; state.openPrices[t.sym] = t.startCents;
+        }
+        if (state.lastClose && state.day >= t.opensDay) state.lastClose.moves.push({ sym: t.sym, dir: 'flat', fromCents: t.startCents, toCents: t.startCents });
+      });
+      rng.setState(state.rngState); }};
   }
   return {create: create, clampP: clampP, hash: hash};
 }));

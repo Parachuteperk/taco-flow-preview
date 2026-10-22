@@ -37,7 +37,7 @@
     sheet.addEventListener('keydown', function (e) { if (e.key === 'Escape') { close(); manage.focus(); } });
     body.addEventListener('click', function (e) {
       // Keep Manage open after Place so Rotate stays reachable on phone; Line still closes it.
-      if (e.target.closest('#btnInvest,#btnCrew,#btnFocus,#btnMinimap,#btnHack,#btnRaid,#btnLine')) close();
+      if (e.target.closest('#btnInvest,#btnCrew,#btnBuild,#btnFocus,#btnMinimap,#btnHack,#btnRaid,#btnLine')) close();
     });
     function refresh() {
       var TF = win.TF, week = TF.Week, prep = !!(week && week.active() && week.phase === 'prep');

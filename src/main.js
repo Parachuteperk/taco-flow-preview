@@ -66,7 +66,7 @@
   // ---- HUD ---------------------------------------------------------------
   function defaultHint() {
     var sel = Sim.selected();
-    if (TF.Week && TF.Week.active() && TF.Week.phase === 'prep' && TF.Onboard && TF.Onboard.allConnected()) return 'Day ' + TF.Week.day + ' PREP: buy upgrades in Stand & crew, then press OPEN.';
+    if (TF.Week && TF.Week.active() && TF.Week.phase === 'prep' && TF.Onboard && TF.Onboard.allConnected()) return 'Day ' + TF.Week.day + ' PREP: buy upgrades in Build, then press OPEN.';
     var who = Sim.stands.length > 1 ? 'Stand ' + (sel.idx + 1) + ': ' : '';
     if (!sel.placed) return who + 'Tap a glowing spot (or Place stand, then open ground).' + (touchUI() ? '' : ' R rotates.');   // no R key on a phone
     if (!sel.line.length) return who + 'Tap \u201CUse suggested line\u201D or Build line from the ORDER window to a path.';
@@ -108,7 +108,9 @@
   el.build.addEventListener('click', function () {
     Audio.unlock();
     if (state.mode === 'object') { TF.Objects.cancel(); state.buildOpen = false; setMode('idle'); setHint('Placement cancelled (nothing spent).', 2); return; }
-    state.buildOpen = !(state.buildOpen || state.mode !== 'idle');
+    var shop = $('crewPanel');
+    state.buildOpen = shop ? (shop.hidden || !TF.Crew || TF.Crew.section !== 'build') : !(state.buildOpen || state.mode !== 'idle');
+    if (TF.Crew) TF.Crew.open(state.buildOpen, 'build');
     if (!state.buildOpen) setMode('idle'); else refreshButtons();
   });
   el.debug.addEventListener('click', function () { el.debugBar.hidden = !el.debugBar.hidden; el.debug.classList.toggle('active', !el.debugBar.hidden); });
@@ -133,9 +135,9 @@
     }
     if (TF.Onboard) TF.Onboard.userPanned = true;
   });
-  el.place.addEventListener('click', function () { Audio.unlock(); setMode(state.mode === 'place' ? 'idle' : 'place'); });
+  el.place.addEventListener('click', function () { Audio.unlock(); if (TF.Crew) TF.Crew.open(false); setMode(state.mode === 'place' ? 'idle' : 'place'); });
   el.rotate.addEventListener('click', function () { api.rotate(); });
-  el.line.addEventListener('click', function () { Audio.unlock(); setMode(state.mode === 'build' ? 'idle' : 'build'); });
+  el.line.addEventListener('click', function () { Audio.unlock(); if (TF.Crew) TF.Crew.open(false); setMode(state.mode === 'build' ? 'idle' : 'build'); });
   el.play.addEventListener('click', function () { Audio.unlock(); state.running ? api.pause() : api.play(); });
   el.speed.addEventListener('click', function () { Audio.unlock(); api.setSpeed(state.speed === 1 ? 2 : state.speed === 2 ? 4 : 1); });
   el.art.addEventListener('click', function () { api.setArt(TF.Art.mode === 'painted' ? 'placeholder' : 'painted'); });
@@ -480,7 +482,7 @@
         fromHackAlive: Sim.guests.filter(function (g) { return g.fromHack; }).length,
         build: TF.Build ? { started: TF.Build.started, finished: TF.Build.finished, jobs: TF.Build.jobs.map(function (j) { return { id: j.id, phase: j.phase, t: Math.round(j.t * 10) / 10 }; }), log: TF.Build.log.slice() } : null,
         permit: TF.Week ? { majorUsed: TF.Week.majorUsed, openMinorUsed: TF.Week.openMinorUsed } : null, confirmId: TF.Crew ? TF.Crew.confirmId : null,
-        objects: TF.Objects ? { list: TF.Objects.list.map(function (o) { return { kind: o.kind, x: o.x, y: o.y, st: o.st ? o.st.idx : null, ready: o.ready }; }), day: TF.Objects.day, totals: TF.Objects.totals, placing: TF.Objects.placing ? TF.Objects.placing.kind : null, shade: TF.Objects.shadeStats, litter: TF.Objects.litter.length, litterStats: TF.Objects.litterStats, litterMul: Sim.stands.map(function (st) { return Math.round((st.litterMul || 1) * 100) / 100; }), eating: Sim.guests.filter(function (g) { return g.state === 'EAT'; }).length, spots: TF.Objects.placing ? TF.Objects.placing.spots.length : 0 } : null,
+        objects: TF.Objects ? { stock: TF.Objects.stock, list: TF.Objects.list.map(function (o) { return { kind: o.kind, x: o.x, y: o.y, st: o.st ? o.st.idx : null, ready: o.ready }; }), day: TF.Objects.day, totals: TF.Objects.totals, placing: TF.Objects.placing ? TF.Objects.placing.kind : null, shade: TF.Objects.shadeStats, litter: TF.Objects.litter.length, litterStats: TF.Objects.litterStats, litterMul: Sim.stands.map(function (st) { return Math.round((st.litterMul || 1) * 100) / 100; }), eating: Sim.guests.filter(function (g) { return g.state === 'EAT'; }).length, spots: TF.Objects.placing ? TF.Objects.placing.spots.length : 0 } : null,
         story: TF.Story ? { started: TF.Story.started, profit: TF.Story.profit(), target: TF.Story.target, log: TF.Story.log, walker: TF.Story.walker ? TF.Story.walker.kind + ':' + TF.Story.walker.phase : null, challenge: TF.Story.challenge, verdict: TF.Story.verdict ? { won: TF.Story.verdict.won, profit: TF.Story.verdict.profit, rent: TF.Story.verdict.rent } : null, angel: TF.Story.angel, popup: TF.Story.popup, hud: document.getElementById('betHud').textContent } : null,
         ladder: TF.Hacks ? { level: TF.Hacks.level(), log: TF.Hacks.log, run: TF.Hacks.run ? { id: TF.Hacks.run.id, spawned: TF.Hacks.run.spawned } : null, last: TF.Hacks.last ? { id: TF.Hacks.last.id, spawned: TF.Hacks.last.spawned, bailed: TF.Hacks.last.bailed, wait: TF.Hacks.last.wait, shifted: TF.Hacks.last.shifted } : null, premium: TF.Hacks.premium, buyMul: TF.Hacks.buyMul, card: !document.getElementById('hackCard').hidden, btn: document.getElementById('btnHack').textContent } : null,
         invest: TF.Invest ? { owned: TF.Invest.owned.map(function (o) { return { id: o.id, cost: o.cost, earned: Math.round(TF.Invest.earned(o)) }; }), metals: TF.Invest.metals, price: TF.Invest.price, flips: TF.Invest.flips, lastFlip: TF.Invest.lastFlip || null, ready: !!TF.Invest.ready, pitched: TF.Invest.pitched || 0, report: TF.Week && TF.Week.active() ? TF.Invest.report() : [] } : null,
