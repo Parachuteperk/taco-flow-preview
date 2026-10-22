@@ -1,7 +1,7 @@
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory(require('../data/tickers.js'));
-  else { root.TF = root.TF || {}; root.TF.Exchange = factory(root.TF.Tickers); }
-}(typeof window !== 'undefined' ? window : this, function (defaultTickers) {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('../data/tickers.js'), root);
+  else { root.TF = root.TF || {}; root.TF.Exchange = factory(root.TF.Tickers, root); }
+}(typeof window !== 'undefined' ? window : this, function (defaultTickers, root) {
   'use strict';
   var sources = ['star', 'jared', 'antonio', 'west'];
   var accuracy = {star: 0.80, jared: 0.55, antonio: 0.90, west: 0.50};
@@ -11,7 +11,6 @@
     var sum = Array.isArray(shifts) ? shifts.reduce(function (a, b) { return a + b; }, 0) : (shifts || 0);
     return clamp(base + clamp(sum, -30, 30), 15, 85);
   }
-  // Length-delimited tuple hashing avoids ambiguous seed/day/source/symbol joins.
   function hash() {
     var h = 2166136261, i, j, str;
     for (i = 0; i < arguments.length; i++) {
@@ -48,7 +47,7 @@
     var state = {seed: seed, tickers: tickers, day: 0, phase: 'idle', prices: {}, holdings: {},
       rngState: 0, viralDay: 6 + Math.floor(rng.next() * 15), preRolls: {}, catalysts: [],
       hintLog: [], scores: {weeks: {}, month: emptyScores()}, publicCatalysts: {}, scheduledCatalysts: [],
-      fineDays: {}, goldBoostDay: 0, lastClose: null, ctx: {}};
+      fineDays: {}, goldBoostDay: 0, lastClose: null, ctx: {}, boughtToday: {}, lastDrinkSales: 0};
     tickers.forEach(function (t) { state.prices[t.sym] = t.startCents; state.holdings[t.sym] = 0; });
     function ticker(sym) {
       return tickers.filter(function (t) { return t.sym === sym; })[0];
@@ -83,6 +82,7 @@
       if (state.phase === 'prep' || day < state.day) throw new Error('Close the current day before advancing');
       state.day = day; state.phase = 'prep'; state.ctx = copy(ctx || {});
       ctx = state.ctx;
+      state.boughtToday = {};
       state.preRolls = {}; state.catalysts = [];
       tickers.forEach(function (t) {
         (t.catalysts || []).forEach(function (c, index) {
@@ -104,6 +104,19 @@
       if (ctx.rantDay) add('MAVS', 'rant', ctx.rantDir === 'down' ? -30 : 30);
       for (var n = 0; n < (ctx.antonioLevelUps || 0); n++) add('HACKR', 'level-up', 0, 0.20);
       if (day === state.viralDay) add('BOBA', 'viral', 0, 2);
+      // ticker drivers (small probability nudges; ignored if signal absent)
+      if (ctx.rain) add('SHADE', 'rain', -15);
+      else if (ctx.hot || ctx.sunny) add('SHADE', 'hot', 6);
+      if (ctx.shadeBuilds) add('SHADE', 'canopy', Math.min(12, (ctx.shadeBuilds || 0) * 2));
+      var qb = ctx.permanentBuilds || ctx.builds || 0;
+      if (qb) add('QUAD', 'builds', Math.min(18, qb));
+      if (typeof ctx.drinkSales === 'number') {
+        var prev = state.lastDrinkSales || 0;
+        var diff = ctx.drinkSales - prev;
+        var sh = Math.max(-12, Math.min(12, Math.round(diff / 4)));
+        if (sh) add('BOBA', 'sales', sh);
+        state.lastDrinkSales = ctx.drinkSales;
+      }
       // All market rolls happen before any hint or public opening adjustment.
       tickers.forEach(function (t) {
         if (!listed(t)) return;
@@ -115,7 +128,6 @@
       var rolls = state.preRolls;
       if (ctx.hackDay && rolls.TACO) {
         rolls.TACO.failedHack = rng.next() < 0.05;
-        // A failed hack replaces the ordinary move with the crash.
         if (rolls.TACO.failedHack) { rolls.TACO.dir = 'down'; add('TACO', 'failed-hack', 0, -0.40); }
       }
       if (ctx.jaredPitchDay && rolls.SLVR && rolls.GOLD) { rolls.SLVR.dir = rolls.GOLD.dir; rolls.SLVR.v *= 2; }
@@ -128,7 +140,6 @@
         var r = rolls[t.sym];
         if (!r) return;
         r.finalCents = finalClose(t.sym, r);
-        // Measure the whole PREP-to-close move, including announced opening jumps.
         r.outcome = outcome(r.fromCents, r.finalCents);
       });
     }
@@ -137,25 +148,40 @@
       if (!t) return null;
       return {cents: state.prices[sym], p: state.preRolls[sym] ? state.preRolls[sym].p : t.risePct, listed: listed(t)};
     }
+    function feeFor(value) { return Math.max(100, Math.round(value * 0.02)); }
     function trade(sym, n, buying) {
       var t = ticker(sym), reason;
-      if (state.phase !== 'prep') reason = 'PREP only';
+      if (state.phase !== 'prep' && state.phase !== 'close') reason = 'Trading closed';
       else if (!listed(t)) reason = 'Ticker not listed';
       else if (typeof n !== 'number' || !isFinite(n) || n <= 0 || Math.floor(n) !== n) reason = 'Whole positive shares required';
-      else if (buying && state.holdings[sym] + n > 20) reason = 'Holding limit is 20';
       else if (!buying && state.holdings[sym] < n) reason = 'Insufficient shares';
-      else if (options.getCash && options.getCash() < (buying ? state.prices[sym] * n + 100 : 100 - state.prices[sym] * n)) reason = 'Insufficient cash';
+      else if (!buying && n > (state.holdings[sym] - (state.boughtToday[sym] || 0))) reason = 'No same-day round trip';
+      else {
+        var px = state.prices[sym], value = px * n, fee = feeFor(value);
+        var cash = options.getCash ? options.getCash() : 1e15;
+        if (buying && cash < value + fee) reason = 'Insufficient cash';
+        else if (buying) {
+          var curH = 0;
+          for (var sy in state.holdings) curH += state.holdings[sy] * state.prices[sy];
+          var newH = curH + value;
+          var newC = cash - (value + fee);
+          var tot = newC + newH;
+          if (tot > 0 && newH > Math.floor(0.25 * tot + 0.5)) reason = 'Exposure cap exceeded';
+        }
+      }
       if (reason) return {ok: false, reason: reason};
       var ref = (buying ? 'BUY ' : 'SELL ') + sym + ' x' + n + ' @' + state.prices[sym];
       var cents = (buying ? -1 : 1) * state.prices[sym] * n;
+      var fee = feeFor(state.prices[sym] * n);
       try { post('trade', cents, ref); }
       catch (error) { return {ok: false, reason: 'ledger error'}; }
-      try { post('fee', -100, ref); }
+      try { post('fee', -fee, ref); }
       catch (error) {
         try { post('trade', -cents, 'REVERSAL ' + ref); } catch (reversalError) { /* Best-effort compensation. */ }
         return {ok: false, reason: 'ledger error'};
       }
       state.holdings[sym] += buying ? n : -n;
+      if (buying) state.boughtToday[sym] = (state.boughtToday[sym] || 0) + n;
       return {ok: true, reason: null};
     }
     function hint(source, sym) {
@@ -163,7 +189,6 @@
       if (state.phase !== 'prep' || sources.indexOf(source) < 0 || !roll) return null;
       var prior = state.hintLog.filter(function (h) { return h.day === state.day && h.source === source && h.sym === sym; })[0];
       if (prior) return copy(prior);
-      // Flat is a valid correct hint; any directional hint on a flat close is wrong.
       var actual = roll.outcome || outcome(roll.fromCents, finalClose(sym, roll));
       var dir = hash(state.seed, state.day, source, sym) < accuracy[source] ? actual : (actual === 'up' ? 'down' : 'up');
       if (source === 'west' && (sym === 'WEST' || sym === 'WCO')) dir = 'up';
@@ -196,14 +221,24 @@
         var r = state.preRolls[sym];
         if (r) { r.finalCents = finalClose(sym, r); r.outcome = outcome(r.fromCents, r.finalCents); }
       });
-      var moves = [];
+      var moves = [], headlines = [];
       tickers.forEach(function (t) {
         var r = state.preRolls[t.sym];
         if (!r) return;
-        // Fallback permits restoring PREP saves made before final closes were cached.
         state.prices[t.sym] = r.finalCents === undefined ? finalClose(t.sym, r) : r.finalCents;
-        moves.push({sym: t.sym, dir: outcome(r.fromCents, state.prices[t.sym]), fromCents: r.fromCents, toCents: state.prices[t.sym]});
-        if (t.sym !== 'GOLD' && state.prices[t.sym] <= r.fromCents * 0.85) state.goldBoostDay = day + 1;
+        var fromC = r.fromCents, toC = state.prices[t.sym];
+        moves.push({sym: t.sym, dir: outcome(fromC, toC), fromCents: fromC, toCents: toC});
+        var pct = fromC ? (toC - fromC) / fromC : 0;
+        if (Math.abs(pct) >= 0.05) {
+          var dkey = pct >= 0 ? 'up' : 'down';
+          var P7 = (typeof root !== 'undefined' && root.TF && root.TF.P7Content) || (typeof global !== 'undefined' && global.TF && global.TF.P7Content) || {};
+          var arr = P7.headlines && P7.headlines[t.sym] && P7.headlines[t.sym][dkey];
+          if (arr && arr.length) {
+            var idx = Math.floor(hash(state.seed, day, t.sym, 'hl') * arr.length);
+            headlines.push({sym: t.sym, pct: Math.round(pct * 1000) / 10, text: arr[idx]});
+          }
+        }
+        if (t.sym !== 'GOLD' && toC <= fromC * 0.85) state.goldBoostDay = day + 1;
       });
       state.buildCounts = { shade: state.ctx.shadeBuilds || 0, permanent: state.ctx.permanentBuilds || 0 };
       state.phase = 'close';
@@ -215,7 +250,7 @@
         var hit = h.dir === outcome(state.preRolls[h.sym].fromCents, state.prices[h.sym]) ? 1 : 0;
         [state.scores.weeks[week], state.scores.month].forEach(function (scores) { scores[h.source].total++; scores[h.source].hits += hit; });
       });
-      state.lastClose = {day: day, moves: moves};
+      state.lastClose = {day: day, moves: moves, headlines: headlines};
       return copy(state.lastClose);
     }
     function scheduleCatalyst(c) {
@@ -231,9 +266,10 @@
     },
     buy: function (sym, n) { return trade(sym, n, true); }, sell: function (sym, n) { return trade(sym, n, false); },
     close: close, hint: hint, starHeadlines: starHeadlines,
+    headlines: function (d) { return (state.lastClose && state.lastClose.day === d && state.lastClose.headlines) || []; },
     scorecard: function () { return {week: copy(state.scores.weeks[Math.ceil(state.day / 5)] || emptyScores()), month: copy(state.scores.month)}; },
     getState: function () { state.rngState = rng.getState(); return copy(state); },
-    setState: function (s) { state = copy(s); state.scheduledCatalysts = state.scheduledCatalysts || []; tickers = state.tickers;
+    setState: function (s) { state = copy(s); state.scheduledCatalysts = state.scheduledCatalysts || []; state.boughtToday = state.boughtToday || {}; state.lastDrinkSales = state.lastDrinkSales || 0; tickers = state.tickers;
       defaultTickers.filter(function (t) { return ticker('GOLD') && ticker('TACO') && ticker('NAPZ') && ['COIN', 'SHADE', 'QUAD'].indexOf(t.sym) >= 0; }).forEach(function (t) {
         if (ticker(t.sym)) return;
         tickers.push(copy(t)); state.prices[t.sym] = t.startCents; state.holdings[t.sym] = 0;

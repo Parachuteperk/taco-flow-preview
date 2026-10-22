@@ -311,13 +311,13 @@ window.TF.LEVELS.L3 = {
     ]
   },
   "demand": 0.5,
-  "rent": 650,
+  "rent": 200,
   "kit": 2.1,
-  "spoilage": 0.4,
+  "spoilage": 0.3,
   "patience": 20,
   "prices": {
     "cheap": 4.75,
-    "fair": 6.5,
+    "fair": 8.5,
     "bougie": 9.5
   },
   "matt": {

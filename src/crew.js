@@ -7,7 +7,7 @@
   var TIERS = [
     { tier: 1, id: 'grill', name: 'Grill', effect: 'Much faster cooking', price: 25, unlock: 4 },
     { tier: 2, id: 'banner', name: 'Banner', effect: 'Bigger draw zone', price: 35, unlock: 8 },
-    { tier: 3, id: 'serving', name: 'Serving station', effect: 'Pickup spot, faster hand-off', price: 45, unlock: 12 },
+    { tier: 3, id: 'serving', name: 'Serving station', effect: 'Pickup spot, faster hand-off, 60-kit storage', price: 45, unlock: 12 },
     { tier: 4, id: 'canopy', name: 'Canopy', effect: 'More passers-by stop', price: 60, unlock: 18 }
   ];
   var ROSTER = [
@@ -42,7 +42,7 @@
     m.zoneR = C.ZONE_R; m.buyP = C.BUY_P; m.spawnMul = 1; m.priceAdd = 0; m.serving = false; m.stockMax = C.STOCK_T0;
     if (t >= 1) { m.cookT = 2.4; m.stockMax = C.STOCK_GRILL; }
     if (t >= 2) m.zoneR += 2.5;
-    if (t >= 3) { m.serving = true; m.handT = 0.6; }
+    if (t >= 3) { m.serving = true; m.handT = 0.6; m.stockMax = 60; }
     if (t >= 4) m.buyP = Math.min(0.95, m.buyP + 0.1);
     if (h.ali) { m.cookT *= 0.6; m.grill += 1; }
     if (h.phillip) m.cookT *= 0.8;
@@ -56,16 +56,20 @@
     if (TF.Handyman) TF.Handyman.mods(st, m);   // open breakdowns (grill sputter, banner flicker)
   }
 
-  // Second stand: Taco Week Day 4+ (one big buy), max 2. Comes with a Freshman Cashier; the
+  // Expansion: Day 3+, up to six stands. Each package includes a grill and assigned cashier; the
   // player places it with the same starter pins + suggested line.
-  Crew.STAND2_PRICE = 125;
+  Crew.STAND2_PRICE = 120;
+  Crew.standPrice = function () { return (TF.Economy ? TF.Economy.standCosts : [120,350,750,1500,2500])[Sim.stands.length-1]; };
   Crew.buyStand2 = function () {
-    if (Sim.stands.length >= Sim.MAX_STANDS || Sim.stats.money < Crew.STAND2_PRICE || blocked('stand2') || !Sim.stand.placed) return false;
-    if (!reserveOk('stand2', Crew.STAND2_PRICE)) return false;
-    TF.Ledger.add('build', -Crew.STAND2_PRICE, 'stand2');
+    var price = Crew.standPrice();
+    if (Sim.stands.length >= Sim.MAX_STANDS || Sim.stats.money < price || blocked('stand2') || !Sim.stand.placed) return false;
+    if (!reserveOk('stand2', price)) return false;
+    TF.Ledger.add('build', -price, 'stand2');
     if (TF.Week) TF.Week.bought('stand2');
     var st = Sim.addStand();
-    if (TF.Invest) TF.Invest.noteBuy('stand2', Crew.STAND2_PRICE, st);
+    st.tier = 1; // Expansion package includes a grill; further tiers remain paid upgrades.
+    st.crew = 'cashier-' + (st.idx + 1); // Dedicated assignment, paid each shift; never shares another stand's operator.
+    if (TF.Invest) TF.Invest.noteBuy('stand2', price, st);
     st.needsBuild = !!(TF.Build && TF.Build.live());   // built (12 s) once it's placed
     Sim.sel = st.idx;
     Crew.applyMods();
@@ -80,8 +84,8 @@
       if (!on) TF.Render.centerOn(sp[0].sx + 1, sp[0].sy + 1);
     }
     Crew.open(false);
-    if (TF.ui) { TF.ui.setMode('idle'); TF.ui.setHint('Second stand bought! Tap a glowing spot for the Freshman Cashier\u2019s stand.', 5); }
-    Sim.events.push({ type: 'toast', text: 'Second stand! A Freshman Cashier signs up.' });
+    if (TF.ui) { TF.ui.setMode('idle'); TF.ui.setHint('Stand bought! Tap a glowing spot for the Freshman Cashier\u2019s stand.', 5); }
+    Sim.events.push({ type: 'toast', text: 'Stand ' + (st.idx+1) + ': cashier assigned ($18/shift).' });
     Crew.refresh();
     return true;
   };
@@ -314,9 +318,9 @@
       items.push({ kind: 'crew', id: 'jared', where: 'run', x: r.px + (r.x - r.px) * a, y: r.py + (r.y - r.py) * a, k: 0 });
       items[items.length - 1].k = items[items.length - 1].x + items[items.length - 1].y;
     }
-    // Stand 2's Freshman Cashier: at the table, or out on a restock walk with the cooler.
-    var s2 = Sim.stands && Sim.stands[1];
-    if (s2 && s2.placed) {
+    // Every additional stand reuses the existing cashier art and restock animation.
+    Sim.stands.slice(1).forEach(function (s2) {
+    if (s2.placed && s2.crew) {
       if (s2.trip) {
         var r2 = s2.trip, a2 = R.lastAlpha || 1, cx = r2.px + (r2.x - r2.px) * a2, cy = r2.py + (r2.y - r2.py) * a2;
         items.push({ kind: 'crew', id: 'cashier', where: 'run', st: s2, x: cx, y: cy, k: cx + cy });
@@ -325,6 +329,7 @@
         if (c2) items.push({ kind: 'crew', id: 'cashier', where: 'in', st: s2, x: c2.x, y: c2.y, k: c2.x + c2.y });
       }
     }
+    });
     if (!st.placed) return;
     computeSpots();
     var ins = stationSpots(st);
@@ -452,7 +457,7 @@
     TIERS.forEach(function (u) {
       html += '<div class="card up"><div class="info"><b>' + u.tier + '. ' + u.name + '</b><div class="fx">' + u.effect + '</div></div><button data-tier="' + u.id + '"></button></div>';
     });
-    html += '<div class="card up"><div class="info"><b>Second stand</b><div class="fx">Own stock, line and tiers. A Freshman Cashier runs it.</div></div><button id="btnBuyStand2"></button></div>';
+    html += '<div class="card up"><div class="info"><b>Second stand</b><div class="fx">Grill + assigned cashier. Up to 6 stands. $18/shift each plus site rent and maintenance.</div></div><button id="btnBuyStand2"></button></div>';
     html += '</details><details open class="sec" data-section="build"><summary>Buildings & extras</summary>';
     if (TF.Objects) Object.keys(TF.Objects.KINDS).forEach(function (id) {
       var k = TF.Objects.KINDS[id];
@@ -529,9 +534,9 @@
       if (!on && why) (soon[why] = soon[why] || []).push(name);
     };
     var b2 = document.getElementById('btnBuyStand2'), blk2 = blocked('stand2');
-    b2.textContent = Sim.stands.length >= 2 ? 'Bought' : blk2 ? blk2 : label('stand2', 'Buy $' + Crew.STAND2_PRICE);
-    b2.disabled = Sim.stands.length >= 2 || !!blk2 || money < Crew.STAND2_PRICE || !Sim.stand.placed;
-    show(b2, Sim.stands.length < 2 && !dayLock(blk2), 'Second stand', Sim.stands.length < 2 && blk2);
+    b2.textContent = Sim.stands.length >= Sim.MAX_STANDS ? 'Six stands owned' : blk2 ? blk2 : label('stand2', 'Stand ' + (Sim.stands.length+1) + ' $' + Crew.standPrice());
+    b2.disabled = Sim.stands.length >= Sim.MAX_STANDS || !!blk2 || money < Crew.standPrice() || !Sim.stand.placed;
+    show(b2, Sim.stands.length < Sim.MAX_STANDS && !dayLock(blk2), 'Second stand', Sim.stands.length < Sim.MAX_STANDS && blk2);
     list.querySelectorAll('[data-tier]').forEach(function (b) {
       var u = TIERS.filter(function (x) { return x.id === b.getAttribute('data-tier'); })[0];
       var owned = st.tier >= u.tier, next = st.tier === u.tier - 1, locked = false;

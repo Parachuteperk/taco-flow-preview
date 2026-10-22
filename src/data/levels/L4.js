@@ -357,13 +357,13 @@ window.TF.LEVELS.L4 = {
     ]
   },
   "demand": 0.5,
-  "rent": 1000,
+  "rent": 300,
   "kit": 2.4,
-  "spoilage": 0.5,
+  "spoilage": 0.3,
   "patience": 16,
   "prices": {
     "cheap": 5,
-    "fair": 7,
+    "fair": 9,
     "bougie": 10.25
   },
   "matt": {

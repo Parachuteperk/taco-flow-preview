@@ -8,6 +8,7 @@
   }
   function mkStand(idx) {
     return {
+      reputation: 30, crew: idx ? null : 'jared', funnel: { walkers: 0, interested: 0, queued: 0, served: 0, lost: {} },
       idx: idx, placed: false, sx: 0, sy: 0, rot: 0, geom: null,
       line: [], poly: [], polyLen: 0, cap: 0, connected: false, link: null,
       queue: [], window: null, pickup: [null, null, null, null],
@@ -45,7 +46,7 @@
   Sim.mods = Sim.stand.mods;
   Object.defineProperty(Sim, 'runner', { get: function () { return Sim.stands[0].trip; }, set: function (v) { Sim.stands[0].trip = v; } });
   Sim.selected = function () { return Sim.stands[Sim.sel] || Sim.stands[0]; };
-  Sim.MAX_STANDS = 2;
+  Sim.MAX_STANDS = 6;
 
   function rnd(a, b) { return a + (b - a) * Sim.rand(); }
   function center(t) { return { x: t.x + 0.5, y: t.y + 0.5 }; }
@@ -230,7 +231,7 @@
       px: 0, py: 0, offX: 0, offY: 0, pOffX: 0, pOffY: 0,
       hx: -ex.ox, hy: -ex.oy, facing: 0, moving: false, anim: Sim.rand() * 4,
       speed: rnd(C.WALK_MIN, C.WALK_MAX),
-      state: 'WANDER', path: [], lastTile: null, budget: Math.floor(rnd(C.WANDER_MIN, C.WANDER_MAX)),
+      state: 'WANDER', path: [], lastTile: null, budget: Math.floor(rnd(TF.Econ && TF.Econ.on() ? 90 : C.WANDER_MIN, TF.Econ && TF.Econ.on() ? 140 : C.WANDER_MAX)),
       considered: false, seen: {}, spawnExit: ex, hasTaco: false, paid: false, order: null, spot: -1, qs: 0, st: null,
       timer: 0, blockedT: 0, ghostT: 0, emote: null, emoteT: 0, gone: false, paidAt: 0,
       thought: null, thoughtT: 0, maxPay: rnd(4.5, 10), waitT: 0,
@@ -242,6 +243,22 @@
     g.px = g.x; g.py = g.y;
     Sim.guests.push(g);
     Sim.stats.spawned++;
+    if (TF.Econ && TF.Econ.on() && placedStands().length) {
+      var destinations = placedStands(), dest = destinations[Math.floor(Sim.rand()*destinations.length)];
+      var key = ex.x + ',' + ex.y;
+      if (dest.walkTargetsVersion !== World.version) { dest.walkTargets = {}; dest.walkTargetsVersion = World.version; }
+      var walkTo = dest.walkTargets[key];
+      if (!walkTo) {
+        var field = World.exitField(ex, true), bestD = Infinity;
+        for (var yy=0; yy<World.H; yy++) for(var xx=0; xx<World.W; xx++) {
+          if (!World.isWalkway(xx,yy) || !Number.isFinite(field[yy*World.W+xx])) continue;
+          var dd=Math.hypot(xx+0.5-dest.geom.cx,yy+0.5-dest.geom.cy);
+          if(dd<bestD) { bestD=dd; walkTo={x:xx,y:yy}; }
+        }
+        dest.walkTargets[key]=walkTo;
+      }
+      if (walkTo) pathTo(g, walkTo, null, World.pavedCost);
+    }
     return g;
   }
   Sim.spawnGuest = spawn;
@@ -401,7 +418,8 @@
     Sim.guests = []; Sim.flyers = []; Sim.floaters = [];
     Sim.stands.length = 1;
     var st = Sim.stand;
-    st.placed = false; st.line = []; st.queue = []; st.window = null; st.trip = null; st.needRestock = false;
+    st.placed = false; st.line = []; st.queue = []; st.window = null; st.trip = null;
+      st.funnel = { walkers: 0, interested: 0, queued: 0, served: 0, lost: {} }; st.needRestock = false;
     st.tier = 0; st.stock = 0; st.building = null;   // upgrades reset per level (PLAN §1a)
     if (TF.Week && TF.Week.resetForLevel) TF.Week.resetForLevel();   // Monday PREP of the new level
     if (TF.Econ) TF.Econ.resetLevel(Sim.levelNo());
@@ -431,6 +449,7 @@
         leavePolitely(g);
       } else if (g.paid && !g.hasTaco && st) {
         g.hasTaco = true; if (g.lostWhy) Sim.stats.lostThenServed++; Sim.stats.served++;
+        st.served = (st.served || 0) + 1; st.funnel.served++;
         var j = st.queue.indexOf(g); if (j >= 0) st.queue.splice(j, 1);
         if (st.window === g) st.window = null;
         if (g.spot >= 0) { st.pickup[g.spot] = null; g.spot = -1; }
@@ -446,6 +465,7 @@
     Sim.guests = []; Sim.floaters = []; Sim.flyers = [];
     Sim.stands.forEach(function (st) {
       st.queue = []; st.window = null; st.trip = null;
+      st.funnel = { walkers: 0, interested: 0, queued: 0, served: 0, lost: {} };
       for (var k = 0; k < st.pickup.length; k++) st.pickup[k] = null;
       st.cook.pending = []; st.cook.grill = [];
     });
@@ -490,6 +510,8 @@
     g.path = g.path.slice(0, 1);
     var entry = st.poly[st.poly.length - 1];
     if (!pathTo(g, st.link, { x: entry.x, y: entry.y }, World.pavedCost)) { g.state = 'WANDER'; g.path = []; return false; }
+    g.queuedStands = g.queuedStands || {};
+    if (!g.queuedStands[st.idx]) { st.funnel.queued++; g.queuedStands[st.idx] = true; }
     unloseSale(g);   // walked away from the other stand, but buys here after all
     return true;
   }
@@ -509,6 +531,7 @@
       var d = Math.hypot(g.x - st.geom.cx, g.y - st.geom.cy);
       if (d > st.mods.zoneR) return;
       g.seen[st.idx] = true;
+      st.funnel.walkers++;
       var score = d / g.speed + Sim.predictedWait(st) + (st.connected ? 0 : 1000);
       if (!best || score < best.score) best = { st: st, score: score };
     });
@@ -523,12 +546,20 @@
     if (!g.considered) {
       var st = chooseStand(g);
       if (st) {
-        if (Sim.rand() < st.mods.buyP * weekDemand() * (TF.Objects ? TF.Objects.litterMul(st) : 1) * (TF.Hacks ? TF.Hacks.buyMul : 1)) {   // litter puts people off; TACO-NET pulls them in
-          if (Sim.closing) { /* closing time: no new joiners */ }
+        var econ = TF.Econ && TF.Econ.on(), fair = econ ? TF.Econ.level().prices.fair / 100 : Sim.menuPrice(st);
+        var base = econ ? TF.Economy.interest({ distance: Math.hypot(g.x-st.geom.cx,g.y-st.geom.cy), radius: st.mods.zoneR, banner: st.tier >= 2, canopy: st.tier >= 4, reputation: st.reputation, event: (Sim.demandMul || 1) }) : st.mods.buyP * weekDemand();
+        var draw = Sim.rand(), willing;
+        base *= (TF.Objects ? TF.Objects.litterMul(st) : 1) * (TF.Hacks ? TF.Hacks.buyMul : 1);
+        willing = econ ? base * TF.Economy.elasticity(Sim.menuPrice(st) / fair) : base;
+        if (econ && draw < Math.max(base, willing)) st.funnel.interested++;
+        if (econ && draw < base && draw >= willing) { loseSale(g, st, 'too pricey'); }
+        if (draw < willing) {
+          if (econ) g.maxPay = Math.max(fair, Sim.menuPrice(st)) * Math.pow(Math.max(0.001, Sim.rand()), -1/1.5);   // litter puts people off; TACO-NET pulls them in
+          if (Sim.closing) { loseSale(g, st, 'closing time'); }
           else if (!st.connected) { g.emote = 'noline'; g.emoteT = 1.6; Sim.stats.noline++; loseSale(g, st, 'no line'); }
           else if (TF.Econ && TF.Econ.on() && TF.Econ.soldOutAll(st)) { g.emote = 'slow'; g.emoteT = 1.6; loseSale(g, st, 'sold out'); }   // no kits anywhere
           else if (g.maxPay < Sim.menuPrice(st)) { think(g, 'pricey'); loseSale(g, st, 'too pricey'); }
-          else if (st.queue.length + enrouteCount(st) < st.cap) { if (goToQueue(g, st)) return; }
+          else if (st.queue.length + enrouteCount(st) < st.cap) { if (goToQueue(g, st)) return; loseSale(g, st, 'no line'); }
           else {
             Sim.stats.balked++; noteBalk(st, 'longline'); loseSale(g, st, 'line full');
             if (Sim.recentBalks(st, 'longline') <= 1) think(g, 'longline'); else Sim.thoughts.longline++;   // grouped: one bubble, then the stand's warning
@@ -563,6 +594,11 @@
   Sim.LOST_REASONS.forEach(function (k) { Sim.lost[k] = 0; });
   Sim.lostTotal = function () { return Sim.LOST_REASONS.reduce(function (s, k) { return s + Sim.lost[k]; }, 0); };
   function loseSale(g, st, why) {
+    if (st) {
+      g.funnelLosses = g.funnelLosses || {};
+      if (!g.funnelLosses[st.idx]) { st.funnel.lost[why] = (st.funnel.lost[why] || 0) + 1; g.funnelLosses[st.idx] = why;
+        if (why === 'gave up waiting' || why === 'line full' || why === 'sold out') st.reputation = Math.max(0, st.reputation - 0.25); }
+    }
     if (g.lostWhy) return;
     g.lostWhy = why; g.lostSt = st;
     if (TF.FX) TF.FX.balk(g, st, why);
@@ -619,6 +655,7 @@
   }
 
   function pay(g) {
+    if (g.paid) return;
     var st = g.st, econ = TF.Econ && TF.Econ.on(), base = 0, extra = 0;
     if (econ) {   // Taco Week: the rules layer prices the sale (tier) and posts it to the ledger
       var sale = TF.Econ.sell(g);
@@ -733,6 +770,8 @@
             g.timer = C.GOT_IT_T;
             Sim.stats.served++;
             st.served = (st.served || 0) + 1;
+            st.funnel.served++;
+            st.reputation = Math.min(100, Math.max(0, st.reputation + (g.waitT < 22 && Sim.menuPrice(st) <= (TF.Econ && TF.Econ.on() ? TF.Econ.level().prices.fair / 100 : 8) ? 0.65 : -0.05)));
             Sim.waits.push({ at: g.paidAt, w: Sim.t - g.paidAt });
             if (Sim.waits.length > 60) Sim.waits.shift();
             Sim.events.push({ type: 'handoff' });
@@ -798,7 +837,7 @@
   // Open = the stand's cashier is there and there is stock. When the cooler empties (and no
   // Freshman Runner is hired) the cashier finishes the orders in hand, walks the paths off the
   // map with the cooler and comes back refilled.
-  Sim.isOpen = function (st) { st = st || Sim.stand; return st.placed && !st.trip && (TF.Econ && TF.Econ.on() ? TF.Econ.kits(st) > 0 : st.stock > 0) && !st.constructing; };
+  Sim.isOpen = function (st) { st = st || Sim.stand; return st.placed && (st.idx === 0 || !!st.crew) && !st.trip && (TF.Econ && TF.Econ.on() ? TF.Econ.kits(st) > 0 : st.stock > 0) && !st.constructing; };
 
   // Pass 6 C4 (PLAN §1c): with the economy on, patience is the continuous unpaid wait from joining the
   // line (the level's base, 28 s on L1, +-3 s per person, + picnic shade, - a tipped trash can nearby).
@@ -921,8 +960,9 @@
     else if (Sim.t >= Sim.nextRush && !(TF.Week && TF.Week.active())) { Sim.rushT = C.RUSH_T; Sim.nextRush = Sim.t + rnd(C.RUSH_EVERY[0], C.RUSH_EVERY[1]); Sim.events.push({ type: 'toast', text: 'Rush!' }); }
     var crowd = C.CROWD[Sim.crowd];
     if (Sim.spawnT <= 0) {
-      Sim.spawnT = rnd(C.SPAWN_MIN, C.SPAWN_MAX) / (Sim.mods.spawnMul * crowd.mul * (Sim.rushT > 0 ? 2 : 1) * (Sim.demandMul || 1) * (TF.CastExtra ? TF.CastExtra.demandMul : 1));
-      if (Sim.guests.length < crowd.max) spawn();
+      var week = TF.Week && TF.Week.active() && TF.Economy;
+      Sim.spawnT += week ? 180 / TF.Economy.walkers(TF.Econ.abs(TF.Week.day)) : rnd(C.SPAWN_MIN, C.SPAWN_MAX) / (Sim.mods.spawnMul * crowd.mul * (Sim.rushT > 0 ? 2 : 1) * (Sim.demandMul || 1) * (TF.CastExtra ? TF.CastExtra.demandMul : 1));
+      if ((!week || TF.Week.phase === 'open') && Sim.guests.length < (week ? TF.Econ.level().peakCrowd : crowd.max)) spawn();
     }
     if (TF.Events) TF.Events.step(dt);
     if (TF.Ambient) TF.Ambient.step(dt);
@@ -944,7 +984,7 @@
   };
 
   // ---- Stands: add / place / move ---------------------------------------------
-  // A second stand (Taco Week Day 4+, max 2): starts at tier 0 with its own Freshman Cashier.
+  // Up to six stands; Crew assigns an operator and the expansion package tier.
   Sim.addStand = function () {
     if (Sim.stands.length >= Sim.MAX_STANDS) return null;
     var st = mkStand(Sim.stands.length);
@@ -968,7 +1008,7 @@
       st.needsBuild = false;
       st.constructing = true;
       Sim.afterPlace = function () {
-        TF.Build.start({ st: st, id: 'stand2', name: 'Stand 2', apply: function () { st.constructing = false; }, at: { x: st.geom.cx, y: st.geom.cy + 0.6 } });
+        TF.Build.start({ st: st, id: 'stand2', name: 'Stand ' + (st.idx+1), apply: function () { st.constructing = false; }, at: { x: st.geom.cx, y: st.geom.cy + 0.6 } });
       };
     }
     st.placed = true; st.sx = sx; st.sy = sy; st.rot = rot;
@@ -978,7 +1018,7 @@
     st.queue = [];
     st.window = null;
     rebuildLines();
-    if (!wasPlaced) return v;
+    if (!wasPlaced) { if (TF.Econ && TF.Econ.on() && TF.Week.phase === 'open') TF.Econ.refill(st); return v; }
 
     for (var k = 0; k < st.pickup.length; k++) st.pickup[k] = null;
     if (st.trip) {

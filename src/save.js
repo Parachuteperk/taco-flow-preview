@@ -30,7 +30,7 @@
   function apply(obj, snap) { if (obj && snap) Object.keys(snap).forEach(function (k) { obj[k] = snap[k]; }); }
 
   var SIM_KEYS = ['t', 'nextId', 'spawnT', 'thoughts', 'cookRate', 'serviceSlow', 'priceBoostT', 'crowd', 'rushT', 'nextRush', 'capExtra', 'waits', 'lost', 'demandMul', 'closing'];
-  var STAND_KEYS = ['placed', 'sx', 'sy', 'rot', 'tier', 'restocks', 'rev', 'sold', 'served', 'ekits', 'wasteAcc', 'litterMul', 'needRestock'];
+  var STAND_KEYS = ['placed', 'sx', 'sy', 'rot', 'tier', 'restocks', 'rev', 'sold', 'served', 'ekits', 'wasteAcc', 'litterMul', 'needRestock', 'reputation', 'crew', 'funnel'];
 
   // Keep recent receipts; archive older rows by day/phase/category and customer kind.
   // Cash, seed, daily totals and Gala splits stay exact, including inside Monday checkpoints.
@@ -72,10 +72,10 @@
       ledger: ledgerSnapshot(TF.Ledger),
       rngStates: TF.Rng.getState(),
       week: { results: copy(W.results), earnTotal: W.earnTotal || 0, bellSpawned: W.bellSpawned || 0 },
-      econ: E && E.K ? { stock: E.K.getState(), west: E.M.getState(), levelNo: E.levelNo, rent: E.rent, wasted: E.wasted || 0, spoil: copy(E.spoil || []), last: E.last || null, autoOrders: copy(E.autoOrders || []), want: E.want } : null,
+      econ: E && E.K ? { stock: E.K.getState(), west: E.M.getState(), levelNo: E.levelNo, rent: E.rent, wasted: E.wasted || 0, spoil: copy(E.spoil || []), last: E.last || null, autoOrders: copy(E.autoOrders || []), want: E.want, finance: copy(E.finance || {creditUsed:false,debt:0}) } : null,
       portfolio: TF.Market ? { x: TF.Market.getState(), open: TF.Mkt.open, weekStart: TF.Mkt.weekStart, log: TF.Mkt.log } : null,
       buildings: {
-        stands: Sim.stands.map(function (st) { var s = {}; STAND_KEYS.forEach(function (k) { if (st[k] !== undefined) s[k] = st[k]; }); s.line = copy(st.line); return s; }),
+        stands: Sim.stands.map(function (st) { var s = {}; STAND_KEYS.forEach(function (k) { if (st[k] !== undefined) s[k] = copy(st[k]); }); s.line = copy(st.line); return s; }),
         objects: O ? O.list.map(function (o) { return { kind: o.kind, x: o.x, y: o.y, st: o.st ? o.st.idx : 0, ready: o.ready, day: o.day, binned: o.binned || 0 }; }) : [],
         build: TF.Build ? { started: TF.Build.started, finished: TF.Build.finished } : null
       },
@@ -183,10 +183,17 @@
         return h && int(h.units) && h.units >= 0 && Number.isFinite(h.paid) && h.paid >= 0 && Number.isFinite(I.price[m]) && I.price[m] > 0 && Number.isFinite(I.lastPrice[m]) && I.lastPrice[m] > 0;
       })) return 'invest metals';
     }
+    var finance = d.econ && d.econ.finance;
+    if (finance && (typeof finance.creditUsed !== 'boolean' || !int(finance.debt) || finance.debt < 0 || finance.debt > (TF.Economy ? TF.Economy.creditCents : 10000) || (!finance.creditUsed && finance.debt))) return 'emergency credit';
+    var assets = d.flags.businessAssets;
+    if (assets && (!Array.isArray(assets.stands) || !assets.stands.length || assets.stands.length > 6 || !assets.stands.every(function (s) { return s && int(s.tier) && s.tier >= 0 && s.tier <= 4 && Number.isFinite(s.reputation) && s.reputation >= 0 && s.reputation <= 100 && (s.crew === null || typeof s.crew === 'string'); }) || !assets.extras || typeof assets.extras !== 'object' || Array.isArray(assets.extras) || !assets.finance || typeof assets.finance.creditUsed !== 'boolean' || !int(assets.finance.debt) || assets.finance.debt < 0 || assets.finance.debt > (TF.Economy ? TF.Economy.creditCents : 10000))) return 'business assets';
     var b = d.buildings;
-    if (!b || !Array.isArray(b.stands) || !b.stands.length || b.stands.length > 2 || !Array.isArray(b.objects)) return 'buildings';
+    if (!b || !Array.isArray(b.stands) || !b.stands.length || b.stands.length > 6 || !Array.isArray(b.objects)) return 'buildings';
     for (var i = 0; i < b.stands.length; i++) {
       var st = b.stands[i];
+      if (st && st.reputation !== undefined && (!Number.isFinite(st.reputation) || st.reputation < 0 || st.reputation > 100)) return 'stand reputation';
+      if (st && st.crew !== undefined && st.crew !== null && typeof st.crew !== 'string') return 'stand crew';
+      if (st && st.funnel && (!['walkers','interested','queued','served'].every(function (k) { return int(st.funnel[k]) && st.funnel[k] >= 0; }) || !st.funnel.lost || !Object.keys(st.funnel.lost).every(function (k) { return int(st.funnel.lost[k]) && st.funnel.lost[k] >= 0; }))) return 'stand funnel';
       if (st && !st.placed && st.line && st.line.length) return 'unplaced stand line';
       if (!st || typeof st.placed !== 'boolean' || !int(st.tier) || st.tier < 0 || st.tier > 7 || !Array.isArray(st.line)) return 'stand ' + i;
       if (st.placed && (!tileIn(st.sx, st.sy, W - 1, H - 1) || !int(st.rot) || st.rot < 0 || st.rot > 3)) return 'stand ' + i + ' position';
@@ -303,7 +310,9 @@
       Sim.guests = []; Sim.floaters = []; Sim.flyers = [];
       d.buildings.stands.forEach(function (s, i) {
         var st = Sim.stands[i] || Sim.addStand();
-        if (!st || !s.placed) return;
+        if (!st) return;
+        if (!s.placed) { STAND_KEYS.forEach(function (k) { if (s[k] !== undefined) st[k] = s[k]; }); return; }
+        if (s.crew === undefined && i > 0) st.crew = 'cashier-' + (i+1);
         var placed = Sim.placeStand(s.sx, s.sy, s.rot, st);
         if (!placed.ok) throw new Error('stand ' + i + ' cannot be placed (' + (placed.reason || 'blocked') + ')');
         (s.line || []).forEach(function (t) { if (!Sim.addLineTile(t.x, t.y, st).ok) throw new Error('Rejected line placement'); });
@@ -318,7 +327,7 @@
       TF.Rng.setState(d.rngStates);
       if (E && d.econ) {
         E.levelNo = d.econ.levelNo || 1; E.K.setState(d.econ.stock); E.M.setState(d.econ.west);
-        E.rent = d.econ.rent; E.wasted = d.econ.wasted; E.spoil = d.econ.spoil; E.last = d.econ.last; E.autoOrders = d.econ.autoOrders; if (d.econ.want) E.want = d.econ.want;
+        E.finance = d.econ.finance || {creditUsed:false,debt:0}; E.rent = d.econ.rent; E.wasted = d.econ.wasted; E.spoil = d.econ.spoil; E.last = d.econ.last; E.autoOrders = d.econ.autoOrders; if (d.econ.want) E.want = d.econ.want;
       }
       if (TF.Market && d.portfolio) { TF.Market.setState(d.portfolio.x); TF.Mkt.open = d.portfolio.open || {}; TF.Mkt.weekStart = d.portfolio.weekStart || {}; TF.Mkt.log = d.portfolio.log || []; }
       // the sim's clock and counters, the week, and the modules' own flags

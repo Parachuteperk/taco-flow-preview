@@ -8,7 +8,7 @@
 
   // Kinds. valid(x, y) -> null when the footprint at (x, y) is OK, otherwise the reason.
   O.KINDS = {
-    drinks: { name: 'Drink cooler', w: 1, h: 1, price: 40, upkeep: 2, max: 1, major: false,
+    drinks: { name: 'Drink cooler', w: 1, h: 1, price: 40, upkeep: 2, max: 6, major: false,
       effect: '+$2 drinks, slower pickup', hint: 'Tap a glowing tile touching a PICKUP spot.' },
     picnic: { name: 'Picnic tables + shade', w: 2, h: 2, price: 55, upkeep: 4, max: 2, major: true, grassOnly: true,
       effect: '+8 s patience for 4 waiting', hint: 'Tap glowing lawn near your line (2\u00D72).',
@@ -65,7 +65,11 @@
   O.reason = function (kind, x, y) {
     var k = O.KINDS[kind], r = footprintReason(kind, x, y);
     if (r) return r;
-    if (kind === 'drinks' && !pickupOf(x, y)) return 'The cooler must touch a PICKUP spot';
+    if (kind === 'drinks') {
+      var owner = pickupOf(x,y);
+      if (!owner) return 'The cooler must touch a PICKUP spot';
+      if (O.count('drinks',owner)) return 'This stand already has a drink cooler';
+    }
     return k.extraCheck ? k.extraCheck(x, y) : null;
   };
   O.validSpots = function (kind) {
@@ -78,8 +82,8 @@
   O.blockReason = function (kind) {
     var k = O.KINDS[kind];
     if (!Sim.stand.placed) return 'Place the stand first';
-    if (kind === 'picnic') {   // one per stand
-      var free = Sim.stands.some(function (st) { return st.placed && !O.count('picnic', st); });
+    if (kind === 'picnic' || kind === 'drinks') {   // one per stand
+      var free = Sim.stands.some(function (st) { return st.placed && !O.count(kind, st); });
       return free ? null : 'Owned';
     }
     if (O.count(kind) >= k.max) return k.max > 1 ? 'Max ' + k.max : 'Owned';
@@ -142,10 +146,11 @@
   // Called when a student pays: 35% add a $2 drink while purchased stock lasts. A drink adds ~2 s to the
   // hand-off unless someone mans the pickup (Matt).
   O.DRINK = { p: 0.35, price: 2, cost: 0.5, slow: 2 };
+  O.drinkCost = function () { return TF.Econ && TF.Econ.on() && TF.Econ.levelNo > 1 ? 1 : O.DRINK.cost; };
   O.stock = { drinks: 0, pending: [] };
   O.buyDrinks = function (n) {
     var W = TF.Week, phase = W && W.phase, rush = phase === 'open';
-    var cost = Math.round(n * O.DRINK.cost * 100 * (rush ? TF.Economy.rushMult : 1));
+    var cost = Math.round(n * O.drinkCost() * 100 * (rush ? TF.Economy.rushMult : 1));
     if (!Number.isSafeInteger(n) || n <= 0 || !Number.isSafeInteger(cost)) return { ok: false, reason: 'invalid quantity' };
     if (phase !== 'prep' && phase !== 'report' && !rush) return { ok: false, reason: 'PREP or OPEN only' };
     if (TF.Ledger.cash < cost) return { ok: false, reason: 'insufficient cash' };
@@ -167,7 +172,7 @@
   O.rng = TF.Rng.objects;   // its own stream: buying a cooler doesn't reshuffle the crowd
   O.onPay = function (g, st) {
     var c = O.of('drinks', st);
-    if (!c || O.stock.drinks <= 0 || (TF.Handyman && TF.Handyman.fault('cooler')) || O.rng() >= O.DRINK.p * O.DRINK.price / (O.day.price || O.DRINK.price)) return 0;   // a jammed cooler sells nothing (C4)
+    if (!c || O.stock.drinks <= 0 || (TF.Handyman && TF.Handyman.fault('cooler')) || O.rng() >= (TF.Econ && TF.Econ.on() && TF.Econ.levelNo > 1 ? 1.95 : O.DRINK.p * O.DRINK.price) / (O.day.price || O.DRINK.price)) return 0;   // a jammed cooler sells nothing (C4)
     g.drink = true;
     var price = O.day.price || O.DRINK.price;
     O.stock.drinks--; O.day.drinks++; O.day.drinkRev += price; O.totals.drinks++; O.totals.drinkRev += price;

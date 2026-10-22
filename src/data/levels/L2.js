@@ -437,14 +437,14 @@ window.TF.LEVELS.L2 = {
     ]
   },
   "demand": 0.5,
-  "rent": 380,
+  "rent": 120,
   "kit": 1.9,
   "spoilage": 0.3,
   "patience": 24,
   "prices": {
     "cheap": 4.25,
-    "fair": 6,
-    "bougie": 8.75
+    "fair": 7.5,
+    "bougie": 10
   },
   "matt": {
     "faultsPerDay": 2,

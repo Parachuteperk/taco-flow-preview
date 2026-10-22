@@ -15,6 +15,7 @@
   CA.live = function (phaseOverride) {
     var s = TF.LevelFlow.fromLive({ Econ: TF.Econ, Week: { day: TF.Week.day, phase: phaseOverride || TF.Week.phase }, Ledger: TF.Ledger,
       Crew: TF.Crew, Rng: TF.Rng, World: World, Market: TF.Market, standTier: Sim.stand.tier, flags: {} });
+    if (TF.Econ.assets) s.flags.businessAssets = TF.Econ.assets();
     if (TF.Objects && TF.Objects.stock) s.flags.drinkStock = JSON.parse(JSON.stringify(TF.Objects.stock));
     if (TF.CastExtra) s.flags.cast = TF.CastExtra.getState();
     if (TF.Invest) s.flags.invest = JSON.parse(JSON.stringify({ metals: TF.Invest.metals, price: TF.Invest.price, lastPrice: TF.Invest.lastPrice }));
@@ -38,19 +39,20 @@
     TF.Crew.extras = s.crew.extras || {};
     if (s.crew.levels) TF.Crew.levels = s.crew.levels;
     if (TF.Invest && s.flags.invest) Object.keys(s.flags.invest).forEach(function (k) { TF.Invest[k] = JSON.parse(JSON.stringify(s.flags.invest[k])); });
+    if (E.restoreAssets && s.flags.businessAssets) E.restoreAssets(s.flags.businessAssets);
     (s.placements || []).forEach(function (p, i) {
       if (!p.placed) return;
       var st = Sim.stands[i] || Sim.addStand();
       if (!Sim.placeStand(p.sx, p.sy, p.rot, st).ok) throw new Error('Retry stand rejected');
       (p.line || []).forEach(function (t) { if (!Sim.addLineTile(t.x, t.y, st).ok) throw new Error('Retry line rejected'); });
-      st.tier = p.tier;
+      ['tier','reputation','crew','ekits','rev','sold','served','wasteAcc','needRestock','funnel'].forEach(function (k) { if (p[k] !== undefined) st[k] = JSON.parse(JSON.stringify(p[k])); });
     });
     if (TF.Objects) { TF.Objects.restore(s.buildings || []); if (TF.Objects.stock) TF.Objects.stock = JSON.parse(JSON.stringify(s.flags.drinkStock || { drinks: 0, pending: [] })); }
     // advance: placements reset per level, so physical investment records (a stand / an object) go too; retry remaps Monday's
     if (TF.Invest) TF.Invest.owned = (s.flags.owned || []).filter(function (o) { return s.retrying || (o.st === null && !(o.obj >= 0)); }).map(function (o) {
       return Object.assign({}, o, { st: o.st === null ? null : Sim.stands[o.st], obj: TF.Objects && o.obj >= 0 ? TF.Objects.list[o.obj] : null });
     });
-    Sim.stand.tier = s.standTier;
+    if (!s.flags.businessAssets) Sim.stand.tier = s.standTier;
     TF.Crew.applyMods(); TF.Crew.spotKey = '';
     TF.Mkt.openDay(); TF.Mkt.syncPrices();   // Monday's market rolls happen here, so they enter the checkpoint
     if (TF.Aaron && TF.Aaron.restore) TF.Aaron.restore(s.flags.aaron, !!TF.Crew.hiredSet.aaron);

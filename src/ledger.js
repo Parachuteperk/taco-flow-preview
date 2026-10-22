@@ -71,7 +71,7 @@
     return { cash: L.cash, expected: L.seedCents + rest, ok: L.cash === L.seedCents + rest, unrouted: L.unrouted, rows: L.rows.length };
   };
   // The three numbers kept separate (PLAN §2).
-  var OPERATING = { sales: 1, drinks: 1, tips: 1, premium: 1, supplies: 1, spoilage: 1, upkeep: 1, wages: 1, favor: 1, insurance: 1, grant: 1, beautify: 1, permit: 1 };   // + the President's inspection grant / fee (chunk 3)
+  var OPERATING = { siteRent: 1, maintenance: 1, creditFee: 1, sales: 1, drinks: 1, tips: 1, premium: 1, supplies: 1, spoilage: 1, upkeep: 1, wages: 1, favor: 1, insurance: 1, grant: 1, beautify: 1, permit: 1 };   // + the President's inspection grant / fee (chunk 3)
   var TRADING = { trade: 1, fee: 1, dividend: 1, wager: 1, metal: 1, fine: 1 };
   var CAPITAL = { build: 1, upgrade: 1, hire: 1, crew: 1 };
   L.split = function (filter) {

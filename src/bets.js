@@ -1,12 +1,14 @@
 // Jared's side hustles: a gold/silver stash and the occasional coin flip. A "day" is 3 sim-minutes.
 // Small, non-blocking cards (bottom-left); nothing pauses the game.
+// Money moves only on explicit B.confirm(betId) after propose. No auto-accept.
 (function (TF) {
   var Sim = TF.Sim;
   var DAY = 180;
 
   var B = {
     day: 1, dayStart: 0, dayEarn: 0, policy: 'ask', card: null, cardT: 0, holding: null, offeredToday: false, betAt: 60,
-    bets: { placed: 0, up: 0, down: 0, net: 0 }, flips: { offered: 0, flipped: 0, won: 0, lost: 0, skipped: 0, net: 0 }
+    bets: { placed: 0, up: 0, down: 0, net: 0 }, flips: { offered: 0, flipped: 0, won: 0, lost: 0, skipped: 0, net: 0 },
+    pending: null, nextId: 1
   };
   function rnd(a, b) { return a + (b - a) * TF.Rng.events(); }
   var el = document.getElementById('betCard');
@@ -27,24 +29,46 @@
   function hideCard() { el.hidden = true; B.card = null; }
   function toast(t) { Sim.events.push({ type: 'toast', text: t }); }
 
+  function propose(kind, data) {
+    var id = 'bet' + (B.nextId++);
+    B.pending = { id: id, kind: kind, data: data };
+    return id;
+  }
+  B.propose = propose;
+  B.confirm = function (betId) {
+    if (!B.pending || B.pending.id !== betId) return false;
+    var p = B.pending;
+    B.pending = null;
+    if (p.kind === 'metal') {
+      var d = p.data;
+      TF.Ledger.add('metal', -d.amt, 'jared stash');
+      B.holding = { metal: d.metal, amt: d.amt };
+      B.bets.placed++;
+      toast('Jared stashed $' + d.amt + ' in ' + d.metal);
+    } else if (p.kind === 'flip') {
+      var stake = p.data.stake;
+      var win = TF.Rng.wager() < 0.5;
+      TF.Ledger.add('wager', win ? stake : -stake, 'coin flip');
+      B.flips.flipped++;
+      B.flips[win ? 'won' : 'lost']++;
+      B.flips.net += win ? stake : -stake;
+      toast('🪙 Coin flip: ' + (win ? 'HEADS! +$' : 'tails… -$') + stake);
+    }
+    return true;
+  };
+
   // ---- Gold / silver: once a day Jared offers to stash 10% of today's take ---------
   B.offerBet = function () {
     var amt = Math.max(5, Math.round(B.dayEarn * 0.1));
     if (B.holding || Sim.stats.money < amt) return false;
     B.offeredToday = true;
     showCard('bet', 'Jared: “Let me put $' + amt + ' of today’s take in metals. Back at closing.”', [
-      ['Gold', 'betGold', function () { place('gold', amt); }],
-      ['Silver', 'betSilver', function () { place('silver', amt); }],
+      ['Gold', 'betGold', function () { var id = propose('metal', {metal: 'gold', amt: amt}); B.confirm(id); }],
+      ['Silver', 'betSilver', function () { var id = propose('metal', {metal: 'silver', amt: amt}); B.confirm(id); }],
       ['Skip', 'betSkip', function () {}]
     ]);
     return true;
   };
-  function place(metal, amt) {
-    TF.Ledger.add('metal', -amt, 'jared stash');
-    B.holding = { metal: metal, amt: amt };
-    B.bets.placed++;
-    toast('Jared stashed $' + amt + ' in ' + metal);
-  }
   // Up 75% of the time, down 25%. Gold swings harder than silver.
   function resolveBet() {
     var h = B.holding;
@@ -64,22 +88,13 @@
     if (Sim.stats.money < stake) return false;
     B.flips.offered++;
     if (B.policy === 'never') { B.flips.skipped++; return true; }
-    if (B.policy === 'always') { flip(stake); return true; }
+    // no auto-accept: always require explicit confirm via the card (or external confirm call)
     showCard('flip', 'Jared: “Double or nothing on $' + stake + '? Heads we win.”', [
-      ['Flip', 'flipYes', function () { flip(stake); }],
+      ['Flip', 'flipYes', function () { var id = propose('flip', {stake: stake}); B.confirm(id); }],
       ['Skip', 'flipNo', function () { B.flips.skipped++; }]
     ]);
     return true;
   };
-  function flip(stake) {
-    var win = TF.Rng.wager() < 0.5;
-    TF.Ledger.add('wager', win ? stake : -stake, 'coin flip');
-    B.flips.flipped++;
-    B.flips[win ? 'won' : 'lost']++;
-    B.flips.net += win ? stake : -stake;
-    toast('🪙 Coin flip: ' + (win ? 'HEADS! +$' : 'tails… -$') + stake);
-  }
-
   B.endDay = function () {
     resolveBet();
     if (TF.Rng.events() < 0.35) B.offerFlip();

@@ -336,8 +336,8 @@
       landlord: "Mrs. West owns this patch too, darlin'.", twist: twists[n - 1],
       newUnlocks: unlocks, cast: cast,
       goal: 'Pay Friday rent' + (n === 4 ? ' and reach the Day 20 Gala.' : ' to reach Level ' + (n + 1) + '.'),
-      carried: ['Cash and ledger', 'Crew roster and levels', 'Exchange holdings', 'Campaign flags'],
-      reset: 'Map, stand placement, buildings, stand upgrades, stock, weekly favors and timers reset.',
+      carried: ['Cash and ledger', 'Crew roster and levels', 'Exchange holdings', 'Campaign flags', 'Owned stands, tiers and reputation'],
+      reset: 'New map: redeploy owned stands. Buildings, stock, weekly favors and timers reset.',
       startLabel: 'START' };
     return data;
   }

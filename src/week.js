@@ -18,10 +18,10 @@
     // grill, banner and serving station are open from Day 1 (cash + the build permit are the limits)
     ali: 2, matt: 2, cooler2: 2, runner: 2, drinks: 2, picnic: 2,
     antonio: 3, phillip: 3, trash: 3,
-    cannon: 4, aiali: 4, stand2: 4,
+    cannon: 4, aiali: 4, stand2: 3,
     canopy: 5, aaron: 3
   };
-  var MAJOR = { grill: 1, banner: 1, serving: 1, canopy: 1, stand2: 1, picnic: 1 };
+  var MAJOR = { grill: 1, banner: 1, serving: 1, canopy: 1, picnic: 1 };
   // Old Main class bells (item 7): seconds into OPEN. Each rings after a 5 s countdown and sends
   // a wave of students out; a Banner makes the wave bigger, Antonio's hype timed into it bigger still.
   var BELLS = (TF.World && TF.World.level && TF.World.level.spawn.bells) || [[90], [60, 135], [55, 130], [70, 140], [45, 120]];   // from the level file
@@ -54,7 +54,7 @@
 
   // ---- Shop rules ------------------------------------------------------------------
   W.dayOne = function () { return W.active() && lvl() === 1 && W.day === 1; };
-  W.unlockDay = function (id) { if (lvl() === 1 && /^(ali|cooler2|runner|drinks)$/.test(id)) return 1; return id === 'aaron' && lvl() > 1 ? 1 : UNLOCK[id] || 1; };
+  W.unlockDay = function (id) { if (id === 'stand2' && lvl() > 1) return 1; if (lvl() === 1 && /^(ali|cooler2|runner|drinks)$/.test(id)) return 1; return id === 'aaron' && lvl() > 1 ? 1 : UNLOCK[id] || 1; };
   W.isMajor = function (id) { return !!MAJOR[id]; };
   // null if allowed, otherwise a short reason for the button.
   // Build permits (Pass 5 item 2): one major build a day, in PREP or during OPEN (unused permits
@@ -180,7 +180,7 @@
       b.warn -= dt;
       if (b.warn <= 0) {
         var banner = Sim.stands.some(function (st) { return st.placed && st.tier >= 2; });
-        b.left = Math.round(BELL_WAVE * (banner ? 1.5 : 1));
+        b.left = TF.Econ && TF.Econ.on() ? 0 : Math.round(BELL_WAVE * (banner ? 1.5 : 1));
         W.bellsRung++; Sim.demandMul = 1.6;
         Sim.events.push({ type: 'toast', text: '\uD83D\uDD14 RING! ' + b.left + ' students pour out of Old Main' + (banner ? ' (your banner pulls extra)' : '') });
         Sim.events.push({ type: 'hack' });   // reuse the hack-wave sound
@@ -268,7 +268,7 @@
       if (h) return !C.hiredSet[id] && h.tier <= st.tier ? { name: h.name, price: h.price } : null;
       var x = C.EXTRAS.filter(function (e) { return e.id === id; })[0];
       if (x) return !C.extras[id] && x.needs() ? { name: x.name, price: x.price } : null;
-      if (id === 'stand2') return Sim.stands.length < 2 ? { name: 'Second stand', price: C.STAND2_PRICE } : null;
+      if (id === 'stand2') return Sim.stands.length < Sim.MAX_STANDS ? { name: 'Stand ' + (Sim.stands.length+1), price: C.standPrice() } : null;
       return null;
     }
     var WHY = { 'line full': 'the line was full', 'gave up waiting': 'people gave up waiting', 'too pricey': 'tacos felt too pricey', 'sold out': 'a selling stand ran out of kits (buy stock in Restock)', 'closing time': 'closing time turned people away' };
@@ -299,7 +299,8 @@
       '<div class="row"><span>Cash earned</span><b>$' + r.cash + '</b></div>' +
       '<div class="row"><span>Customers lost</span><b>' + lostN + '</b></div>' + (lost.length ? '<div class="why">' + lost.join(' · ') + '</div>' : '') +
       '<div class="row"><span>Biggest bottleneck</span><b>' + (r.neck ? r.neck.name + ' (' + r.neck.secs + 's)' : 'none — smooth day!') + '</b></div>' +
-      (r.standSold ? '<div class="row"><span>Best stand</span><b>Stand ' + (r.standSold[1] > r.standSold[0] ? 2 : 1) + ' (' + r.standSold.join(' vs ') + ' sold)</b></div>' : '') +
+      (r.standSold ? '<div class="row"><span>Best stand</span><b>Stand ' + (r.standSold.indexOf(Math.max.apply(null,r.standSold))+1) + ' (' + r.standSold.join(' vs ') + ' sold)</b></div>' : '') +
+      (r.econ && TF.Econ.funnelHTML ? TF.Econ.funnelHTML(r.econ) : '') +
       (r.econ ? '<div class="row"><span>\uD83D\uDDD1 Spoiled at close</span><b>' + r.econ.spoiledKits + ' kits (\u2212$' + (r.econ.spoiledCents / 100).toFixed(2) + ')</b></div>' : '') +
       (r.econ && r.econ.rent ? '<div class="row"><span>Rent to Mrs. West</span><b>' + (r.econ.rent.paid ? '\u2714 paid' : '\u2718 short') + '</b></div>' : '') +
       investRows(r.invest) +

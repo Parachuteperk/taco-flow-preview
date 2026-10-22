@@ -122,7 +122,7 @@
   // Called when something is bought: remember when, for how much, and the revenue baseline.
   I.noteBuy = function (id, cost, st, objRef) {
     if (!I.week()) return;
-    I.owned.push({ id: id, cost: cost, st: st, rev0: st ? st.rev || 0 : 0, obj: objRef || null, day: TF.Week.day, name: nameOf(id) });
+    I.owned.push({ id: id, cost: cost, st: st, rev0: st ? st.rev || 0 : 0, obj: objRef || null, day: TF.Week.day, name: id === 'stand2' && st ? 'Stand ' + (st.idx+1) : nameOf(id) });
   };
   function nameOf(id) {
     var C = TF.Crew, t = C.TIERS.filter(function (u) { return u.id === id; })[0];
@@ -132,7 +132,7 @@
   I.earned = function (o) {
     var O = TF.Objects, up = O && O.KINDS[o.id] ? O.KINDS[o.id].upkeep * Math.max(0, (TF.Week.day - o.day)) : 0;
     if (TIER_SHARE[o.id] !== undefined) return ((o.st.rev || 0) - o.rev0) * TIER_SHARE[o.id];
-    if (o.id === 'stand2') return Sim.stands[1] ? (Sim.stands[1].rev || 0) : 0;
+    if (o.id === 'stand2') return o.st ? (o.st.rev || 0) - o.rev0 : 0;
     if (o.id === 'drinks') return O.totals.drinkRev - O.totals.drinkCost - up;
     if (o.id === 'picnic') return O.shadeStats.kept * TACO - up;
     if (o.id === 'trash') return O.litterStats.binned * 0.25 - up;

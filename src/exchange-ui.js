@@ -38,6 +38,9 @@
         var b = el('button','qx-headline','★ ' + h.sym + ' · ' + (h.text || h.type),body); b.type = 'button'; b.title = b.textContent; b.dataset.qxKey = 'headline'+i; b.setAttribute('aria-expanded',!!expanded[i]);
         b.onclick = function () { expanded[i] = !expanded[i]; render(); };
       });
+      if (x.headlines) x.headlines(day).forEach(function (h, i) {
+        var b = el('button','qx-headline','📈 ' + h.sym + ' ' + (h.pct>=0?'+':'') + h.pct + '% · ' + h.text,body); b.type = 'button'; b.title = b.textContent; b.dataset.qxKey = 'movehl'+i;
+      });
       el('div','qx-caption','Ticker / company · price · held · rise chance',body);
       var list = el('div','qx-board',undefined,body);
       board.forEach(function (r) {
@@ -61,28 +64,33 @@
       ['star','jared','antonio','west'].forEach(function (s) { var row = el('tr','',undefined,tb); el('td','',s === 'star' ? 'University Star' : s[0].toUpperCase()+s.slice(1),row); ['week','month'].forEach(function (p) { var v = scores[p][s]; el('td','qx-num',v.hits + '/' + v.total,row); }); });
       var trade = el('section','qx-trade',undefined,panel), r = board.find(function (r) { return r.sym === selected; });
       if (r) {
-        var n = held[selected] || 0, buyMax = Math.max(0,Math.min(20-n,Math.floor((cash-100)/r.cents))), max = Math.max(1,buyMax,n);
-        qty = Math.max(1,Math.min(20,max,qty));
+        var n = held[selected] || 0;
+        function feeOf(v) { return Math.max(100, Math.round(v * 0.02)); }
+        var buyMax = Math.max(0, Math.floor((cash - 100) / (r.cents * 1.02)));
+        var max = Math.max(1, buyMax, n);
+        qty = Math.max(1, Math.min(max, qty));
         el('h2','',selected + ' · Trade whole shares',trade); var step = el('div','qx-stepper',undefined,trade);
         function button(text, key, parent, fn) { var b = el('button','',text,parent); b.type = 'button'; b.dataset.qxKey = key; b.onclick = fn; return b; }
         var minus = button('−','minus',step,function () { qty--; render(); }); minus.setAttribute('aria-label','Decrease quantity'); minus.disabled = qty <= 1;
         el('span','qx-num qx-quantity',String(qty),step);
-        var plus = button('+','plus',step,function () { qty++; render(); }); plus.setAttribute('aria-label','Increase quantity'); plus.disabled = qty >= max || qty >= 20;
+        var plus = button('+','plus',step,function () { qty++; render(); }); plus.setAttribute('aria-label','Increase quantity'); plus.disabled = qty >= max;
         var actions = el('div','qx-actions',undefined,trade);
+        var tradablePhase = (phase === 'PREP' || phase === 'REPORT') && (state.phase === 'prep' || state.phase === 'close');
         [true,false].forEach(function (buying) {
-          var reason = phase !== 'PREP' || state.phase !== 'prep' ? 'PREP only' : !r.listed ? 'Not listed' : buying && n+qty > 20 ? 'Max 20 held' : !buying && n < qty ? (n ? 'Insufficient shares' : 'No shares') : cash < (buying ? r.cents*qty+100 : 100-r.cents*qty) ? 'Insufficient cash' : '';
+          var fee = feeOf(r.cents * qty);
+          var reason = !tradablePhase ? 'Trading closed' : !r.listed ? 'Not listed' : !buying && n < qty ? (n ? 'Insufficient shares' : 'No shares') : buying && cash < r.cents*qty + fee ? 'Insufficient cash' : '';
           var cell = el('div','qx-action',undefined,actions), label = buying ? 'BUY' : 'SELL';
-          var b = button(label + ' ' + money(buying ? r.cents*qty+100 : r.cents*qty-100),label.toLowerCase(),cell,function () {
+          var cost = buying ? r.cents*qty + fee : r.cents*qty - fee;
+          var b = button(label + ' ' + money(cost),label.toLowerCase(),cell,function () {
             if (locked || dead || reason) return; locked = true;
             try {
               var symbol = selected, amount = qty, before = x.portfolio()[symbol] || 0;
               var result = buying ? x.buy(symbol,amount) : x.sell(symbol,amount);
-              message = result.ok ? (buying ? 'Bought ' : 'Sold ') + amount + ' ' + symbol + ' · $1 fee' : result.reason;
+              message = result.ok ? (buying ? 'Bought ' : 'Sold ') + amount + ' ' + symbol + ' · 2% fee' : result.reason;
               if (result.ok) {
                 var known = basis[symbol];
-                if (buying && (!before || known && known.shares === before)) basis[symbol] = {shares:before+amount,cents:(before ? known.cents : 0)+r.cents*amount+100};
+                if (buying && (!before || known && known.shares === before)) basis[symbol] = {shares:before+amount,cents:(before ? known.cents : 0)+r.cents*amount+fee};
                 else if (!buying && known && known.shares === before) {
-                  // Floor the removed basis; the last share carries all remaining cents.
                   basis[symbol] = {shares:before-amount,cents:known.cents-Math.floor(known.cents*amount/before)};
                 }
                 try { if (options.onChange) options.onChange(result); }
@@ -96,8 +104,8 @@
               },400);
               render();
             }
-          }); b.disabled = !!reason || locked; b.title = reason || '$1 fee included';
-          el('small','',reason || (buying ? 'Cost' : 'Proceeds') + ' includes $1 fee',cell);
+          }); b.disabled = !!reason || locked; b.title = reason || '2% fee (min $1) included';
+          el('small','',reason || (buying ? 'Cost' : 'Proceeds') + ' includes 2% fee',cell);
         });
       }
       var toast = el('div','qx-toast',message,trade); toast.setAttribute('role','status'); toast.setAttribute('aria-live','polite');

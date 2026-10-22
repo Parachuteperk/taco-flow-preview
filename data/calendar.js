@@ -10,7 +10,7 @@
   'use strict';
   var maps = ['The Quad', 'Bobcat Trail', 'Flowers Hall / LBJ statue', 'Alkek Plaza at night'];
   var themes = ['Welcome Back', 'Homecoming', 'Midterms + Halloween', 'Dead Week + Finals'];
-  var rents = [18000, 38000, 65000, 100000], mults = [1, 1.3, 1.6, 2];
+  var rents = [6000, 12000, 20000, 30000], mults = [1, 1.3, 1.6, 2];
   var favorDefs = Favors || [
     { id: 'presidentPass' }, { id: 'rainInsurance' }, { id: 'mavsTickets' },
     { id: 'buildPermit', neverMonday: true }, { id: 'vipConnection' }

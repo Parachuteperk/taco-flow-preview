@@ -7,7 +7,7 @@
 //   RENT: Mrs. West's rent is due Friday; the meter is always on the HUD; Friday REPORT auto-pays.
 (function (TF) {
   var Sim = TF.Sim, $ = function (id) { return document.getElementById(id); };
-  var EC = { K: null, M: null, last: null, spoil: [], rent: null, autoOrders: [] };
+  var EC = { K: null, M: null, last: null, spoil: [], rent: null, autoOrders: [], finance: { creditUsed: false, debt: 0 } };
   EC.on = function () { return !!(EC.K && TF.Week && TF.Week.active()); };
 
   function cash() { return TF.Ledger.cash; }
@@ -36,6 +36,9 @@
   // ---- Week hooks (week.js) -------------------------------------------------------------------
   EC.openDay = function (day) {
     if (!EC.on()) return;
+    EC.startRows = TF.Ledger.rows ? TF.Ledger.rows.length : 0;
+    EC.startInv = EC.kitsLeft();
+    Sim.stands.forEach(function (st) { st.dayRev = st.rev || 0; st.daySold = st.sold || 0; st.dayRep = st.reputation; });
     // Day 1 kindness: opening with no kits at all, Jared orders the suggested amount for you.
     if (day === 1 && EC.kitsLeft() === 0) {
       var sg = EC.K.suggestOrder({ yesterdaySold: null });
@@ -53,19 +56,75 @@
   };
   EC.endDay = function (day) {
     if (!EC.on()) return null;
+    if (EC.last && EC.last.absoluteDay === EC.abs(day)) return EC.last;
     if (TF.Aaron && TF.Aaron.live) TF.Aaron.live.payWage();
+    EC.K.payWages(TF.Crew ? TF.Crew.hired().filter(function (id) { return id !== 'aaron'; }) : []);
     EC.K.setPhase('report', EC.abs(day));
     var sp = EC.K.closeDay();
-    var out = { spoiledKits: sp.spoiledKits, spoiledCents: sp.spoiledCostCents, kept: sp.kept, rent: null };
+    var out = { absoluteDay: EC.abs(day), spoiledKits: sp.spoiledKits, spoiledCents: sp.spoiledCostCents, kept: sp.kept, rent: null };
     Sim.stands.slice(1).forEach(function (st) {   // stand 2's leftovers spoil at the same rate
       var sp2 = Math.round((st.ekits || 0) * EC.level().spoilage);
-      st.ekits -= sp2; out.spoiledKits += sp2; out.spoiledCents += sp2 * EC.level().kitCents; out.kept += st.ekits;
+      st.ekits = Math.max(0,(st.ekits || 0) - sp2); out.spoiledKits += sp2; out.spoiledCents += sp2 * EC.level().kitCents; out.kept += st.ekits;
     });
     if (TF.Mkt) out.market = TF.Mkt.closeDay();   // the Exchange's pre-rolled closes land (C5)
     if (((day - 1) % 5) + 1 === 5) out.rent = EC.rent = EC.M.fridayReport(EC.abs(day));
+    var stands = Sim.stands.filter(function (st) { return st.placed; }), n = stands.length;
+    var costs = TF.Economy.shiftCosts(n, EC.abs(day));
+    costs.payroll = 1800 * stands.filter(function (st) { return st.idx > 0 && st.crew; }).length;
+    ['payroll','rent','maintenance'].forEach(function (key) {
+      if (costs[key]) TF.postTransaction({ day: EC.abs(day), phase: 'report', cat: key === 'payroll' ? 'wages' : key === 'rent' ? 'siteRent' : 'maintenance', cents: -costs[key], ref: n + ' stands' });
+    });
+    out.costs = costs;
+    var rows = TF.Ledger.rows ? TF.Ledger.rows.filter(function (r) { return r.day === EC.abs(day); }) : [];
+    out.payrollCents = -rows.reduce(function (a,r) { return a + (r.cat === 'wages' ? r.cents : 0); },0);
+    out.revenueCents = rows.reduce(function (a,r) { return a + (/^(sales|drinks|premium)$/.test(r.cat) ? r.cents : 0); },0);
+    // Cash profit excludes capital, investments and financing. Spoilage is already paid in supplies.
+    out.profitCents = rows.reduce(function (a,r) { return a + (/^(sales|drinks|premium|supplies|wages|upkeep|siteRent|maintenance|rent|creditFee)$/.test(r.cat) ? r.cents : 0); },0);
+    var supplies = -rows.reduce(function (a,r) { return a + (r.cat === 'supplies' ? r.cents : 0); },0);
+    var sold = stands.reduce(function (a,st) { return a + (st.sold || 0)-(st.daySold || 0); },0);
+    var fixed = out.revenueCents - supplies - out.profitCents;
+    out.stands = stands.map(function (st) {
+      var rev = Math.round(((st.rev || 0) - (st.dayRev || 0))*100);
+      return { idx: st.idx, funnel: JSON.parse(JSON.stringify(st.funnel)), reputation: st.reputation,
+        revenueCents: rev, profitCents: rev - Math.round(supplies * (sold ? ((st.sold || 0)-(st.daySold || 0))/sold : 1/Math.max(1,n))) - Math.round(fixed/Math.max(1,n)) };
+    });
+    if (n) out.stands[n-1].profitCents += out.profitCents - out.stands.reduce(function (a,st) { return a+st.profitCents; },0);
+    if (EC.finance.debt) {
+      var repay = Math.min(EC.finance.debt, Math.max(0, cash()-4000), Math.round(out.revenueCents * 0.2));
+      if (repay) { TF.postTransaction({cat:'loan', cents:-repay, ref:'Emergency credit repayment'}); EC.finance.debt -= repay; }
+    }
     EC.last = out; EC.spoil.push(out);
     EC.sync();
     return out;
+  };
+  EC.assets = function () {
+    return { stands: Sim.stands.map(function (st) { return { tier: st.tier, reputation: st.reputation, crew: st.crew }; }), extras: JSON.parse(JSON.stringify(TF.Crew.extras)), finance: JSON.parse(JSON.stringify(EC.finance)) };
+  };
+  EC.restoreAssets = function (assets) {
+    if (!assets) return;
+    assets.stands.forEach(function (s,i) {
+      var st=Sim.stands[i] || Sim.addStand();
+      st.tier=s.tier; st.reputation=s.reputation; st.crew=s.crew;
+    });
+    TF.Crew.extras=JSON.parse(JSON.stringify(assets.extras));
+    EC.finance=JSON.parse(JSON.stringify(assets.finance));
+    TF.Crew.applyMods();
+  };
+  EC.emergencyCredit = function () {
+    if (!EC.on() || EC.finance.creditUsed || !/^(prep|open|report)$/.test(TF.Week.phase)) return false;
+    EC.finance.creditUsed = true; EC.finance.debt = TF.Economy.creditCents;
+    TF.postTransaction({cat:'loan', cents:TF.Economy.creditCents, ref:'One emergency credit'});
+    TF.postTransaction({cat:'creditFee', cents:-TF.Economy.creditFeeCents, ref:'Emergency credit fee'});
+    if (TF.Save && /^(prep|report)$/.test(TF.Week.phase)) TF.Save.write(TF.Week.phase);
+    return true;
+  };
+  EC.funnelHTML = function (out) {
+    return '<div class="why">Payroll $' + ((out.payrollCents || 0)/100).toFixed(2) + ' · Site rent $' + ((out.costs ? out.costs.rent : 0)/100).toFixed(2) + ' · Maintenance $' + ((out.costs ? out.costs.maintenance : 0)/100).toFixed(2) + '</div>' + (out.stands || []).map(function (st) {
+      var f=st.funnel, lost=Object.keys(f.lost).map(function (k) { return f.lost[k] + ' ' + k; }).join(' · ');
+      return '<div class="why"><b>Stand ' + (st.idx+1) + ' · rep ' + Math.round(st.reputation) + '/100</b><br>' +
+        f.walkers + ' walkers → ' + f.interested + ' interested → ' + f.queued + ' queued → ' + f.served + ' served<br>' +
+        'Lost: ' + (lost || '0') + '<br>Profit $' + (st.profitCents/100).toFixed(2) + '</div>';
+    }).join('') + '<small>Supplies split by sales; shared costs split equally.</small><div class="row"><span>Operating cash profit</span><b>$' + (out.profitCents/100).toFixed(2) + '</b></div>';
   };
   EC.nextDay = function (day) { if (EC.on()) { EC.K.setPhase('prep', EC.abs(day)); EC.sync(); if (TF.Mkt) TF.Mkt.openDay(); } };
   // Week days are level-local (1-5); West and Stock count campaign days (L2 Monday = day 6) (C3c).
@@ -78,15 +137,19 @@
   // 'tooPricey'} (the price can go up while someone waits in line).
   EC.sell = function (g) {
     var st = g.st || Sim.stand, r;
+    if (st.idx > 0 && !st.crew) return { reason: 'unassigned' };
+    if (g.econSale) return { reason: 'alreadyPaid' };
+    if (EC.state().phase !== 'open') return { reason: 'closed' };
     if (EC.kits(st) === 0 && !EC.soldOutAll(st)) { st.needRestock = EC.needsRefill(st); return { reason: 'restocking' }; }
     if (st.idx === 0) r = EC.K.trySell(Math.round(g.maxPay * 100));
     else {   // stand 2: same tier price, its own kits
       var price = EC.K.price();
       if (!st.ekits) r = { sold: false, reason: 'soldOut' };
       else if (Math.round(g.maxPay * 100) < price) r = { sold: false, reason: 'tooPricey' };
-      else { TF.postTransaction({ day: EC.abs(TF.Week.day), phase: 'open', cat: 'sales', cents: price, ref: EC.state().tier + ' (stand 2)' }); st.ekits--; r = { sold: true, cents: price }; }
+      else { TF.postTransaction({ day: EC.abs(TF.Week.day), phase: 'open', cat: 'sales', cents: price, ref: EC.state().tier + ' (stand ' + (st.idx+1) + ')' }); st.ekits--; r = { sold: true, cents: price }; }
     }
     EC.sync();
+    if (r.sold) g.econSale = true;
     return r.sold ? { dollars: r.cents / 100 } : { reason: r.reason };
   };
   // Restock walk finished (Jared / the runner / the cashier): bring kits from the shared van.
@@ -179,7 +242,7 @@
     var rush = s.pending.length ? ' · 🚚 ' + s.pending.map(function (p) { return p.kits + ' in ' + Math.ceil(p.etaS) + 's'; }).join(', ') : '';
     var tiers = ['cheap', 'fair', 'bougie'], icons = { cheap: '🌮', fair: '🙂', bougie: '💅' };
     body.innerHTML =
-      '<div class="kits">KITS ' + (Sim.stands[1] && Sim.stands[1].placed ? 'stand 1 <b>' + s.standKits + '</b> · stand 2 <b>' + (Sim.stands[1].ekits || 0) + '</b>' : 'in stand <b>' + s.standKits + '</b>') + ' · van <b>' + s.vanKits + '</b>' + rush +
+      '<div class="kits">KITS ' + Sim.stands.filter(function (st) { return st.placed; }).map(function (st) { return 'stand ' + (st.idx+1) + ' <b>' + EC.kits(st) + '</b>'; }).join(' · ') + ' · van <b>' + s.vanKits + '</b>' + rush +
         (prep && s.vanKits ? '<br><small>The van loads the stand at OPEN.</small>' : '') + '</div>' +
       '<div class="pick"><button id="kitMinus">−</button><b id="kitWant">' + EC.want + ' kits</b><button id="kitPlus">+</button></div>' +
       '<div class="cost">' + money(unit) + ' ea · total <b>' + money(cost) + '</b>' + (open ? ' (rush +20%)' : '') + '</div>' +
@@ -188,7 +251,7 @@
       '<div class="tiers">' + tiers.map(function (t) { return '<button data-tier-p="' + t + '" class="' + (s.tier === t ? 'on' : '') + '"' + (prep || open ? '' : ' disabled') + '>' + icons[t] + '&nbsp;' + money(lv.prices[t]) + (s.tier === t ? '&nbsp;✓' : '') + '</button>'; }).join('') + '</div>' +
       '<div class="line">walked away today: pricey <b id="lostPricey">' + EC.lostToday('too pricey') + '</b> · sold out <b id="lostSoldOut">' + EC.lostToday('sold out') + '</b></div>';
     $('kitMinus').onclick = function () { EC.want = Math.max(0, EC.want - 5); EC.render(); };
-    $('kitPlus').onclick = function () { EC.want = Math.min(200, EC.want + 5); EC.render(); };
+    $('kitPlus').onclick = function () { EC.want = Math.min(1000, EC.want + 5); EC.render(); };
     $('kitSuggest').onclick = function () { EC.want = sg.kits; EC.render(); };
     if ($('kitOrder')) $('kitOrder').onclick = function () { EC.orderNow(); };
     if ($('kitRush')) $('kitRush').onclick = function () { EC.rushNow(); };
@@ -248,9 +311,11 @@
       '<p>Too pricey: <b>' + EC.lostToday('too pricey') + '</b> lost sales today. Lower prices attract more budgets.</p>';
     var O = TF.Objects, cooler = O && O.list.some(function (o) { return o.kind === 'drinks' && o.ready; });
     menuBody.innerHTML += '<p><b>🥤 Agua fresca · ' + money(100 * (O.day.price || O.DRINK.price)) + '</b><br>' +
-      (cooler ? (O.stock ? O.stock.drinks : 0) + ' drinks left · buy stock in Restock ($0.50 each).' : 'Build a Drink cooler to sell purchased drinks.') + '</p>' +
+      (cooler ? (O.stock ? O.stock.drinks : 0) + ' drinks left · buy stock in Restock.' : 'Build a Drink cooler to sell purchased drinks.') + '</p>' +
       [1, 2, 3].map(function (p) { return '<button data-drink-price="' + p + '" aria-pressed="' + ((O.day.price || O.DRINK.price) === p) + '"' + (editable ? '' : ' disabled') + '>' + money(p * 100) + '</button>'; }).join('') +
       '<p>Cheaper drinks get more takers; drinks add pickup time.</p>' + EC.drinkControls();
+    menuBody.innerHTML += '<p>Emergency credit: $100 now; $40 fee; repay 20% of sales above a $40 reserve.</p><button id="btnEmergencyCredit"' + (EC.finance.creditUsed ? ' disabled' : '') + '>Emergency credit' + (EC.finance.creditUsed ? ' used · debt $' + (EC.finance.debt/100).toFixed(2) : '') + '</button>';
+    if ($('btnEmergencyCredit')) $('btnEmergencyCredit').onclick = function () { EC.emergencyCredit(); EC.renderMenu(); };
     EC.bindDrinks();
     menuBody.querySelectorAll('[data-menu-tier]').forEach(function (b) { b.onclick = function () { EC.setTier(b.dataset.menuTier); EC.renderMenu(); }; });
     menuBody.querySelectorAll('[data-drink-price]').forEach(function (b) { b.onclick = function () { EC.setDrinkPrice(Number(b.dataset.drinkPrice)); }; });
@@ -258,11 +323,11 @@
   EC.drinkControls = function () {
     var O = TF.Objects, stock = O.stock || { drinks: 0, pending: [] }, rush = TF.Week.phase === 'open';
     var allowed = /^(prep|open|report)$/.test(TF.Week.phase), n = EC.drinkWant || 10;
-    var cents = Math.round(n * (O.DRINK.cost || 0.5) * 100 * (rush ? TF.Economy.rushMult : 1));
+    var cents = Math.round(n * (O.drinkCost ? O.drinkCost() : O.DRINK.cost || 0.5) * 100 * (rush ? TF.Economy.rushMult : 1));
     return '<div class="drink-stock"><b>🥤 Drink stock: ' + stock.drinks + ' left</b>' +
       stock.pending.map(function (p) { return ' · ' + p.drinks + ' arriving in ' + Math.ceil(p.etaS) + 's'; }).join('') +
       '<div class="restock-actions"><button data-drink-minus aria-label="Fewer drinks">−</button><b>' + n + ' drinks</b><button data-drink-plus aria-label="More drinks">+</button>' +
-      '<button data-drink-buy' + (!allowed || cents > cash() ? ' disabled' : '') + '>' + (rush ? 'RUSH +20%' : 'Buy') + ' ' + money(cents) + '</button></div><small>$0.50 each · leftovers keep overnight</small></div>';
+      '<button data-drink-buy' + (!allowed || cents > cash() ? ' disabled' : '') + '>' + (rush ? 'RUSH +20%' : 'Buy') + ' ' + money(cents) + '</button></div><small>' + money(Math.round((O.drinkCost ? O.drinkCost() : 0.5)*100)) + ' each · leftovers keep overnight</small></div>';
   };
   EC.bindDrinks = function () {
     [menuBody, restock].forEach(function (root) {
