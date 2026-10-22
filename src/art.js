@@ -123,10 +123,13 @@
   }
 
   function loadImage(src) {
-    return new Promise(function (res, rej) { var im = new Image(); im.onload = function () { res(im); }; im.onerror = rej; im.src = src; });
+    return new Promise(function (res, rej) { var im = new Image(); im.onload = function () { if (TF.artTick) TF.artTick(); res(im); }; im.onerror = function (e) { if (TF.artTick) TF.artTick(); rej(e); }; im.src = src; });
   }
 
   Art.load = function (done) {
+    (TF.artSources || Promise.resolve()).then(function () { loadSheets(done); });   // src/artload.js fills TF.ART_SRCS
+  };
+  function loadSheets(done) {
     var srcs = TF.ART_SRCS || {};
     var names = Object.keys(srcs);
     if (!names.length) { Art.failed = true; done(false); return; }
@@ -160,7 +163,7 @@
         }
         done(Art.ready);
       });
-  };
+  }
 
   Art.painted = function () { return Art.ready && Art.mode === 'painted'; };
   Art.has = function (k) { return Art.painted() && !!Art.img[k]; };
