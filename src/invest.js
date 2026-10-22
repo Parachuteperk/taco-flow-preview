@@ -137,9 +137,14 @@
 
   // ---- Jared's pitch (PREP, Day 2+) --------------------------------------------------------------
   var pitchEl = $('betCard');
+  function panelOpen() {
+    return ['crewPanel', 'investPanel', 'stockPanel', 'menuPanel', 'manageSheet'].some(function (id) {
+      var el = $(id); return el && !el.hidden;
+    });
+  }
   I.maybePitch = function () {
     var W = TF.Week;
-    if (!I.week() || W.phase !== 'prep' || W.day < 2 || I.pitchDay[W.day] || !pitchEl) return;
+    if (!I.week() || W.phase !== 'prep' || W.day < 2 || I.pitchDay[W.day] || !pitchEl || panelOpen()) return;
     I.pitchDay[W.day] = true;
     pitchEl.querySelector('.txt').textContent = 'Jared: “' + pick(D.jared && D.jared.gold_pitch, 'Gold never sleeps.') + ' …and silver. ' + pick(D.jared && D.jared.silver_pitch, 'Silver whispers profit.') + '”';
     var row = pitchEl.querySelector('.btns'); row.innerHTML = '';
@@ -199,8 +204,10 @@
       if (sig !== I.sig) { I.sig = sig; I.render(); }
     }
   };
+  // Aaron (Oct 22): no floating "+$" pills over the grill/banner/serving/canopy - the week report keeps the ROI.
+  I.SHOW_PILLS = false;
   I.items = function (items) {
-    if (!I.week()) return;
+    if (!I.week() || !I.SHOW_PILLS) return;
     var perStand = {};
     I.owned.forEach(function (o) {
       var e = Math.round(I.earned(o));

@@ -157,6 +157,7 @@
     var lv = TF.LEVELS[d.level && d.level.id] || (d.level && d.level.data);
     if (!d.level || typeof d.level.id !== 'string' || !lv || !int(lv.w) || !int(lv.h)) return 'level';
     var W = lv.w, H = lv.h;
+    if (d.flags && d.flags.objects && d.flags.objects.day && d.flags.objects.day.price !== undefined && [1, 2, 3].indexOf(d.flags.objects.day.price) < 0) return 'drink price';
     if (d.flags && d.flags.objects && (!Array.isArray(d.flags.objects.litter) || !d.flags.objects.litter.every(function (l) { return l && ['x','y','t','rot'].every(function (k) { return Number.isFinite(l[k]); }) && typeof l.col === 'string'; }))) return 'litter';
     if (!d.sim || typeof d.sim !== 'object' || typeof d.sim.t !== 'number' || !d.stats || typeof d.stats !== 'object') return 'sim / stats';
     if (!d.flags || typeof d.flags !== 'object' || !d.flags.objects || !Array.isArray(d.flags.objects.litter) || !d.flags.story || !d.flags.events || !d.flags.arcs) return 'flags';

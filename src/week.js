@@ -38,14 +38,14 @@
   W.SEED = 60;
   if (/[?&]mode=free/.test(location.search) === false) {
     TF.Ledger.add('seed', W.SEED, 'SIFE seed money');
-    setTimeout(function () { Sim.events.push({ type: 'toast', text: '\uD83C\uDF93 SIFE seed money: $' + W.SEED + ' from the club treasury. Tap \uD83D\uDCB0 INVEST to upgrade the stand!' }); }, 600);
+    setTimeout(function () { Sim.events.push({ type: 'toast', text: '\uD83C\uDF93 SIFE seed money: $' + W.SEED + ' from the club treasury. Tap Upgrade (phone: Manage) to improve the stand!' }); }, 600);
   }
   W.active = function () { return W.mode === 'week'; };
   // Level 1's days are the Pass 5 week; Levels 2-4 ramp the bonus goal per PLAN §1a (34->46, 50->64, 68->86)
   // and take their day titles from the 20-day calendar (6B B2).
   var GOALS = { 2: [34, 37, 40, 43, 46], 3: [50, 54, 57, 61, 64], 4: [68, 72, 77, 81, 86] };
   function lvl() { return TF.Econ && TF.Econ.levelNo ? TF.Econ.levelNo : 1; }
-  W.goal = function () { var g = GOALS[lvl()]; return g ? g[W.day - 1] : DAYS[W.day - 1].goal; };
+  W.goal = function (day) { var g = GOALS[lvl()], d = day || W.day; return g ? g[d - 1] : DAYS[d - 1].goal; };
   W.dayName = function () {
     var n = lvl(), c = n > 1 && TF.CALENDAR && TF.CALENDAR[(n - 1) * 5 + W.day - 1];
     return c ? c.title : DAYS[W.day - 1].name;
@@ -53,11 +53,12 @@
   W.GOALS = DAYS.map(function (d) { return d.goal; });
 
   // ---- Shop rules ------------------------------------------------------------------
-  W.unlockDay = function (id) { return id === 'aaron' && lvl() > 1 ? 1 : UNLOCK[id] || 1; };
+  W.dayOne = function () { return W.active() && lvl() === 1 && W.day === 1; };
+  W.unlockDay = function (id) { if (lvl() === 1 && /^(ali|cooler2|runner|drinks)$/.test(id)) return 1; return id === 'aaron' && lvl() > 1 ? 1 : UNLOCK[id] || 1; };
   W.isMajor = function (id) { return !!MAJOR[id]; };
   // null if allowed, otherwise a short reason for the button.
   // Build permits (Pass 5 item 2): one major build a day, in PREP or during OPEN (unused permits
-  // expire); during OPEN one minor buy too (PREP minors are unlimited); no construction in the
+  // expire); L1 Monday permits repeat builds and minor buys; other days allow one OPEN minor. No construction in the
   // last 20 s of a day. Spending under the $20 reserve asks for a confirm (Crew).
   W.RESERVE = 20; W.LATE = 20;
   W.shopBlock = function (id) {
@@ -65,8 +66,8 @@
     if (W.phase !== 'prep' && W.phase !== 'open') return 'Shop closed';
     if (W.day < W.unlockDay(id)) return 'Day ' + W.unlockDay(id);
     if (W.phase === 'open' && W.isMajor(id) && W.t > OPEN_T - W.LATE) return 'Too late to build';
-    if (W.isMajor(id) && W.majorUsed) return 'Permit used';
-    if (W.phase === 'open' && !W.isMajor(id) && W.openMinorUsed) return 'OPEN buy used';
+    if (W.isMajor(id) && W.majorUsed && !W.dayOne()) return 'Permit used';
+    if (W.phase === 'open' && !W.isMajor(id) && W.openMinorUsed && !W.dayOne()) return 'OPEN buy used';
     return null;
   };
   W.bought = function (id) {
@@ -76,6 +77,7 @@
   };
   W.permitLine = function () {
     if (!W.active()) return '';
+    if (W.dayOne()) return 'Monday: repeat builds + small buys allowed · builds until 0:20 left · Restock kits · Menu & Prices';
     return (W.majorUsed ? '\uD83C\uDFAB Permit used today' : '\uD83C\uDFAB 1 build permit today (big builds)') +
       (W.phase === 'open' ? (W.openMinorUsed ? ' \u00B7 OPEN buy used' : ' \u00B7 1 small buy during OPEN') : ' \u00B7 small buys: unlimited in PREP');
   };

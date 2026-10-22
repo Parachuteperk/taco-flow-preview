@@ -29,11 +29,11 @@
     },
     {
       "id": "price",
-      "text": "Set tiers: value, standard, premium. Watch patience."
+      "text": "Tap Menu & Prices: set taco and drink prices. Watch lost sales."
     },
     {
       "id": "restock",
-      "text": "Empty cart loses sales. Restock from the prep menu."
+      "text": "Buy kits on the Restock card before OPEN; use RUSH when stock runs low."
     },
     {
       "id": "rent",

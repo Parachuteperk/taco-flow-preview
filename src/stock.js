@@ -30,12 +30,12 @@
     function buy(kits, rush) {
       var cost = nonnegative(kits) ? Math.round(kits * ramp().kitCents * (rush ? Economy.rushMult : 1)) : null;
       function fail(reason) { return { ok: false, reason: reason, costCents: cost }; }
-      if (state.phase !== (rush ? 'open' : 'prep')) return fail(rush ? 'openOnly' : 'prepOnly');
+      if (rush ? state.phase !== 'open' : state.phase !== 'prep' && state.phase !== 'report') return fail(rush ? 'openOnly' : 'prepOnly');
       if (!nonnegative(kits) || !nonnegative(cost) || !integer(state.orderedToday + kits) ||
           !integer(state.vanKits + kits)) return fail('invalidKits');
       if (options.getCash() < cost) return fail('insufficientCash');
       if (kits) {
-        post(rush ? 'open' : 'prep', 'supplies', -cost,
+        post(state.phase, 'supplies', -cost,
           (rush ? 'RUSH ' : 'ORDER ') + kits + ' kits @' + ramp().kitCents);
         if (rush) state.pending.push({ kits: kits, etaS: Economy.rushDelayS });
         else state.vanKits += kits;

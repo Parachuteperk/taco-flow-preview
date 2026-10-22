@@ -43,12 +43,20 @@
       var ax1 = W + H <= 2 * rx ? ax0 : W - rx;
       var by0 = W + H <= 2 * ry ? (W + H) / 2 : ry;
       var by1 = W + H <= 2 * ry ? by0 : W + H - ry;
-      // Feasible cy interval for cx in [ax0,ax1] and world center in [0,W]x[0,H].
-      by0 = Math.max(by0, -ax1, ax0);
-      by1 = Math.min(by1, 2 * W - ax0, 2 * H + ax1);
-      var cy = limit(((vh + top) / 2 - cam.y) / hh, by0, by1);
-      var cx = limit((vw / 2 - cam.x) / hw, Math.max(ax0, -cy, cy - 2 * H), Math.min(ax1, 2 * W - cy, cy));
-      var x = vw / 2 - cx * hw, y = (vh + top) / 2 - cy * hh;
+      // AABB bounds use the playable center; ground bounds use the full canvas
+      // center, matching absolute projection/pointer coordinates. At whole-map
+      // zoom a tall HUD can put the preferred map position entirely below that
+      // center, so ground bounds take priority over small-axis centering.
+      var inset = top / (2 * hh);
+      // Stay microscopically inside the diamond so projection roundoff cannot
+      // turn a boundary point into a negative world coordinate.
+      var edge = Math.min(1, W, H) * 1e-9;
+      var ground0 = Math.max(-ax1, ax0) + edge, ground1 = Math.min(2 * W - ax0, 2 * H + ax1) - edge;
+      by0 = limit(by0 - inset, ground0, ground1);
+      by1 = limit(by1 - inset, ground0, ground1);
+      var cy = limit((vh / 2 - cam.y) / hh, by0, by1);
+      var cx = limit((vw / 2 - cam.x) / hw, Math.max(ax0, -cy + edge, cy - 2 * H + edge), Math.min(ax1, 2 * W - cy - edge, cy - edge));
+      var x = vw / 2 - cx * hw, y = vh / 2 - cy * hh;
       if (Math.abs(x - cam.x) > 1e-8) vx = 0;
       if (Math.abs(y - cam.y) > 1e-8) vy = 0;
       cam.x = x; cam.y = y;

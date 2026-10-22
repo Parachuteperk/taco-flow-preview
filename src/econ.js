@@ -1,6 +1,6 @@
 // Taco Week economy (Pass 6A C3): wires the rules layer (src/stock.js = TF.Stock, src/west.js = TF.West,
 // data/economy.js) into the game. Only in Taco Week; Free Play keeps the old free restocks.
-//   STOCK: taco kits are ordered in PREP at the level's kit cost (RUSH during OPEN: +20%, 20 s delivery),
+//   STOCK: taco kits are ordered in PREP / REPORT at the level's kit cost (RUSH during OPEN: +20%, 20 s delivery),
 //   wait in the van, and the stand holds up to stockMax; restock walks bring them from the van. Every
 //   sale goes through K.trySell (price tier, too pricey, sold out). Leftovers spoil at close (reported).
 //   PRICE: Cheap / Fair / Bougie per level.
@@ -154,7 +154,8 @@
   }
   EC.suggestion = function () {
     var res = TF.Week.results.filter(Boolean), last = res[res.length - 1], s = EC.state();
-    var demand = last ? Math.max(TF.Week.goal(), Math.round(last.sold + 0.6 * ((last.lost && last.lost['sold out']) || 0))) : Math.max(20, TF.Week.goal());
+    var target = TF.Week.goal(/^(close|report)$/.test(TF.Week.phase) ? Math.min(5, TF.Week.day + 1) : TF.Week.day);
+    var demand = last ? Math.max(target, Math.round(last.sold + 0.6 * ((last.lost && last.lost['sold out']) || 0))) : Math.max(20, target);
     // a second stand that has not sold yet has no history: add its capacity (C3b; was 0 -> Day 4 NO STOCK)
     Sim.stands.slice(1).forEach(function (st) { if (st.placed && !st.sold) demand += st.mods.stockMax || 10; });
     var passed = Math.max(0, demand - otherKits());
@@ -206,12 +207,99 @@
     EC.K.setTier(t); EC.render(); return true;
   };
 
+  // Public menu and restock controls share the existing rules and ledger paths.
+  var menu = $('menuPanel'), menuBody = $('menuBody'), menuBtn = $('btnMenu');
+  var restock = $('restockCard'), rushBtn = $('btnRushStock');
+  EC.restockWant = null;
+  EC.restockOffer = function () {
+    var W = TF.Week, phase = W.phase, rush = phase === 'open';
+    var unit = Math.round(EC.level().kitCents * (rush ? TF.Economy.rushMult : 1));
+    var suggested = EC.suggestion().kits;
+    var affordable = Math.max(0, Math.floor(cash() / unit));
+    var want = EC.restockWant === null ? Math.min(suggested, affordable) : EC.restockWant;
+    // Low stock needs a usable small order even when the day estimate is already covered.
+    if (rush && EC.restockWant === null) want = Math.min(Math.max(5, suggested), affordable);
+    return { kitsLeft: EC.kitsLeft(), suggested: suggested, want: want, unit: unit, cost: want * unit,
+      canBuy: phase !== 'close' && !(W.day === 5 && phase === 'report') && want > 0 && want * unit <= cash(), rush: rush };
+  };
+  EC.buyRestock = function () {
+    var o = EC.restockOffer();
+    if (!o.canBuy) return false;
+    var old = EC.want; EC.want = o.want;
+    var r = o.rush ? EC.rushNow() : EC.orderNow(); EC.want = old;
+    if (r.ok) {
+      EC.restockWant = null;
+      if (TF.Save && TF.Week.phase === 'report') TF.Save.write('report');
+      else if (TF.Save && TF.Week.phase === 'prep') TF.Save.write('prep');
+    }
+    EC.restockSig = null; EC.refresh(); return r.ok;
+  };
+  EC.renderMenu = function () {
+    if (!menu || menu.hidden || !EC.on()) return;
+    var s = EC.state(), lv = EC.level(), editable = /^(prep|open|close)$/.test(TF.Week.phase);
+    menuBody.innerHTML = '<p><b>🌮 Taco · ' + money(EC.K.price()) + '</b><br>Kits left: ' + EC.kitsLeft() + '</p>' +
+      ['cheap', 'fair', 'bougie'].map(function (t) { return '<button data-menu-tier="' + t + '" aria-pressed="' + (s.tier === t) + '"' + (editable ? '' : ' disabled') + '>' + t + ' ' + money(lv.prices[t] + s.priceAdd) + '</button>'; }).join('') +
+      '<p>Too pricey: <b>' + EC.lostToday('too pricey') + '</b> lost sales today. Lower prices attract more budgets.</p>';
+    var O = TF.Objects, cooler = O && O.list.some(function (o) { return o.kind === 'drinks' && o.ready; });
+    menuBody.innerHTML += '<p><b>🥤 Agua fresca · ' + money(100 * (O.day.price || O.DRINK.price)) + '</b><br>' +
+      (cooler ? (O.DRINK.perDay - O.day.drinks) + ' drinks left today · cooler refills daily; $0.50 cost per sale.' : 'Buy a Drink cooler in Stand & crew to sell drinks (25/day).') + '</p>' +
+      [1, 2, 3].map(function (p) { return '<button data-drink-price="' + p + '" aria-pressed="' + ((O.day.price || O.DRINK.price) === p) + '"' + (editable ? '' : ' disabled') + '>' + money(p * 100) + '</button>'; }).join('') +
+      '<p>Cheaper drinks get more takers; drinks add pickup time.</p>';
+    menuBody.querySelectorAll('[data-menu-tier]').forEach(function (b) { b.onclick = function () { EC.setTier(b.dataset.menuTier); EC.renderMenu(); }; });
+    menuBody.querySelectorAll('[data-drink-price]').forEach(function (b) { b.onclick = function () { EC.setDrinkPrice(Number(b.dataset.drinkPrice)); }; });
+  };
+  EC.setDrinkPrice = function (price) {
+    if (!/^(prep|open|close)$/.test(TF.Week.phase) || [1, 2, 3].indexOf(price) < 0) return false;
+    TF.Objects.day.price = price; EC.renderMenu(); return true;
+  };
+  if (menuBtn) menuBtn.onclick = function () { menu.hidden = !menu.hidden; EC.renderMenu(); };
+  if ($('btnMenuClose')) $('btnMenuClose').onclick = function () { menu.hidden = true; };
+  if (rushBtn) rushBtn.onclick = function () { EC.buyRestock(); };
+  EC.refreshBuying = function () {
+    if (!restock || !rushBtn || !menuBtn) return;
+    var W = TF.Week, on = EC.on();
+    if (menuBtn) menuBtn.hidden = !on;
+    if (!on) { if (restock) restock.hidden = true; if (rushBtn) rushBtn.hidden = true; return; }
+    var key = EC.levelNo + ':' + W.day + ':' + W.phase;
+    if (EC.restockKey !== key) { EC.restockKey = key; EC.restockWant = null; EC.restockSig = null; }
+    var o = EC.restockOffer(), s = EC.state();
+    rushBtn.hidden = W.phase !== 'open' || o.kitsLeft > 3;
+    rushBtn.disabled = !o.canBuy;
+    rushBtn.textContent = 'RUSH restock (+20%) · ' + o.want + ' kits ' + money(o.cost);
+    // Deliveries stay visible so sold-out players know help is coming.
+    if (W.phase === 'open' && s.pending.length) {
+      rushBtn.hidden = false; rushBtn.disabled = true;
+      rushBtn.textContent = 'Restock arriving in ' + Math.ceil(s.pending[0].etaS) + 's';
+    }
+    var report = $('reportCard'), inReport = W.phase === 'report' && !report.hidden;
+    var parent = inReport ? report : $('hud');
+    if (restock.parentNode !== parent) {
+      if (inReport) parent.insertBefore(restock, $('btnNextDay')); else parent.appendChild(restock);
+    }
+    restock.hidden = !/^(prep|close|report)$/.test(W.phase) || EC.restockSkipped === key;
+    var sig = [key, o.kitsLeft, o.want, o.suggested, cash()].join('|');
+    if (!restock.hidden && sig !== EC.restockSig) {
+      EC.restockSig = sig;
+      restock.innerHTML = '<b>' + (W.phase === 'prep' ? 'Restock before OPEN' : W.day === 5 ? 'Restock at the next location' : 'Restock for tomorrow') + '</b> · ' + o.kitsLeft + ' kits left' +
+        '<small>Suggested: ' + o.suggested + ' kits (' + money(o.suggested * o.unit) + '). ' + (W.day === 5 && W.phase !== 'prep' ? 'Kits reset at the next location. Restock in its PREP.' : W.phase === 'close' ? 'Buy after closing; leftovers spoil first.' : 'Adjust to your budget; or skip.') + '</small>' +
+        '<div class="restock-actions"><button id="restockMinus" aria-label="Fewer kits">−</button><b>' + o.want + ' kits</b><button id="restockPlus" aria-label="More kits">+</button>' +
+        '<button id="restockBuy"' + (o.canBuy ? '' : ' disabled') + '>Buy ' + money(o.cost) + '</button><button id="restockSkip">Skip</button></div>';
+      $('restockMinus').onclick = function () { EC.restockWant = Math.max(0, o.want - 5); EC.refresh(); };
+      $('restockPlus').onclick = function () { EC.restockWant = Math.min(200, o.want + 5); EC.refresh(); };
+      $('restockBuy').onclick = EC.buyRestock;
+      $('restockSkip').onclick = function () { EC.restockSkipped = key; restock.hidden = true; };
+    }
+    var ms = [key, EC.K.price(), TF.Objects.day.price, TF.Objects.day.drinks, o.kitsLeft, EC.lostToday('too pricey'), TF.Objects.list.map(function (o) { return o.ready; }).join(',')].join('|');
+    if (EC.menuSig !== ms) { EC.menuSig = ms; EC.renderMenu(); }
+  };
+
   // ---- HUD: STOCK button + rent meter ---------------------------------------------------------------
   if (btn) btn.addEventListener('click', function () { TF.Audio.unlock(); panel.hidden ? EC.open() : EC.close(); });
   if ($('btnStockClose')) $('btnStockClose').addEventListener('click', function () { EC.close(); });
   var rentHud = $('rentHud');
   EC.refresh = function () {
     var on = EC.on();
+    EC.refreshBuying();
     if (btn) btn.hidden = !on;
     if (rentHud) rentHud.hidden = !on;
     if (!on) return;

@@ -145,10 +145,11 @@
   O.rng = TF.Rng.objects;   // its own stream: buying a cooler doesn't reshuffle the crowd
   O.onPay = function (g, st) {
     var c = O.of('drinks', st);
-    if (!c || O.day.drinks >= O.DRINK.perDay || (TF.Handyman && TF.Handyman.fault('cooler')) || O.rng() >= O.DRINK.p) return 0;   // a jammed cooler sells nothing (C4)
+    if (!c || O.day.drinks >= O.DRINK.perDay || (TF.Handyman && TF.Handyman.fault('cooler')) || O.rng() >= O.DRINK.p * O.DRINK.price / (O.day.price || O.DRINK.price)) return 0;   // a jammed cooler sells nothing (C4)
     g.drink = true;
-    O.day.drinks++; O.day.drinkRev += O.DRINK.price; O.totals.drinks++; O.totals.drinkRev += O.DRINK.price;
-    return O.DRINK.price;
+    var price = O.day.price || O.DRINK.price;
+    O.day.drinks++; O.day.drinkRev += price; O.totals.drinks++; O.totals.drinkRev += price;
+    return price;
   };
   O.handExtra = function (g, st) { return g.drink && !(TF.Crew && TF.Crew.hiredSet.matt && st.idx === 0) ? O.DRINK.slow : 0; };
 
@@ -160,7 +161,7 @@
     if (up) TF.Ledger.add('upkeep', -up, 'buildings'); if (costCents) TF.Ledger.post({ cat: 'supplies', cents: -costCents, ref: 'drinks x' + O.day.drinks });
     O.totals.upkeep += up; O.totals.drinkCost += cost;
     var r = { drinks: O.day.drinks, drinkRev: O.day.drinkRev, upkeep: up, drinkCost: cost, litter: O.litter.length, litterPct: Math.round((1 - Math.min.apply(null, Sim.stands.map(function (st) { return st.litterMul || 1; }))) * 100) };
-    O.day = { drinks: 0, drinkRev: 0 };
+    O.day = { drinks: 0, drinkRev: 0, price: O.day.price || O.DRINK.price };
     return r;
   };
 

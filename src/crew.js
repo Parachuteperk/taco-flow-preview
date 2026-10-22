@@ -131,6 +131,7 @@
     Crew.spotKey = '';
     Crew.flash[id] = 1.5;
     if (Sim.stand.placed) Sim.floaters.push({ x: Sim.stand.geom.cx, y: Sim.stand.geom.cy, text: r.name + ' hired!', t: 0 });
+    Sim.events.push({ type: 'toast', text: r.name + ' hired: ' + r.effect + '!' });
     Crew.refresh();
     return true;
   };
@@ -497,10 +498,25 @@
       }
     });
   };
+  // Pure affordability query: no RNG, ledger changes or purchase side effects.
+  Crew.affordable = function () {
+    var st = Sim.selected(), cash = Sim.stats.money;
+    if (!st.placed) return null;
+    return TIERS.filter(function (u) { return !st.building && u.tier === st.tier + 1; })
+      .concat(ROSTER.filter(function (r) { return !Crew.hiredSet[r.id] && Sim.stand.tier >= r.tier; }))
+      .concat(EXTRAS.filter(function (x) { return !Crew.extras[x.id] && x.needs() && (x.id !== 'cooler2' || st.tier === 0); }))
+      .filter(function (x) { return cash >= x.price && !blocked(x.id); })[0] || null;
+  };
   var TIER_NAME = ['the start', 'Grill', 'Banner', 'Serving station', 'Canopy'];
   Crew.refresh = function () {
     var btn = document.getElementById('btnCrew');
-    if (btn) btn.textContent = 'Stand & crew';
+    var offer = Crew.affordable();
+    Crew.ready = !!offer;
+    if (btn) {
+      btn.textContent = offer ? 'Upgrade • $' + offer.price : 'Stand & crew';
+      btn.classList.toggle('buy-ready', !!offer);
+      btn.title = offer ? offer.name + ': ' + offer.effect : 'Stand upgrades and helpers';
+    }
     if (!list || panel.hidden) return;
     var st = Sim.selected(), money = Sim.stats.money, sold = Sim.stats.served;
     var sel = document.getElementById('btnSelStand');
@@ -564,7 +580,7 @@
   if (panel) {
     document.getElementById('btnCrew').addEventListener('click', function () { TF.Audio.unlock(); Crew.open(panel.hidden); });
     document.getElementById('btnCrewClose').addEventListener('click', function () { Crew.open(false); });
-    setInterval(function () { if (!panel.hidden) Crew.refresh(); }, 250);
+    setInterval(function () { Crew.refresh(); }, 250);
   }
   Crew.applyMods();
   Crew.buildMenu();

@@ -42,9 +42,10 @@
     function refresh() {
       var TF = win.TF, week = TF.Week, prep = !!(week && week.active() && week.phase === 'prep');
       var r = rules(win.innerWidth, prep, TF.Onboard && TF.Onboard.allConnected());
-      var ready = !!(TF.Invest && TF.Invest.week() && TF.Invest.ready);
+      var upgrade = !!(TF.Crew && TF.Crew.ready);
+      var ready = upgrade || !!(TF.Invest && TF.Invest.week() && TF.Invest.ready);
       manage.classList.toggle('ready', ready);
-      manage.textContent = ready ? 'Manage • Invest' : 'Manage';
+      manage.textContent = upgrade ? 'Manage • Upgrade' : ready ? 'Manage • Invest' : 'Manage';
       doc.getElementById('btnPlay').classList.toggle('phone-hide', r.phone && !r.play);
       doc.getElementById('btnSpeed').classList.toggle('phone-hide', r.phone && !r.speed);
       var hint = doc.getElementById('rentHint'), econ = TF.Econ;

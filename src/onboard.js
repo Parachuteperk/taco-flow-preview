@@ -80,7 +80,7 @@
     O.suggest.forEach(function (t) { Sim.addLineTile(t.x, t.y, st); });
     var priceTip = TF.HintsUI && TF.HintsUI.tutorial && TF.HintsUI.tutorial('price');
     TF.ui.setHint(st.connected
-      ? ((priceTip && priceTip.text) || 'Line connected! Press OPEN when you’re ready.')
+      ? ((priceTip && priceTip.text) || 'Tap Menu & Prices to set prices, then OPEN.')
       : 'Finish the line to a footpath with Build line.', 3);
     return st.connected;
   };
@@ -157,7 +157,7 @@
       if (Sim.stats.served >= 1) {
         O.firstSale = true; O.firstSaleT = 2;
         var goal = TF.Week && TF.Week.active() ? TF.Week.goal() : null;
-        Sim.events.push({ type: 'toast', text: '🌮 First taco sold!' + (goal ? ' 1/' + goal + ' today' : '') });
+        Sim.events.push({ type: 'toast', text: '🌮 First taco sold!' + (goal ? ' 1/' + goal + ' today' : '') + (TF.Week && TF.Week.dayOne() ? ' · Reinvest while OPEN: Upgrade (phone: Manage).' : '') });
       }
     } else if (O.firstSale && O.firstSaleT > 0) {
       O.firstSaleT -= real;
