@@ -92,6 +92,14 @@
   btnAccept.addEventListener('click', O.acceptLine);
   btnOpen.addEventListener('click', O.open);
   O.computeSpots();
+  // A new level (6B month): the pins, suggested line and first-sale camera belong to the map just loaded,
+  // so recompute them (they pointed at L1 tiles on L2 and placeStand refused every pin).
+  O.resetForLevel = function () {
+    O.centered = false; O.opened = false; O.firstSale = false; O.firstSaleT = 0; O.follow = null; O.userPanned = false;
+    O.suggestKey = null; O.suggest = null; O.computeSpots();
+    if (TF.ui && TF.ui.setHint) TF.ui.setHint('New level! Tap a glowing spot to set up the stand.', 4);
+  };
+  if (World.onLoad) World.onLoad.push(function () { O.resetForLevel(); });
 
   function place(el, wx, wy, dy) {
     var p = R.toScreen(wx, wy);

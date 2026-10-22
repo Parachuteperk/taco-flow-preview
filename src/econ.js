@@ -77,7 +77,7 @@
       var price = EC.K.price();
       if (!st.ekits) r = { sold: false, reason: 'soldOut' };
       else if (Math.round(g.maxPay * 100) < price) r = { sold: false, reason: 'tooPricey' };
-      else { TF.postTransaction({ day: TF.Week.day, phase: 'open', cat: 'sales', cents: price, ref: EC.state().tier + ' (stand 2)' }); st.ekits--; r = { sold: true, cents: price }; }
+      else { TF.postTransaction({ day: EC.abs(TF.Week.day), phase: 'open', cat: 'sales', cents: price, ref: EC.state().tier + ' (stand 2)' }); st.ekits--; r = { sold: true, cents: price }; }
     }
     EC.sync();
     return r.sold ? { dollars: r.cents / 100 } : { reason: r.reason };

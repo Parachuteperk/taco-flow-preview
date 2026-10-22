@@ -57,9 +57,14 @@
     }
     return null;
   }
-  O.reason = function (kind, x, y) {
+  function footprintReason(kind, x, y) {
     var k = O.KINDS[kind], ts = tiles(kind, x, y);
     for (var i = 0; i < ts.length; i++) { var r = freeGround(ts[i][0], ts[i][1], k.grassOnly); if (r) return r; }
+    return null;
+  }
+  O.reason = function (kind, x, y) {
+    var k = O.KINDS[kind], r = footprintReason(kind, x, y);
+    if (r) return r;
     if (kind === 'drinks' && !pickupOf(x, y)) return 'The cooler must touch a PICKUP spot';
     return k.extraCheck ? k.extraCheck(x, y) : null;
   };
@@ -97,7 +102,9 @@
   O.restore = function (recs) {
     O.list = []; O.mask = new Uint8Array(World.W * World.H);
     (recs || []).forEach(function (r) {
-      var o = { kind: r.kind, x: r.x, y: r.y, st: Sim.stands[r.st] || Sim.stand, ready: r.ready, day: r.day, binned: r.binned || 0 };
+      if (!O.KINDS[r.kind] || !Number.isInteger(r.x) || !Number.isInteger(r.y) ||
+          !Number.isInteger(r.st) || !Sim.stands[r.st] || !Sim.stands[r.st].placed || footprintReason(r.kind, r.x, r.y)) throw new Error('Rejected object placement');
+      var o = { kind: r.kind, x: r.x, y: r.y, st: Sim.stands[r.st], ready: r.ready, day: r.day, binned: r.binned || 0 };
       if (r.kind === 'picnic') o.seats = [null, null, null, null];
       O.list.push(o);
       tiles(r.kind, r.x, r.y).forEach(function (t) { O.mask[t[1] * World.W + t[0]] = 1; });

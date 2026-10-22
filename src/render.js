@@ -6,7 +6,24 @@
   var ctx = null, mainCtx = null;
 
   R.setContext = function (c) { ctx = mainCtx = c; };
-  World.onLoad.push(function () { R.groundDirty = true; });   // a new level: rebuild the ground cache
+  World.onLoad.push(function () { R.groundDirty = true; buildingEntries = null; });
+  var scene = [], propPool = [], guestPool = [], buildingEntries = null, buildingImages = {};
+  function buildings() {
+    if (buildingEntries) return buildingEntries;
+    buildingEntries = (World.level.buildings || []).map(function (b) {
+      return { kind: 'building', k: b.rect[2] + b.rect[3] + 2, b: b };
+    });
+    return buildingEntries;
+  }
+  function drawBuilding(b) {
+    var m = TF.BuildingManifest.sprites[b.sprite], im = buildingImages[m.sheet];
+    if (!im) { im = buildingImages[m.sheet] = new Image(); im.src = (TF.ART_SRCS && TF.ART_SRCS[m.sheet]) || ('assets/levels/' + m.sheet + '.webp'); }
+    if (!im.complete || !im.naturalWidth) return;
+    var q = R.toScreen(b.rect[2] + 1, b.rect[3] + 1), sc = C.TW * R.cam.z / 254 * b.scale;
+    ctx.save(); ctx.translate(q.x, q.y); ctx.scale(b.flip ? -sc : sc, sc);
+    if (b.tint === 'night') ctx.filter = 'brightness(0.6) saturate(0.7)';
+    ctx.drawImage(im, m.x, m.y, m.w, m.h, -m.ax, -m.ay, m.w, m.h); ctx.restore();
+  }
 
   // World (tile units) -> screen (CSS px). h lifts the point vertically in px at zoom 1.
   R.toScreen = function (wx, wy, h) {
@@ -651,7 +668,7 @@
       if (R.groundDirty || ground.key !== TF.Art.mode) buildGround();
       var gs0 = z / GROUND_F;
       ctx.drawImage(ground.cv, R.cam.x - ground.ox * gs0, R.cam.y - ground.oy * gs0, ground.cv.width * gs0, ground.cv.height * gs0);
-      R.drawOldMain();
+      if (!(World.level.buildings || []).some(function (b) { return b.replaces === 'oldMain'; })) R.drawOldMain();
     }
 
     var st = Sim.stand, ghost = ui.ghost, late = [];   // late: labels drawn over the props
@@ -705,14 +722,16 @@
     }
 
     // Depth-sorted objects by foot point; near the stand, its 2x2 footprint decides front/behind.
-    var items = [], tx, ty, only = ui.onlyCrew;
+    var items = scene, tx, ty, only = ui.onlyCrew, pn = 0, gn = 0; items.length = 0;
+    if (!only && !ui.noProps) buildings().forEach(function (b) { items.push(b); });
     if (!only) for (ty = 0; ty < World.H; ty++) for (tx = 0; tx < World.W; tx++) {
       var t = World.get(tx, ty);
       if (!World.isProp(t)) continue;
       if (ui.noProps) continue;
       var pp = R.toScreen(tx + 0.5, ty + 0.5);
       if (pp.x < -60 || pp.x > R.vw + 60 || pp.y < -20 || pp.y > R.vh + 90) continue;   // cull
-      items.push({ k: tx + ty + 1, kind: 'prop', t: t, x: tx + 0.5, y: ty + 0.5 });
+      var pe = propPool[pn] || (propPool[pn] = {kind: 'prop'}); pn++;
+      pe.k = tx + ty + 1; pe.t = t; pe.x = tx + 0.5; pe.y = ty + 0.5; pe.fade = undefined; items.push(pe);
     }
     if (!ui.noPieces && !only) Sim.stands.forEach(function (s2) {
       if (s2.placed && !(ghost && ui.placing && s2 === Sim.selected())) R.standPieces(s2.sx, s2.sy, s2.rot, s2.tier, !!s2.trip, s2).forEach(function (it) { items.push(it); });
@@ -723,7 +742,10 @@
       var g = gs[i];
       var wx = g.px + (g.x - g.px) * alpha + g.pOffX + (g.offX - g.pOffX) * alpha;
       var wy = g.py + (g.y - g.py) * alpha + g.pOffY + (g.offY - g.pOffY) * alpha;
-      items.push({ k: wx + wy, kind: 'guest', g: g, x: wx, y: wy });
+      var gp = R.toScreen(wx, wy);
+      if (gp.x < -40 || gp.x > R.vw + 40 || gp.y < -60 || gp.y > R.vh + 40) continue;
+      var ge = guestPool[gn] || (guestPool[gn] = {kind: 'guest'}); gn++;
+      ge.k = wx + wy; ge.g = g; ge.x = wx; ge.y = wy; items.push(ge);
     }
     R.lastAlpha = alpha;
     if (TF.Crew) TF.Crew.items(items);
@@ -737,7 +759,8 @@
     items.sort(function (a, b) { return a.k - b.k; });
     for (var j = 0; j < items.length; j++) {
       var it = items[j];
-      if (it.kind === 'prop') R.drawProp(it.t, it.x - 0.5, it.y - 0.5, it.fade);
+      if (it.kind === 'building') drawBuilding(it.b);
+      else if (it.kind === 'prop') R.drawProp(it.t, it.x - 0.5, it.y - 0.5, it.fade);
       else if (it.kind === 'piece') R.drawPiece(it, it.ghost);
       else if (it.kind === 'crew') { TF.Crew.draw(ctx, it, z); if (TF.CallLine) { var cp = R.toScreen(it.x, it.y); TF.CallLine.drawCrew(ctx, cp.x, cp.y, z); } if (TF.FX) TF.FX.drawCrew(ctx, it, z); }
       else if (it.kind === 'event') TF.Events.draw(ctx, it, z);

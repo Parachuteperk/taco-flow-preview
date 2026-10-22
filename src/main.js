@@ -216,6 +216,7 @@
 
   var touches = {}, pinch = null, mmPointers = {};   // world pointers (pinch pairs come only from these) / minimap pointers
   canvas.addEventListener('pointerdown', function (e) {
+    if (TF.Campaign && TF.Campaign.locked) return;
     Audio.unlock();
     try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* synthetic / already-ended pointer */ }
     if (TF.Minimap6 && TF.Minimap6.tap(e.clientX, e.clientY)) { mmPointers[e.pointerId] = true; return; }   // the minimap's own: never a world pointer
@@ -290,12 +291,19 @@
   }
   canvas.addEventListener('pointerup', function (e) { endPointer(e, false); });
   canvas.addEventListener('pointercancel', function (e) { endPointer(e, true); });
-  canvas.addEventListener('lostpointercapture', function (e) { if (CAM) CAM.pointerUp(e.pointerId, e.timeStamp, true); });
-  if (document.addEventListener) document.addEventListener('visibilitychange', function () { if (document.hidden && CAM) CAM.cancel(); });
+  function cancelPointers() {
+    touches = {}; mmPointers = {}; pinch = null; drag = null;
+    if (CAM) CAM.cancel();
+  }
+  canvas.addEventListener('lostpointercapture', function (e) {
+    if (touches[e.pointerId] || mmPointers[e.pointerId]) cancelPointers();
+  });
+  if (document.addEventListener) document.addEventListener('visibilitychange', function () { if (document.hidden) cancelPointers(); });
   // A finger lifting also "leaves" the canvas: keep a touch ghost (e.g. a rejected spot and its
   // red tile + fix) on screen; only the mouse clears it by leaving.
   canvas.addEventListener('pointerleave', function (e) { if (!drag && e.pointerType === 'mouse') { if (state.mode === 'place') state.ghost = null; state.hover = null; } });
   window.addEventListener('keydown', function (e) {
+    if (TF.Campaign && TF.Campaign.locked) return;
     if (e.key === 'Escape' && state.mode !== 'idle') setMode('idle');
     if ((e.key === 'r' || e.key === 'R') && state.mode === 'place') api.rotate();
     if (e.key === ' ') { e.preventDefault(); state.running ? api.pause() : api.play(); }
@@ -318,7 +326,7 @@
     var real = Math.min(0.25, (now - (state.last || now)) / 1000);
     state.last = now;
     if (TF.CallLine) TF.CallLine.frame(real);
-    if (state.running && !(TF.Title && TF.Title.active) && !(TF.CallLine && TF.CallLine.active)) {
+    if (state.running && !(TF.Campaign && TF.Campaign.locked) && !(TF.Title && TF.Title.active) && !(TF.CallLine && TF.CallLine.active)) {
       state.acc += real * state.speed;
       var steps = 0;
       while (state.acc >= C.DT && steps < 40 && !(TF.CallLine && TF.CallLine.active)) { Sim.step(C.DT); state.acc -= C.DT; steps++; }
@@ -517,6 +525,7 @@
     // the kit / rent clocks follow (C5 review: Friday used to see an unsettled Day 2 market)
     weekDay: function (n) {
       if (TF.Week.phase === 'prep') {
+        for (var d = 1; d < n; d++) if (!TF.Week.results[d - 1]) TF.Week.results[d - 1] = { day: d, sold: 0, goal: TF.Week.goal(), hit: false, skipped: true };   // test hook: no holes for skipped days
         TF.Week.day = n;
         if (TF.Econ && TF.Econ.on()) { TF.Econ.K.setPhase('prep', TF.Econ.abs(n)); if (TF.Mkt) TF.Mkt.advanceTo(TF.Econ.abs(n)); }
         TF.Week.refresh(); if (TF.Crew) TF.Crew.refresh();
@@ -578,7 +587,7 @@
   };
   window.__flow = api;
   TF.planLine = planLine;
-  TF.ui = { refresh: refreshButtons, setHint: setHint, setMode: setMode, state: state, api: api, setZoom: setZoom, camera: CAM };
+  TF.ui = { refresh: refreshButtons, setHint: setHint, setMode: setMode, state: state, api: api, setZoom: setZoom, camera: CAM, restoreCamera: function () { CAM = TF.ui.camera; } };
 
   setMode('idle');
   TF.Art.load(function (ok) {

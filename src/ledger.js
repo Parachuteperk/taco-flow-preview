@@ -39,7 +39,7 @@
   var L = TF.Ledger = { rows: [], cash: 0, unrouted: 0, seedCents: 0 };
   function where() {
     var W = TF.Week;
-    return { day: W ? W.day : 0, phase: W ? W.phase : 'free' };
+    return { day: W ? (TF.Econ ? TF.Econ.abs(W.day) : W.day) : 0, phase: W ? W.phase : 'free' };
   }
   // postTransaction({day?, phase?, cat, cents, ref}); day/phase default to the current ones.
   L.post = TF.postTransaction = function (t) {

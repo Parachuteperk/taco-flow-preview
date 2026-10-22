@@ -54,6 +54,7 @@
   // Old Main sits on its hill past the top edge; a red-brick plaza fills the middle, limestone
   // walks cross it and run out to the edges, with planters, live oaks and lamps around it.
   World.build = function () {
+    World.labels = [];   // building names belong to the map that's being built (L1's stayed on L2, 6B B2)
     if (!LV) return buildLegacy();
     if (LV.map) return buildFromMap();
     var r = rng(LV.trees.seed), i, x, y;

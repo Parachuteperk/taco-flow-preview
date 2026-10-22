@@ -59,7 +59,8 @@
         arcs: plain(TF.Arcs, ['rng', 'rant']), bets: plain(TF.Bets, ['card']), hacks: plain(TF.Hacks, ['run']),
         events: plain(TF.Events, ['west']), supply: TF.Supply ? { trips: TF.Supply.trips, tripsByStand: TF.Supply.tripsByStand, soldOutSeconds: TF.Supply.soldOutSeconds } : null,
         handyman: TF.Handyman && TF.Handyman.M ? { m: TF.Handyman.M.getState(), day: TF.Handyman.day, fixes: TF.Handyman.fixes, faultsSeen: TF.Handyman.faultsSeen } : null,
-        checkpoint: TF.Checkpoint ? TF.Checkpoint.monday : null, retried: TF.Checkpoint ? TF.Checkpoint.retried : 0
+        checkpoint: TF.Checkpoint ? TF.Checkpoint.monday : null, retried: TF.Checkpoint ? TF.Checkpoint.retried : 0,
+        campaign: TF.Campaign ? { monday: TF.Campaign.monday, pending: TF.Campaign.pending } : null   // the month's Monday checkpoint (6B B2)
       }
     };
   };
@@ -123,19 +124,32 @@
     var lv = TF.LEVELS[d.level && d.level.id] || (d.level && d.level.data);
     if (!d.level || typeof d.level.id !== 'string' || !lv || !int(lv.w) || !int(lv.h)) return 'level';
     var W = lv.w, H = lv.h;
+    if (d.flags && d.flags.objects && (!Array.isArray(d.flags.objects.litter) || !d.flags.objects.litter.every(function (l) { return l && ['x','y','t','rot'].every(function (k) { return Number.isFinite(l[k]); }) && typeof l.col === 'string'; }))) return 'litter';
     if (!d.sim || typeof d.sim !== 'object' || typeof d.sim.t !== 'number' || !d.stats || typeof d.stats !== 'object') return 'sim / stats';
     if (!d.flags || typeof d.flags !== 'object' || !d.flags.objects || !Array.isArray(d.flags.objects.litter) || !d.flags.story || !d.flags.events || !d.flags.arcs) return 'flags';
     if (!d.week || !Array.isArray(d.week.results) || !d.week.results.every(function (r) { return r && int(r.day) && typeof r.sold === 'number'; })) return 'week results';
     if (!d.crew || !Array.isArray(d.crew.hired) || !d.crew.hired.every(function (h) { return typeof h === 'string'; }) || typeof d.crew.extras !== 'object' || !d.crew.extras) return 'crew';
+    var I = d.flags.invest;
+    if (TF.Invest) {
+      if (!I || !I.metals || !I.price || !I.lastPrice || !['gold', 'silver'].every(function (m) {
+        var h = I.metals[m];
+        return h && int(h.units) && h.units >= 0 && Number.isFinite(h.paid) && h.paid >= 0 && Number.isFinite(I.price[m]) && I.price[m] > 0 && Number.isFinite(I.lastPrice[m]) && I.lastPrice[m] > 0;
+      })) return 'invest metals';
+    }
     var b = d.buildings;
     if (!b || !Array.isArray(b.stands) || !b.stands.length || b.stands.length > 2 || !Array.isArray(b.objects)) return 'buildings';
     for (var i = 0; i < b.stands.length; i++) {
       var st = b.stands[i];
+      if (st && !st.placed && st.line && st.line.length) return 'unplaced stand line';
       if (!st || typeof st.placed !== 'boolean' || !int(st.tier) || st.tier < 0 || st.tier > 7 || !Array.isArray(st.line)) return 'stand ' + i;
       if (st.placed && (!tileIn(st.sx, st.sy, W - 1, H - 1) || !int(st.rot) || st.rot < 0 || st.rot > 3)) return 'stand ' + i + ' position';
       for (var j = 0; j < st.line.length; j++) if (!st.line[j] || !tileIn(st.line[j].x, st.line[j].y, W, H)) return 'stand ' + i + ' line';
     }
-    for (i = 0; i < b.objects.length; i++) { var o = b.objects[i]; if (!o || typeof o.kind !== 'string' || !tileIn(o.x, o.y, W, H)) return 'object ' + i; }
+    for (i = 0; i < b.objects.length; i++) { var o = b.objects[i]; if (!o || typeof o.kind !== 'string' || !TF.Objects.KINDS[o.kind] || !tileIn(o.x, o.y, W - TF.Objects.KINDS[o.kind].w + 1, H - TF.Objects.KINDS[o.kind].h + 1) || !int(o.st) || !b.stands[o.st] || !b.stands[o.st].placed || typeof o.ready !== 'boolean') return 'object ' + i; }
+    if (!Array.isArray(d.flags.owned) || !d.flags.owned.every(function (o) {
+      return o && typeof o.id === 'string' && Number.isFinite(o.cost) && Number.isFinite(o.rev0) && int(o.day) && typeof o.name === 'string' &&
+        (o.st === null || (int(o.st) && !!b.stands[o.st])) && int(o.obj) && o.obj >= -1 && o.obj < b.objects.length;
+    })) return 'owned references';
     return null;
   }
   // level / week / day / phase of every module agree with the save's day and resume point
@@ -160,6 +174,9 @@
     var E = TF.Econ, e;
     try { d = SV.decode(d); } catch (err) { return 'unreadable'; }
     if (!d || typeof d !== 'object') return 'unreadable';
+    if (!int(d.seed) || d.seed < 0 || d.seed > 4294967295) return 'seed';
+    if (d.portfolio && (!d.portfolio.x || !d.portfolio.x.holdings || Array.isArray(d.portfolio.x.holdings))) return 'holdings';
+    if (d.portfolio && d.portfolio.x.seed !== (d.seed ^ 0xE8C4) && d.portfolio.x.seed !== d.seed) return 'exchange seed';
     if (d.resume !== 'prep' && d.resume !== 'report') return 'resume kind';
     if ((e = ledgerOk(d.ledger))) return e;
     if ((e = rngComplete(d.rngStates))) return e;
@@ -168,7 +185,24 @@
     if (d.econ && ((e = shape(E.K.getState(), d.econ.stock, 'stock', 0)) || (e = shape(E.M.getState(), d.econ.west, 'west', 0)))) return e;
     if (TF.Market && !d.portfolio) return 'exchange missing';
     if (d.portfolio && (e = shape(TF.Market.getState(), d.portfolio.x, 'exchange', 0))) return e;
+    if (d.portfolio && TF.LevelFlow && d.econ) {
+      try { TF.LevelFlow.validate({ level: d.econ.levelNo, mapId: d.level.id, seed: d.seed, day: d.day, absoluteDay: (d.econ.levelNo - 1) * 5 + d.day, phase: d.resume, ledger: d.ledger, rng: d.rngStates, stock: d.econ.stock, west: d.econ.west, exchange: d.portfolio.x, crew: { hired: d.crew.hired, levels: {}, extras: d.crew.extras }, standTier: d.buildings.stands[0].tier, flags: {} }); }
+      catch (err) { return 'campaign state: ' + err.message; }
+    }
     if ((e = identity(d))) return e;
+    var cm = d.flags && d.flags.campaign && d.flags.campaign.monday;   // the month controller's Monday checkpoint
+    if (cm) {
+      var cl = d.econ ? d.econ.levelNo || 1 : 1;
+      if (cm.version !== 1 || cm.level !== cl || !cm.state || cm.state.level !== cl || cm.state.seed !== d.seed) return 'campaign checkpoint level';
+      if (TF.LevelFlow) { try { TF.LevelFlow.captureMonday(cm.state); } catch (err) { return 'campaign checkpoint: ' + err.message; } }
+    }
+    var pending = d.flags.campaign && d.flags.campaign.pending;
+    if (pending) {
+      try {
+        TF.LevelFlow.captureMonday(pending.state); TF.LevelFlow.captureMonday(pending.monday.state);
+        if (pending.state.seed !== d.seed || pending.monday.state.seed !== d.seed || pending.monday.level !== (d.econ.levelNo || 1) || pending.state.level !== pending.monday.level + (pending.state.retrying ? 0 : 1)) return 'pending identity';
+      } catch (err) { return 'pending: ' + err.message; }
+    }
     var cp = d.flags && d.flags.checkpoint;   // the embedded Monday checkpoint has to be usable too
     if (cp) {
       var lvl = d.econ ? d.econ.levelNo || 1 : 1, monday = (lvl - 1) * 5 + 1;
@@ -195,7 +229,7 @@
     return d;
   };
   SV.write = function (resume) {
-    if (SV.disabled || !TF.Week || !TF.Week.active() || !TF.Econ || !TF.Econ.on()) return false;
+    if (SV.disabled || (TF.Campaign && TF.Campaign.locked && !TF.Campaign.persisting) || !TF.Week || !TF.Week.active() || !TF.Econ || !TF.Econ.on()) return false;
     var ls = store();
     if (!ls) return false;
     try { var d = SV.snapshot(resume); ls.setItem(KEY, JSON.stringify(d)); SV.writes++; SV.lastWrite = { day: d.day, resume: resume }; return true; }
@@ -204,13 +238,14 @@
   SV.clear = function () { var ls = store(); try { if (ls) ls.removeItem(KEY); } catch (e) { /* ignore */ } };
 
   // ---- Resume: restart the saved day at PREP ------------------------------------------------------------
-  SV.restore = function (d) {
+  SV.restore = function (d, importing) {
     var W = TF.Week, E = TF.Econ, O = TF.Objects, I = TF.Invest, L = TF.Ledger;
     SV.disabled = true;   // no auto-saves while rebuilding
     try {
       // always from a clean copy of the saved level: nothing placed today survives (B1 review: an import kept
       // the current stand on top of the saved state)
       TF.LEVELS[d.level.id] = TF.LEVELS[d.level.id] || d.level.data;
+      TF.Rng.seed = d.seed;
       World.loadLevel(TF.LEVELS[d.level.id]);
       Sim.sel = 0;
       // stands, lines and tiers on the map
@@ -220,7 +255,7 @@
         if (!st || !s.placed) return;
         var placed = Sim.placeStand(s.sx, s.sy, s.rot, st);
         if (!placed.ok) throw new Error('stand ' + i + ' cannot be placed (' + (placed.reason || 'blocked') + ')');
-        (s.line || []).forEach(function (t) { Sim.addLineTile(t.x, t.y, st); });
+        (s.line || []).forEach(function (t) { if (!Sim.addLineTile(t.x, t.y, st).ok) throw new Error('Rejected line placement'); });
         STAND_KEYS.forEach(function (k) { if (s[k] !== undefined && k !== 'placed' && k !== 'sx' && k !== 'sy' && k !== 'rot') st[k] = s[k]; });
       });
       if (O && O.restore) O.restore(d.buildings.objects);
@@ -245,6 +280,7 @@
       if (TF.Supply && f.supply) apply(TF.Supply, f.supply);
       if (TF.Handyman && f.handyman) { TF.Handyman.M = null; TF.Handyman.step && TF.Handyman.on() && TF.Handyman.step(0); if (TF.Handyman.M) { TF.Handyman.M.setState(f.handyman.m); TF.Handyman.day = f.handyman.day; TF.Handyman.S = TF.Handyman.M.getState(); } TF.Handyman.fixes = f.handyman.fixes; TF.Handyman.faultsSeen = f.handyman.faultsSeen; }
       if (TF.Checkpoint && f.checkpoint) { TF.Checkpoint.monday = f.checkpoint; TF.Checkpoint.retried = f.retried || 0; }
+      if (TF.Campaign && f.campaign) { TF.Campaign.monday = f.campaign.monday || null; TF.Campaign.pending = f.campaign.pending || null; }
       // the day itself: PREP of the saved day (an after-REPORT save moves on to the next day's PREP; Friday's
       // REPORT comes back as that week's verdict, with its retry)
       W.setDayForResume(d.day, d.resume === 'report');
@@ -254,11 +290,13 @@
     } catch (err) {
       // a save that validated but still fails to apply: put it aside and start clean rather than play on half-restored
       SV.disabled = false; SV.rejected = 'restore failed: ' + err.message;
+      if (importing) return false;
       try { var ls = store(); ls.setItem(KEY + '.bad', ls.getItem(KEY) || ''); ls.removeItem(KEY); } catch (e2) { /* ignore */ }
       if (!SV.noReload) location.reload();
       return false;
     } finally { SV.disabled = false; }
-    SV.write(d.resume === 'report' && d.day >= 5 ? 'report' : 'prep');
+    if (TF.Campaign && TF.Campaign.pending && !importing) { TF.Campaign.resumePending(); return true; }
+    if (!importing) SV.write(d.resume === 'report' && d.day >= 5 ? 'report' : 'prep');
     return true;
   };
 
@@ -288,14 +326,47 @@
     var ls = store(), raw = null; try { raw = ls ? ls.getItem(KEY) : null; } catch (e) { raw = null; }
     return raw && SV.read() ? raw : null;
   };
+  // Imports can fail after destructive level resets. Keep the live object graph, including
+  // cyclic guest/stand/job references and accessors, rather than resuming a day-start save.
+  function importRollback() {
+    var seen = new Set(), records = [], states = [];
+    function visit(obj) {
+      if (!obj || typeof obj !== 'object' || obj.nodeType || seen.has(obj)) return;
+      seen.add(obj);
+      if (ArrayBuffer.isView(obj)) { records.push({ obj: obj, bytes: obj.slice() }); return; }
+      var props = Object.getOwnPropertyDescriptors(obj);
+      records.push({ obj: obj, props: props });
+      Object.keys(props).forEach(function (k) { if ('value' in props[k]) visit(props[k].value); });
+    }
+    visit(TF);
+    [TF.Econ && TF.Econ.K, TF.Econ && TF.Econ.M, TF.Market, TF.Handyman && TF.Handyman.M].forEach(function (m) {
+      if (m && m.getState && m.setState) states.push({ module: m, state: m.getState() });
+    });
+    var level = World.level;
+    return function () {
+      // Rebuild private map/search buffers at the original dimensions before restoring live fields.
+      SV.disabled = true;
+      World.loadLevel(level);
+      records.forEach(function (r) {
+        if (r.bytes) { r.obj.set(r.bytes); return; }
+        Object.keys(r.obj).forEach(function (k) { if (!(k in r.props)) delete r.obj[k]; });
+        Object.defineProperties(r.obj, r.props);
+      });
+      states.forEach(function (r) { r.module.setState(r.state); });
+      if (TF.ui && TF.ui.restoreCamera) TF.ui.restoreCamera();
+    };
+  }
   SV.importJSON = function (text) {
     var d;
     try { d = SV.migrate(SV.decode(text)); } catch (e) { return { ok: false, why: 'not a save file' }; }
     if (!d) return { ok: false, why: SV.future ? 'made by a newer version' : 'not a save file' };
     var why = SV.validate(d);
     if (why) return { ok: false, why: why };
-    try { store().setItem(KEY, typeof text === 'string' ? text : JSON.stringify(text)); } catch (e) { return { ok: false, why: 'storage blocked' }; }
-    return { ok: SV.restore(d) };
+    var rollback = importRollback();
+    if (!SV.restore(d, true)) { var rejected = SV.rejected; rollback(); return { ok: false, why: rejected }; }
+    try { store().setItem(KEY, typeof text === 'string' ? text : JSON.stringify(text)); }
+    catch (e) { rollback(); return { ok: false, why: 'storage blocked' }; }
+    return { ok: true };
   };
   var ex = document.getElementById('btnSaveExport'), im = document.getElementById('saveImportFile');
   if (ex) ex.addEventListener('click', function () {
@@ -309,5 +380,6 @@
   });
   // a level load is a new Monday: save it (after the level's resets and its Monday checkpoint; not while restoring)
   World.onLoad.push(function () { if (!SV.disabled) SV.write('prep'); });
+  if (TF.Campaign && !TF.Campaign.monday && TF.Week.day === 1 && TF.Week.phase === 'prep') TF.Campaign.captureMonday();
   if (!SV.offer()) { if (SV.future) SV.disabled = true; else SV.write('prep'); }   // boot: Day 1 PREP is the first save (unless there's one to resume)
 })(window.TF);

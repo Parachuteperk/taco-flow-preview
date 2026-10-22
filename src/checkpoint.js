@@ -51,7 +51,7 @@
     location.reload();
   };
   // every level's Monday PREP is a checkpoint (registered last, so it runs after the level's resets)
-  World.onLoad.push(function () { if (TF.Week && TF.Week.active()) CP.monday = CP.capture(); });
+  World.onLoad.push(function () { if (!(TF.Campaign && TF.Campaign.busy) && TF.Week && TF.Week.active()) CP.monday = CP.capture(); });
   var saved = null;
   try { saved = sessionStorage.getItem(KEY); if (saved) sessionStorage.removeItem(KEY); } catch (e) { saved = null; }
   if (saved && TF.Week && TF.Week.active()) {

@@ -15,7 +15,7 @@
     var W = World.W, H = World.H, c = new Float32Array(W * H);
     for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) {
       var t = World.get(x, y);
-      c[y * W + x] = World.isPath(x, y) || t === World.T.PLAZA ? 1 : Infinity;
+      c[y * W + x] = (World.isPath(x, y) || t === World.T.PLAZA) && !World.isStand(x, y) && !World.isPickup(x, y) && !World.isLine(x, y) && !(World.isObject && World.isObject(x, y)) ? 1 : Infinity;
     }
     return c;
   }
@@ -30,7 +30,7 @@
     var dests = {}, W = World.W;
     CL.keys = [];
     World.exits.forEach(function (e, i) { var k = 'x' + i; dests[k] = [e.y * W + e.x]; CL.keys.push(k); });
-    CL.sim = CL.keys.length >= 2 ? TF.Crowd.Sim.create({ W: World.W, H: World.H, costs: costs(), stairs: null, destinations: dests, seed: seed, capacity: CAP }) : null;
+    CL.sim = CL.keys.length >= 2 ? TF.Crowd.Sim.create({ W: World.W, H: World.H, costs: (CL.costs = costs()), stairs: null, destinations: dests, seed: seed, capacity: CAP }) : null;
     CL.spawnT = 0;
   };
   World.onLoad.push(function () { CL.build(); });
@@ -46,6 +46,10 @@
   CL.step = function (dt) {
     if (CL.off) return;
     if (!CL.sim) { CL.build(); if (!CL.sim) return; }
+    if (CL.geometryVersion !== World.version) {
+      CL.geometryVersion = World.version;
+      CL.costs = costs(); CL.sim.setCosts(CL.costs);
+    }
     CL.spawnT -= dt;
     var n = CL.active();
     while (CL.spawnT <= 0 && n < CL.target()) {

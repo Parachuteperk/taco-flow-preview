@@ -18,11 +18,22 @@
   }
   function object(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }
   // Reject values JSON would silently erase or change before checkpointing.
-  function json(v) {
+  function json(v, ancestors) {
     if (v === null || typeof v === 'string' || typeof v === 'boolean') return;
     if (typeof v === 'number' && Number.isFinite(v)) return;
-    if (Array.isArray(v) && Object.keys(v).length !== v.length) throw new TypeError('State must be lossless JSON');
-    if (Array.isArray(v) || (object(v) && Object.prototype.toString.call(v) === '[object Object]')) { Object.keys(v).forEach(function (k) { json(v[k]); }); return; }
+    if (Array.isArray(v) || (object(v) && Object.prototype.toString.call(v) === '[object Object]')) {
+      ancestors = ancestors || new Set();
+      if (ancestors.has(v) || typeof v.toJSON === 'function' || Object.getOwnPropertySymbols(v).length) throw new TypeError('State must be lossless JSON');
+      var keys = Object.getOwnPropertyNames(v).filter(function (k) { return !Array.isArray(v) || k !== 'length'; });
+      if (Array.isArray(v) && (keys.length !== v.length || keys.some(function (k, i) { return k !== String(i); }))) throw new TypeError('State must be lossless JSON');
+      ancestors.add(v);
+      keys.forEach(function (k) {
+        var d = Object.getOwnPropertyDescriptor(v, k);
+        if (!d.enumerable || !Object.prototype.hasOwnProperty.call(d, 'value')) throw new TypeError('State must be lossless JSON');
+        json(d.value, ancestors);
+      });
+      ancestors.delete(v); return;
+    }
     throw new TypeError('State must be lossless JSON');
   }
   function shape(template, value, path) {
@@ -38,6 +49,14 @@
     } else if (typeof template !== typeof value) throw new TypeError('Invalid state: ' + path);
   }
   function whole(n) { return Number.isSafeInteger(n) && n >= 0; }
+  function same(a, b) {
+    if (a === b) return true;
+    if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false;
+    var keys = Object.keys(a);
+    return keys.length === Object.keys(b).length && keys.every(function (k) {
+      return Object.prototype.hasOwnProperty.call(b, k) && same(a[k], b[k]);
+    });
+  }
   function validateModules(s) {
     var hooks = { getCash: function () { return 0; }, postTransaction: function () {} };
     shape(West.create(hooks).getState(), s.west, 'west');
@@ -60,18 +79,24 @@
     if (w.report !== null) {
       shape({ paid: false, early: false, firstTry: false, retry: false }, w.report, 'west.report');
       if (w.report.paid !== w.paid || w.report.early !== w.early ||
-          w.report.retry !== (!w.paid && !(w.hard && s.level === Economy.hard.noRetryLevel))) throw new Error('Inconsistent rent report');
+          w.report.retry !== (!w.paid && !(w.hard && s.level === Economy.hard.noRetryLevel)) ||
+          w.report.firstTry !== (w.attempts[s.level - 1] - (w.paid ? 0 : 1) <= 1)) throw new Error('Inconsistent rent report');
     }
+    ['weeklyCounts', 'active', 'permits'].forEach(function (key) {
+      if (!Object.values(w[key]).every(whole)) throw new Error('Invalid West counters');
+    });
     var rent = s.ledger.rows.filter(function (r) { return r.cat === 'rent' && r.day > (s.level - 1) * 5 && r.day <= s.level * 5; });
     var due = Math.round(level(s.level).rentCents * (w.hard ? Economy.hard.rentMult : 1));
     if (rent.length !== (w.paid ? 1 : 0) || (w.paid && rent[0].cents !== -due) ||
         (w.early && !w.paid)) throw new Error('Rent ledger/West mismatch');
+    if (w.rentRecords[s.level - 1] !== (w.paid ? (w.attempts[s.level - 1] <= 1 ? 'firstTry' : 'retry') : 'unpaid')) throw new Error('Inconsistent rent record');
     ['standKits', 'vanKits', 'stockMax', 'orderedToday'].forEach(function (key) {
       if (!whole(k[key])) throw new Error('Invalid stock: ' + key);
     });
     if (!whole(k.day) || k.day < (s.level - 1) * 5 + 1 || k.day > s.level * 5 ||
         ['prep', 'open', 'report'].indexOf(k.phase) < 0 ||
-        !Object.prototype.hasOwnProperty.call(level(s.level).prices, k.tier) || !whole(k.priceAdd)) throw new Error('Invalid stock day/price');
+        !Object.prototype.hasOwnProperty.call(level(s.level).prices, k.tier) || !whole(k.priceAdd) ||
+        !Number.isSafeInteger(level(s.level).prices.bougie + k.priceAdd)) throw new Error('Invalid stock day/price');
     k.pending.forEach(function (d) { if (!object(d) || !whole(d.kits) || !Number.isFinite(d.etaS) || d.etaS < 0) throw new Error('Invalid delivery'); });
     var exchangeSeed = liveMarket ? (s.seed ^ 0xE8C4) : s.seed;
     if ((liveMarket && !Number.isSafeInteger(s.seed)) || x.seed !== exchangeSeed || !whole(x.rngState) || x.rngState > 4294967295 || !whole(x.day) || x.day > 20 ||
@@ -79,7 +104,7 @@
     if (x.tickers.length !== exchangeShape.tickers.length) throw new Error('Missing Exchange tickers');
     x.tickers.forEach(function (t, i) {
       shape(exchangeShape.tickers[i], t, 'exchange.tickers');
-      if (t.sym !== exchangeShape.tickers[i].sym || t.opensDay !== exchangeShape.tickers[i].opensDay) throw new Error('Invalid Exchange ticker');
+      if (!same(t, exchangeShape.tickers[i])) throw new Error('Invalid Exchange ticker');
       if (!t || typeof t.sym !== 'string' || !whole(x.prices[t.sym]) || x.prices[t.sym] < 100 || x.prices[t.sym] > 50000 ||
           !whole(x.holdings[t.sym]) || x.holdings[t.sym] > 20) throw new Error('Invalid Exchange portfolio');
     });
@@ -89,12 +114,45 @@
         if (t.opensDay > x.day) return;
         var r = x.preRolls[t.sym];
         shape({ p: 50, dir: 'up', v: 0, fromCents: 100, failedHack: false }, r, 'exchange.preRolls');
-        if (!whole(r.fromCents) || !['up', 'down'].includes(r.dir) || r.p < 15 || r.p > 85 || r.v < 0 ||
+        if (!whole(r.fromCents) || r.fromCents < 100 || r.fromCents > 50000 || !['up', 'down'].includes(r.dir) || r.p < 15 || r.p > 85 || r.v < 0 ||
+            (r.outcome !== undefined && !['up', 'down', 'flat'].includes(r.outcome)) ||
             (r.finalCents !== undefined && (!whole(r.finalCents) || r.finalCents < 100 || r.finalCents > 50000)) ||
-            !whole(x.openPrices[t.sym])) throw new Error('Invalid Exchange roll');
+            !whole(x.openPrices[t.sym]) || x.openPrices[t.sym] < 100 || x.openPrices[t.sym] > 50000) throw new Error('Invalid Exchange roll');
       });
     }
     Object.keys(x.scores.weeks).forEach(function (week) { shape(exchangeShape.scores.month, x.scores.weeks[week], 'exchange.scores.weeks'); });
+    [x.scores.month].concat(Object.values(x.scores.weeks)).forEach(function (scores) {
+      Object.keys(exchangeShape.scores.month).forEach(function (source) {
+        var score = scores[source];
+        if (!whole(score.hits) || !whole(score.total) || score.hits > score.total) throw new Error('Invalid Exchange score');
+      });
+    });
+    x.hintLog.forEach(function (h) {
+      if (!object(h) || !whole(h.day) || h.day < 1 || h.day > x.day || h.expiresDay !== h.day ||
+          !Object.prototype.hasOwnProperty.call(exchangeShape.scores.month, h.source) ||
+          !x.tickers.some(function (t) { return t.sym === h.sym && t.opensDay <= h.day; }) ||
+          !['up', 'down', 'flat'].includes(h.dir)) throw new Error('Invalid Exchange hint');
+    });
+    x.catalysts.forEach(function (c) {
+      if (!object(c) || typeof c.sym !== 'string' || typeof c.type !== 'string' || c.day !== x.day ||
+          typeof c.public !== 'boolean' || (c.shift !== undefined && !Number.isFinite(c.shift)) ||
+          (c.jump !== undefined && !Number.isFinite(c.jump))) throw new Error('Invalid Exchange catalyst');
+    });
+    if (x.lastClose !== null) {
+      if (!object(x.lastClose) || !whole(x.lastClose.day) || x.lastClose.day < 1 || x.lastClose.day > x.day ||
+          !Array.isArray(x.lastClose.moves)) throw new Error('Invalid Exchange close');
+      var seen = new Set();
+      x.lastClose.moves.forEach(function (m) {
+        if (!object(m) || seen.has(m.sym) || !x.tickers.some(function (t) { return t.sym === m.sym && t.opensDay <= x.lastClose.day; }) ||
+            !whole(m.fromCents) || m.fromCents < 100 || m.fromCents > 50000 ||
+            !whole(m.toCents) || m.toCents < 100 || m.toCents > 50000 ||
+            m.dir !== (m.toCents > m.fromCents ? 'up' : m.toCents < m.fromCents ? 'down' : 'flat')) throw new Error('Invalid Exchange close move');
+        seen.add(m.sym);
+      });
+      if (seen.size !== x.tickers.filter(function (t) { return t.opensDay <= x.lastClose.day; }).length) throw new Error('Incomplete Exchange close');
+    }
+    if (x.phase === 'close' && x.day > 0 && (!x.lastClose || x.lastClose.day !== x.day)) throw new Error('Missing Exchange close');
+    if (!whole(x.viralDay) || x.viralDay < 6 || x.viralDay > 20 || !whole(x.goldBoostDay) || x.goldBoostDay > 21) throw new Error('Invalid Exchange event day');
     ['soldOut', 'tooPricey'].forEach(function (key) { if (!whole(k.lost[key])) throw new Error('Invalid stock losses'); });
     if (!whole(k.yesterday.kits) || !Object.prototype.hasOwnProperty.call(level(s.level).prices, k.yesterday.tier)) throw new Error('Invalid stock history');
     ['customers', 'market', 'events', 'objects', 'wager', 'story', 'ambient', 'matt'].forEach(function (key) {
@@ -126,6 +184,7 @@
     if (!s.stock || s.stock.level !== s.level || s.mapId !== 'L' + s.level) throw new Error('Map/stock level mismatch');
     if (!s.crew.hired.every(function (id) { return typeof id === 'string'; }) || new Set(s.crew.hired).size !== s.crew.hired.length ||
         !object(s.crew.levels) || !Object.values(s.crew.levels).every(whole)) throw new Error('Invalid crew');
+    if (s.crew.extras !== undefined && (!object(s.crew.extras) || !Object.values(s.crew.extras).every(function (v) { return typeof v === 'boolean'; }))) throw new Error('Invalid crew extras');
     validateModules(s);
     return s;
   }
@@ -145,6 +204,7 @@
       west: E.M.getState(), stock: E.K.getState(), exchange: live.Market.getState(),
       rng: live.Rng.getState(), crew: { hired: C.hired(), levels: C.levels === undefined ? {} : C.levels },
       flags: live.flags === undefined ? {} : live.flags };
+    if (C.extras !== undefined) s.crew.extras = C.extras;
     validate(s); // reject non-JSON values before copying can silently change them
     return copy(s);
   }
@@ -279,7 +339,7 @@
     });
     var s = copy(input);
     captureMonday(s); // reject invalid Monday before touching the live World
-    await hooks.loadLevel(copy(map));
+    if (await hooks.loadLevel(copy(map)) === false) throw new Error('Level load failed');
     // Optional return value is the live snapshot AFTER caller-owned Monday setup
     // (e.g. Exchange.openPrep). Capture its RNG/rolls, never a stale pre-load snapshot.
     var applied = await hooks.applyState(copy(s));
@@ -288,7 +348,7 @@
       if (applied.level !== s.level || applied.seed !== s.seed || applied.west.hard !== s.west.hard) throw new Error('Applied campaign mismatch');
       s = copy(applied);
     }
-    await hooks.captureMonday(captureMonday(s));
+    if (await hooks.captureMonday(captureMonday(s)) === false) throw new Error('Monday checkpoint failed');
     var saved = await hooks.autoSave('prep');
     return { state: s, saved: saved !== false };
   }

@@ -41,8 +41,15 @@
     setTimeout(function () { Sim.events.push({ type: 'toast', text: '\uD83C\uDF93 SIFE seed money: $' + W.SEED + ' from the club treasury. Tap \uD83D\uDCB0 INVEST to upgrade the stand!' }); }, 600);
   }
   W.active = function () { return W.mode === 'week'; };
-  W.goal = function () { return DAYS[W.day - 1].goal; };
-  W.dayName = function () { return DAYS[W.day - 1].name; };
+  // Level 1's days are the Pass 5 week; Levels 2-4 ramp the bonus goal per PLAN §1a (34->46, 50->64, 68->86)
+  // and take their day titles from the 20-day calendar (6B B2).
+  var GOALS = { 2: [34, 37, 40, 43, 46], 3: [50, 54, 57, 61, 64], 4: [68, 72, 77, 81, 86] };
+  function lvl() { return TF.Econ && TF.Econ.levelNo ? TF.Econ.levelNo : 1; }
+  W.goal = function () { var g = GOALS[lvl()]; return g ? g[W.day - 1] : DAYS[W.day - 1].goal; };
+  W.dayName = function () {
+    var n = lvl(), c = n > 1 && TF.CALENDAR && TF.CALENDAR[(n - 1) * 5 + W.day - 1];
+    return c ? c.title : DAYS[W.day - 1].name;
+  };
   W.GOALS = DAYS.map(function (d) { return d.goal; });
 
   // ---- Shop rules ------------------------------------------------------------------
@@ -125,6 +132,8 @@
     W.day = 1; W.phase = 'prep'; W.t = 0; W.overtime = 0; W.majorUsed = false; W.openMinorUsed = false; W.eventsToday = 0;
     W.results = []; W.today = null; W.ended = false; W.bell = null; W.bells = []; W.necks = {};
     card.hidden = true; $('endCard').hidden = true;
+    if ($('betCard')) $('betCard').hidden = true;   // Jared's / Ali's card from the old week (6B B2)
+    if ($('toast')) $('toast').hidden = true;
     Sim.closing = false; Sim.demandMul = 1;
     W.gen++;   // async work from the old level (the Friday verdict) checks this and stands down
     [TF.Hacks, TF.Story, TF.Arcs, TF.Events, TF.Ambient].forEach(function (m) { if (m && m.resetLevel) m.resetLevel(); });
@@ -371,7 +380,11 @@
     var econ = TF.Econ && TF.Econ.on(), rentPaid = econ ? TF.Econ.rentPaid() : null;
     if (econ) win = rentPaid;
     W.won = win; W.rentPaid = rentPaid;
+    var camp = !!(TF.Campaign && TF.Campaign.on()), lvlNo = TF.Econ && TF.Econ.levelNo ? TF.Econ.levelNo : 1;
     var end = $('endCard'), Sy = TF.Story, profit = Sy ? Sy.profit() : 0, bet = Sy && Sy.started && !econ ? profit >= Sy.target : null;
+    var decision = camp ? TF.Campaign.endWeek() : null;
+    var finale = decision && decision.action === 'complete' ? decision : null;
+    if (finale) { var sums = TF.Ledger.split(); finale.score = TF.Econ.M.galaScore({ operatingProfitCents: sums.operating, tradingNetCents: sums.trading }); }
     W.betWon = bet;   // the Pass 5 profit term sheet; with the economy on, rent decides the week instead (C3b)
     if (bet === true) end.innerHTML = '<h2>\uD83D\uDCBC The Angel Round! \uD83C\uDF2E</h2><p>Mrs. West signs her term sheet: \u201C$' + profit + ' in five days. Gentlemen, I\u2019m investing.\u201D</p>' +
       '<div class="comic"><div><b>\uD83D\uDE97</b>The limo pulls up.</div><div><b>\uD83D\uDC5C</b>SNAP. A gold check.</div><div><b>\u2728</b>ANGEL-BACKED tacos.</div></div>' +
@@ -385,6 +398,7 @@
         : '<h2>\uD83D\uDCB8 Rent short</h2><p>$' + have.toFixed(2) + ' of $' + due + '. Mrs. West snaps her purse: \u201CMonday, darlings. Again.\u201D</p>';
       end.innerHTML += '<div class="row"><span>Rent to Mrs. West</span><b>' + (rentPaid ? '\u2714 $' + due + ' paid on Friday' : '\u2718 short $' + Math.max(0, due - have).toFixed(2) + ': retry the week') + '</b></div>';
       end.innerHTML += verdictRows(rentPaid);
+      if (finale) end.innerHTML += '<h2>Day 20 Gala · ' + (finale.score.win ? 'Angel Round' : 'WEST & CO. Pop-Up') + '</h2><p>Gala score: ' + finale.score.total + ' / 1000</p>';
     } else end.innerHTML = '';
     end.innerHTML += econ ? '' : win
       ? '<p><b>\uD83C\uDF2E Taco Week Champions!</b> The Quad will be talking about this for semesters.</p>'
@@ -394,11 +408,20 @@
       '<div class="row"><span>Tacos sold</span><b>' + total + '</b></div>' +
       '<div class="row"><span>Cash earned</span><b>$' + cash + '</b></div>' +
       '<div class="row"><span>Score</span><b>' + (total * 10 + cash + hits * 100) + '</b></div>' +
-      (econ && !rentPaid ? '<div class="btns"><button id="btnRetryWeek">\uD83D\uDD01 Retry the week (Monday)</button><button id="btnPlayAgain">Start over</button></div>'
+      (decision && decision.action === 'gameOver' ? '<p>Campaign over. No retry is available.</p><div class="btns"><button id="btnPlayAgain">Start over</button></div>'
+        : econ && !rentPaid ? '<div class="btns"><button id="btnRetryWeek">\uD83D\uDD01 Retry the week (Monday)</button><button id="btnPlayAgain">Start over</button></div>'
+        : econ && rentPaid && camp && lvlNo < 4 ? '<div class="btns"><button id="btnNextLevel">\u25B6 Level ' + (lvlNo + 1) + ': ' + ((TF.LEVELS['L' + (lvlNo + 1)] || {}).name || '') + '</button><button id="btnFreePlay">Free play</button></div>'
+        : econ && rentPaid && camp ? '<div class="btns"><button id="btnPlayAgain">\uD83C\uDF89 Month complete! Play again</button><button id="btnFreePlay">Free play</button></div>'
         : '<div class="btns"><button id="btnPlayAgain">Play again</button><button id="btnFreePlay">Free play</button></div>');
     end.hidden = false;
-    if ($('btnRetryWeek')) $('btnRetryWeek').addEventListener('click', function () { TF.Checkpoint.retry(); });
-    $('btnPlayAgain').addEventListener('click', function () { location.href = location.pathname; });
+    // the month (6B B2): next level through its start card / an in-place Monday retry; the old reload retry if the
+    // campaign controller can't take it
+    if ($('btnNextLevel')) $('btnNextLevel').addEventListener('click', function () { end.hidden = true; TF.Campaign.advance().catch(function () { end.hidden = false; }); });
+    if ($('btnRetryWeek')) $('btnRetryWeek').addEventListener('click', function () {
+      if (camp && TF.Campaign.monday) { end.hidden = true; TF.Campaign.retry().catch(function () { end.hidden = false; }); }
+      else TF.Checkpoint.retry();
+    });
+    if ($('btnPlayAgain')) $('btnPlayAgain').addEventListener('click', function () { location.href = location.pathname; });
     if ($('btnFreePlay')) $('btnFreePlay').addEventListener('click', function () {
       end.hidden = true; if (TF.Story && bet !== null) TF.Story.applyEnding(bet); W.mode = 'free'; Sim.closing = false; Sim.reopenStand(); TF.ui.api.play(); W.refresh(); if (TF.Crew) TF.Crew.refresh();
     });

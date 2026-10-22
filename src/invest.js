@@ -115,7 +115,7 @@
     var win = TF.Rng.wager() < 0.5, W = TF.Week;
     // Settle now, on the ledger, under the day + phase it was flipped in (the coin below is only the reveal).
     if (gold) { if (win) { I.metals.gold.units++; I.flips.coins++; } else { var avg = I.metals.gold.paid / I.metals.gold.units; I.metals.gold.units--; I.metals.gold.paid -= avg; I.flips.coins--; } }
-    else { TF.Ledger.post({ day: W.day, phase: W.phase, cat: 'wager', cents: (win ? amt : -amt) * 100, ref: 'coin flip' }); I.flips.net += win ? amt : -amt; }
+    else { TF.Ledger.post({ day: TF.Econ ? TF.Econ.abs(W.day) : W.day, phase: W.phase, cat: 'wager', cents: (win ? amt : -amt) * 100, ref: 'coin flip' }); I.flips.net += win ? amt : -amt; }
     I.flips[win ? 'won' : 'lost']++;
     I.lastFlip = { stake: stake, win: win, day: W.day, phase: W.phase };
     if (coin) {
