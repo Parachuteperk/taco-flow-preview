@@ -1,4 +1,4 @@
-// RCT-style people from the Gemini sheets: varied students (customers_rct_v1) and the crew
+// RCT-style people from the art sheets: varied students (customers_rct_v1 + the ChatGPT-painted customers_rct_v2) and the crew
 // (crew_rct_v1 / crew_rct_v1b). Crop rects + foot anchors measured from the sheets' pixels
 // (connected non-magenta blobs). One world scale: everyone is ~30 px tall at zoom 1.
 (function (TF) {
@@ -8,9 +8,18 @@
     hoodie: { toward: [{x:41,y:14,w:50,h:124,ax:24.9,ay:122}, {x:139,y:14,w:54,h:126,ax:26.8,ay:124}, {x:237,y:14,w:55,h:126,ax:27.3,ay:124}, {x:338,y:14,w:49,h:124,ax:26.3,ay:122}, {x:438,y:14,w:47,h:124,ax:24.4,ay:122}], away: [{x:534,y:14,w:54,h:126,ax:27.0,ay:124}, {x:632,y:14,w:54,h:126,ax:27.0,ay:124}, {x:730,y:14,w:54,h:126,ax:27.3,ay:124}], stand: {x:830,y:14,w:56,h:126,ax:27.4,ay:124}, taco: {x:931,y:14,w:79,h:126,ax:26.5,ay:124} },
     tank: { toward: [{x:39,y:150,w:50,h:125,ax:26.0,ay:123}, {x:138,y:150,w:49,h:125,ax:25.5,ay:123}, {x:240,y:150,w:47,h:129,ax:23.6,ay:127}, {x:338,y:150,w:48,h:125,ax:25.5,ay:123}, {x:436,y:150,w:49,h:124,ax:26.5,ay:122}], away: [{x:534,y:150,w:52,h:128,ax:27.0,ay:126}, {x:632,y:148,w:52,h:122,ax:27.0,ay:120}, {x:731,y:148,w:51,h:126,ax:26.5,ay:124}], stand: {x:833,y:150,w:49,h:126,ax:25.2,ay:124}, taco: {x:931,y:150,w:80,h:127,ax:25.6,ay:125} },
     capguy: { toward: [{x:637,y:300,w:47,h:128,ax:23.9,ay:126}, {x:835,y:301,w:47,h:127,ax:24.0,ay:125}], away: [{x:733,y:300,w:52,h:128,ax:26.8,ay:126}], stand: {x:835,y:301,w:47,h:127,ax:24.0,ay:125}, taco: {x:923,y:306,w:86,h:122,ax:30.2,ay:120} },
-    sundress: { toward: [{x:37,y:444,w:54,h:124,ax:27.3,ay:122}, {x:137,y:444,w:54,h:124,ax:27.2,ay:122}, {x:238,y:445,w:53,h:124,ax:26.5,ay:122}, {x:338,y:444,w:53,h:124,ax:26.7,ay:122}, {x:536,y:447,w:54,h:127,ax:26.3,ay:125}], away: [{x:635,y:443,w:53,h:122,ax:26.1,ay:120}, {x:733,y:441,w:51,h:126,ax:25.1,ay:124}], stand: {x:831,y:442,w:55,h:125,ax:27.4,ay:123}, taco: {x:923,y:442,w:81,h:126,ax:26.7,ay:124} }
+    sundress: { toward: [{x:37,y:444,w:54,h:124,ax:27.3,ay:122}, {x:137,y:444,w:54,h:124,ax:27.2,ay:122}, {x:238,y:445,w:53,h:124,ax:26.5,ay:122}, {x:338,y:444,w:53,h:124,ax:26.7,ay:122}, {x:536,y:447,w:54,h:127,ax:26.3,ay:125}], away: [{x:635,y:443,w:53,h:122,ax:26.1,ay:120}, {x:733,y:441,w:51,h:126,ax:25.1,ay:124}], stand: {x:831,y:442,w:55,h:125,ax:27.4,ay:123}, taco: {x:923,y:442,w:81,h:126,ax:26.7,ay:124} },
+    // customers_rct_v2 (ChatGPT-painted, 6 rows x 10 frames; magenta #EA0CEB keys like #FF00FF):
+    // crop boxes = connected non-magenta shapes; walking/idle frames anchored at the centre (the
+    // foot average jitters mid-stride), taco frames at the measured foot (the taco sticks out).
+    glasses: { sheet: 'customers_rct_v2', h: 152, toward: [{x:53,y:22,w:74,h:158,ax:37.0,ay:156}, {x:206,y:22,w:74,h:158,ax:37.0,ay:156}, {x:355,y:22,w:75,h:158,ax:37.5,ay:156}, {x:505,y:22,w:76,h:158,ax:38.0,ay:156}, {x:653,y:22,w:74,h:158,ax:37.0,ay:156}], away: [{x:803,y:22,w:76,h:159,ax:38.0,ay:157}, {x:948,y:23,w:76,h:158,ax:38.0,ay:156}, {x:1097,y:22,w:75,h:159,ax:37.5,ay:157}], stand: {x:1250,y:22,w:70,h:158,ax:35.0,ay:156}, taco: {x:1398,y:22,w:111,h:158,ax:29.3,ay:156} },
+    ponytail: { sheet: 'customers_rct_v2', h: 152, toward: [{x:48,y:201,w:78,h:154,ax:39.0,ay:152}, {x:200,y:201,w:78,h:154,ax:39.0,ay:152}, {x:348,y:201,w:78,h:154,ax:39.0,ay:152}, {x:499,y:201,w:78,h:154,ax:39.0,ay:152}, {x:646,y:201,w:79,h:154,ax:39.5,ay:152}], away: [{x:806,y:200,w:71,h:157,ax:35.5,ay:155}, {x:953,y:200,w:70,h:157,ax:35.0,ay:155}, {x:1101,y:200,w:70,h:157,ax:35.0,ay:155}], stand: {x:1243,y:201,w:76,h:152,ax:38.0,ay:150}, taco: {x:1392,y:201,w:120,h:156,ax:54.0,ay:154} },
+    jersey: { sheet: 'customers_rct_v2', h: 152, toward: [{x:52,y:372,w:75,h:152,ax:37.5,ay:150}, {x:203,y:373,w:76,h:151,ax:38.0,ay:149}, {x:352,y:373,w:76,h:151,ax:38.0,ay:149}, {x:501,y:373,w:76,h:151,ax:38.0,ay:149}, {x:652,y:373,w:74,h:151,ax:37.0,ay:149}], away: [{x:803,y:373,w:76,h:151,ax:38.0,ay:149}, {x:948,y:373,w:75,h:151,ax:37.5,ay:149}, {x:1097,y:373,w:74,h:151,ax:37.0,ay:149}], stand: {x:1244,y:372,w:74,h:152,ax:37.0,ay:150}, taco: {x:1397,y:374,w:115,h:150,ax:30.0,ay:148} },
+    cardigan: { sheet: 'customers_rct_v2', h: 152, toward: [{x:48,y:539,w:74,h:149,ax:37.0,ay:147}, {x:197,y:539,w:76,h:149,ax:38.0,ay:147}, {x:348,y:539,w:77,h:149,ax:38.5,ay:147}, {x:496,y:539,w:75,h:149,ax:37.5,ay:147}, {x:642,y:539,w:76,h:149,ax:38.0,ay:147}], away: [{x:803,y:541,w:76,h:147,ax:38.0,ay:145}, {x:948,y:541,w:76,h:147,ax:38.0,ay:145}, {x:1096,y:541,w:75,h:147,ax:37.5,ay:145}], stand: {x:1242,y:540,w:74,h:149,ax:37.0,ay:147}, taco: {x:1391,y:541,w:119,h:150,ax:52.6,ay:148} },
+    cowboy: { sheet: 'customers_rct_v2', h: 152, toward: [{x:46,y:699,w:77,h:163,ax:38.5,ay:161}, {x:199,y:699,w:77,h:164,ax:38.5,ay:162}, {x:347,y:699,w:78,h:163,ax:39.0,ay:161}, {x:496,y:699,w:77,h:163,ax:38.5,ay:161}, {x:646,y:699,w:77,h:164,ax:38.5,ay:162}], away: [{x:801,y:701,w:77,h:163,ax:38.5,ay:161}, {x:948,y:701,w:75,h:163,ax:37.5,ay:161}, {x:1095,y:701,w:77,h:163,ax:38.5,ay:161}], stand: {x:1244,y:699,w:74,h:164,ax:37.0,ay:162}, taco: {x:1392,y:699,w:118,h:164,ax:24.7,ay:162} },
+    bandtee: { sheet: 'customers_rct_v2', h: 152, toward: [{x:43,y:874,w:81,h:144,ax:40.5,ay:142}, {x:194,y:874,w:82,h:144,ax:41.0,ay:142}, {x:345,y:874,w:81,h:144,ax:40.5,ay:142}, {x:494,y:874,w:80,h:144,ax:40.0,ay:142}, {x:643,y:874,w:80,h:144,ax:40.0,ay:142}], away: [{x:805,y:874,w:76,h:144,ax:38.0,ay:142}, {x:951,y:874,w:75,h:144,ax:37.5,ay:142}, {x:1099,y:875,w:75,h:143,ax:37.5,ay:141}], stand: {x:1240,y:874,w:79,h:144,ax:39.5,ay:142}, taco: {x:1389,y:874,w:123,h:144,ax:38.5,ay:142} }
   };
-  var VARIANTS = ['hoodie', 'tank', 'capguy', 'sundress'];
+  var VARIANTS = ['hoodie', 'tank', 'capguy', 'sundress', 'glasses', 'ponytail', 'jersey', 'cardigan', 'cowboy', 'bandtee'];
   // The taco in the hoodie's taco frame, drawn in the hand on walking frames.
   var TACO = { x: 982, y: 50, w: 27, h: 20, ax: 0, ay: 0 };
   var CUST_H = 122;   // sheet px of a standing student
@@ -42,8 +51,10 @@
     var cs = Art.sheets.customers_rct_v1;
     if (cs) {
       VARIANTS.forEach(function (k) {
-        var d = CUSTOMERS[k], sl = function (c) { return Art.slice(cs, c, false); };
-        P.cust[k] = { toward: d.toward.map(sl), away: d.away.map(sl), stand: sl(d.stand), taco: sl(d.taco) };
+        var d = CUSTOMERS[k], sh = Art.sheets[d.sheet || 'customers_rct_v1'];
+        if (!sh) return;   // a sheet that failed to load: those looks fall back to the v1 students
+        var sl = function (c) { return Art.slice(sh, c, false); };
+        P.cust[k] = { toward: d.toward.map(sl), away: d.away.map(sl), stand: sl(d.stand), taco: sl(d.taco), h: d.h || CUST_H };
       });
       P.taco = Art.slice(cs, TACO, false);
     }
@@ -85,8 +96,8 @@
   // Returns false to fall back to the placeholder person.
   P.drawGuest = function (ctx, g, sx, sy, z) {
     if (!P.ready) return false;
-    var set = P.cust[VARIANTS[g.variant % VARIANTS.length]];
-    var sc = 30 * z * (g.tall || 1) / CUST_H;
+    var set = P.cust[VARIANTS[g.variant % VARIANTS.length]] || P.cust.hoodie;
+    var sc = 30 * z * (g.tall || 1) / (set.h || CUST_H);   // every look ~30 px tall at zoom 1
     var front = g.facing < 2, mirror = g.facing === 1 || g.facing === 3;
     var img;
     if (front) {

@@ -5,7 +5,7 @@
 (function (TF) {
   var me = document.currentScript, v = me ? (/[?&]v=([^&]+)/.exec(me.src) || [])[1] : '';
   var q = v ? '?v=' + v : '';
-  var SHEETS = ['rct_sheet_v1', 'quad_tiles_v1', 'stand_stages_v1', 'oldmain_iso_v1', 'crew_rct_v1', 'crew_rct_v1b', 'customers_rct_v1', 'west_rct_v1'];
+  var SHEETS = ['rct_sheet_v1', 'quad_tiles_v1', 'stand_stages_v1', 'oldmain_iso_v1', 'crew_rct_v1', 'crew_rct_v1b', 'customers_rct_v1', 'customers_rct_v2', 'west_rct_v1'];
   TF.ASSET_VERSION = v;
   TF.ART_SRCS = TF.ART_SRCS || {};
   TF.artProgress = { done: 0, total: SHEETS.length, listeners: [] };
