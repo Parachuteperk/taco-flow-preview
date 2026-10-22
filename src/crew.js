@@ -136,7 +136,8 @@
     var u = TIERS.filter(function (x) { return x.id === id; })[0];
     var week = TF.Week && TF.Week.active();
     var st = Sim.selected();
-    if (!u || st.tier !== u.tier - 1 || st.building || Sim.stats.money < u.price || (!week && Sim.stats.served < u.unlock) || blocked(id)) return false;
+    // no sales-count gates: stand upgrades are limited only by cash (and, in Taco Week, the daily build permit)
+    if (!u || st.tier !== u.tier - 1 || st.building || Sim.stats.money < u.price || blocked(id)) return false;
     if (!reserveOk(id, u.price)) return false;
     Sim.stats.money -= u.price;
     if (TF.Week) TF.Week.bought(id);
@@ -497,7 +498,7 @@
     show(b2, Sim.stands.length < 2 && !dayLock(blk2), 'Second stand', Sim.stands.length < 2 && blk2);
     list.querySelectorAll('[data-tier]').forEach(function (b) {
       var u = TIERS.filter(function (x) { return x.id === b.getAttribute('data-tier'); })[0];
-      var owned = st.tier >= u.tier, next = st.tier === u.tier - 1, locked = sold < u.unlock;
+      var owned = st.tier >= u.tier, next = st.tier === u.tier - 1, locked = false;
       var wk = TF.Week && TF.Week.active(), blk = blocked(u.id);
       if (wk) locked = false;
       b.textContent = st.building === u.id ? 'Building\u2026' : owned ? 'Built' : !next ? 'After ' + TIER_NAME[u.tier - 1] : blk ? blk : locked ? 'At ' + u.unlock + ' sold' : label(u.id, 'Build $' + u.price);

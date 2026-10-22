@@ -431,12 +431,15 @@
     return best && best.st;
   }
 
+  // Taco Week demand: tuned so the stand is stressed at bells, not overwhelmed all day.
+  var demandArg = /[?&]demand=([0-9.]+)/.exec(location.search);
+  function weekDemand() { return TF.Week && TF.Week.active() ? (demandArg ? +demandArg[1] : C.WEEK_DEMAND) : 1; }
   function wanderStep(g) {
     var t = tileOf(g);
     if (!g.considered) {
       var st = chooseStand(g);
       if (st) {
-        if (Sim.rand() < st.mods.buyP * (TF.Objects ? TF.Objects.litterMul(st) : 1) * (TF.Hacks ? TF.Hacks.buyMul : 1)) {   // litter puts people off; TACO-NET pulls them in
+        if (Sim.rand() < st.mods.buyP * weekDemand() * (TF.Objects ? TF.Objects.litterMul(st) : 1) * (TF.Hacks ? TF.Hacks.buyMul : 1)) {   // litter puts people off; TACO-NET pulls them in
           if (Sim.closing) { /* closing time: no new joiners */ }
           else if (!st.connected) { g.emote = 'noline'; g.emoteT = 1.6; Sim.stats.noline++; loseSale(g, st, 'no line'); }
           else if (g.maxPay < Sim.menuPrice(st)) { think(g, 'pricey'); loseSale(g, st, 'too pricey'); }

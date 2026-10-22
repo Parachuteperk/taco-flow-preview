@@ -6,18 +6,19 @@
   var $ = function (id) { return document.getElementById(id); };
 
   var DAYS = [
-    { name: 'First Day on the Quad', goal: 12 },
-    { name: 'Lunch Rush', goal: 20 },
-    { name: 'Old Main Goes Viral', goal: 24 },   // measured decent-player runs: see REPORT.md
-    { name: 'Double Trouble', goal: 40 },
-    { name: 'Bobcat Taco Fest', goal: 50 }
+    { name: 'First Day on the Quad', goal: 20 },
+    { name: 'Lunch Rush', goal: 24 },
+    { name: 'Old Main Goes Viral', goal: 33 },   // ~85% of a decent scripted run once the grill can be bought on Day 1 (Pass 5)
+    { name: 'Double Trouble', goal: 45 },
+    { name: 'Bobcat Taco Fest', goal: 45 }
   ];
   var OPEN_T = 180, OVERTIME = 20;
   // What unlocks on which day (PLAN section C). Anything not listed is available from Day 1.
   var UNLOCK = {
-    grill: 2, ali: 2, matt: 2, cooler2: 2, runner: 2, drinks: 2, picnic: 2,
-    banner: 3, antonio: 3, phillip: 3, trash: 3,
-    serving: 4, cannon: 4, aiali: 4, stand2: 4,
+    // grill, banner and serving station are open from Day 1 (cash + the build permit are the limits)
+    ali: 2, matt: 2, cooler2: 2, runner: 2, drinks: 2, picnic: 2,
+    antonio: 3, phillip: 3, trash: 3,
+    cannon: 4, aiali: 4, stand2: 4,
     canopy: 5, aaron: 5
   };
   var MAJOR = { grill: 1, banner: 1, serving: 1, canopy: 1, stand2: 1, picnic: 1 };
@@ -32,6 +33,13 @@
     results: [], today: null, ended: false
   };
 
+  // Day 1 starts with SIFE seed money from the club treasury, so the first upgrade can happen in
+  // the very first PREP. Mrs. West's profit meter counts from it (seed money isn't profit).
+  W.SEED = 60;
+  if (/[?&]mode=free/.test(location.search) === false) {
+    Sim.stats.money = W.SEED;
+    setTimeout(function () { Sim.events.push({ type: 'toast', text: '\uD83C\uDF93 SIFE seed money: $' + W.SEED + ' from the club treasury. Tap \uD83D\uDCB0 INVEST to upgrade the stand!' }); }, 600);
+  }
   W.active = function () { return W.mode === 'week'; };
   W.goal = function () { return DAYS[W.day - 1].goal; };
   W.dayName = function () { return DAYS[W.day - 1].name; };

@@ -1,18 +1,20 @@
 // Mrs. West's bet (Pass 5 item 5): she's an investor. Monday she sweeps across the quad and drops a
-// gold envelope with a purse snap: a term sheet. "$250 profit in five days and I invest." A HUD meter
+// gold envelope with a purse snap: a term sheet. "Hit my number in five days and I invest." A HUD meter
 // tracks profit (cash on hand) vs. the target. One beat a day, always shown walking in from Old Main first, and never more than ~2 s
 // at the stand: Mon envelope, Tue the Ali flirt gag, Wed an inspection clipboard challenge (serve 10
 // in 40 s for a tip), Thu a sketch of her pop-up, Fri a limo for the verdict. Win: the Angel Round
 // (a Free Play perk). Lose: her Designer Pop-Up opens on the quad (a comic ending, not a game over).
 (function (TF) {
   var Sim = TF.Sim, World = TF.World, R = TF.Render;
-  var S = { target: 250, started: false, envelope: false, walker: null, done: {}, challenge: null, log: [], verdict: null, angel: false, popup: false };
+  var S = { target: 690,   // tuned in Pass 5 item 10: decent scripted weeks (demand 0.3) made $654-726 profit
+     started: false, envelope: false, walker: null, done: {}, challenge: null, log: [], verdict: null, angel: false, popup: false };
   S.BEAT_AT = 6;   // seconds into OPEN
 
   function W() { return TF.Week; }
   S.active = function () { return !!(W() && W().active()); };
   // profit = cash on hand + Jared's metals at today's price
-  S.profit = function () { return Math.round(Sim.stats.money + (TF.Invest ? TF.Invest.metalValue() : 0) - (S.startMoney || 0)); };
+  // profit = cash + metals - the Day 1 seed money (seed money isn't profit)
+  S.profit = function () { var seed = TF.Week && TF.Week.active() ? TF.Week.SEED || 0 : 0; return Math.round(Sim.stats.money + (TF.Invest ? TF.Invest.metalValue() : 0) - seed); };
 
   // ---- The walker: Old Main door -> in front of the stand -> act (<= ~2 s) -> back -------------
   function spotNear(st) {
@@ -39,7 +41,7 @@
   var DAYKEY = { envelope: 'mon', ali: 'tue', walkby: 'tue', clipboard: 'wed', sketch: 'thu' };
   function westLine(kind) { var D = TF.Dialogue && TF.Dialogue.west; return (D && D[DAYKEY[kind]]) || LINES[kind] || ''; }
   var LINES = {
-    envelope: 'A term sheet, gentlemen: $250 profit by Friday and I invest.',
+    envelope: 'A term sheet, gentlemen: hit my number by Friday and I invest.',
     clipboard: 'Inspection! Serve 10 in 40 seconds, darling.',
     sketch: 'My pop-up opens Friday… unless you impress me.',
     walkby: 'Where IS that handsome grill boy?'
@@ -47,7 +49,7 @@
   function act(w) {
     w.phase = 'act'; w.t = 2.2; w.moving = false;
     if (w.kind === 'envelope') {
-      S.started = true; S.envelope = true; S.startMoney = S.startMoney || 0;
+      S.started = true; S.envelope = true;
       w.snap = 0.6; Sim.events.push({ type: 'handoff' });   // the purse snap
       Sim.events.push({ type: 'toast', text: '\uD83D\uDCDC Term sheet: $' + S.target + ' profit by Friday \u2192 Mrs. West invests (the Angel Round).' });
       Sim.events.push({ type: 'toast', text: '\uD83D\uDCDC Term sheet: $' + S.target + ' profit by Friday \u2192 Mrs. West invests (the Angel Round).' });

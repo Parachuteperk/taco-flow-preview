@@ -21,6 +21,8 @@ window.TF.plugins = [];   // Pass 5 systems: { step(dt), items(items, alpha, ui)
 
     ZONE_R: 4.5,          // attraction radius (tiles) around the stand centre
     BUY_P: 0.7,
+    WEEK_DEMAND: 0.3,     // Taco Week: share of passing students who want a taco. Pass 5 item 10: at 0.3 line-full is
+                          // 15-17% of lost sales and every goal is still hit (seeds 11/23/37); 1.0 was 67-69%. ?demand=x to experiment
     Q_SPACING: 0.5,       // 2 queue slots per line tile
     ORDER_T: 2.6,         // base station times (tier 0, Jared alone)
     COOK_T: 4.0,          // tier 0: cold-assembling a pre-made taco from the cooler
