@@ -514,6 +514,7 @@
     ctx.globalAlpha = alpha;
     if (!(TF.ArtPeople && TF.Art.painted() && TF.ArtPeople.drawGuest(ctx, g, sx, sy, z))) R.drawPerson(g, sx, sy, z);
     drawGuestOverlay(g, sx, sy, z);
+    if (TF.FX) TF.FX.drawGuest(ctx, g, sx, sy, z);
     ctx.globalAlpha = 1;
   };
 
@@ -691,7 +692,7 @@
       var it = items[j];
       if (it.kind === 'prop') R.drawProp(it.t, it.x - 0.5, it.y - 0.5, it.fade);
       else if (it.kind === 'piece') R.drawPiece(it, it.ghost);
-      else if (it.kind === 'crew') TF.Crew.draw(ctx, it, z);
+      else if (it.kind === 'crew') { TF.Crew.draw(ctx, it, z); if (TF.CallLine) { var cp = R.toScreen(it.x, it.y); TF.CallLine.drawCrew(ctx, cp.x, cp.y, z); } if (TF.FX) TF.FX.drawCrew(ctx, it, z); }
       else if (it.kind === 'event') TF.Events.draw(ctx, it, z);
       else if (it.kind === 'ambient') TF.Ambient.draw(ctx, it, z);
       else if (it.kind === 'supply') TF.Supply.draw(ctx, it, z);
@@ -707,6 +708,8 @@
     if (bare) return;
     Sim.stands.forEach(function (s2) { R.drawLineHints(ui, s2); });
     if (TF.Objects) TF.Objects.drawOverlay(ctx, z);
+    if (TF.Story) TF.Story.drawOverlay(ctx, z);
+    if (TF.Arcs) TF.Arcs.drawOverlay(ctx, z);
     late.forEach(function (f) { f(); });
     // Tortillas in flight: a quick arc from the cannon to the pickup spot.
     Sim.flyers.forEach(function (f) {
@@ -716,6 +719,7 @@
       drawTaco(0, 0, z * 1.1);
       ctx.restore();
     });
+    if (TF.FX) TF.FX.draw(ctx);
     Sim.floaters.forEach(function (f) {
       var p = R.toScreen(f.x, f.y, 34 + f.t * 30), a = Math.max(0, 1 - f.t / 1.3);
       ctx.globalAlpha = a;

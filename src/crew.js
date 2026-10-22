@@ -47,7 +47,8 @@
     if (h.ali) { m.cookT *= 0.6; m.grill += 1; }
     if (h.phillip) m.cookT *= 0.8;
     if (h.matt) m.handT = 0.25;
-    if (h.antonio) { m.zoneR += 2; m.buyP = Math.min(0.95, m.buyP + 0.1); m.spawnMul *= 1.3; }
+    // In Taco Week Antonio makes demand only through his hacks (TF.Hacks), not as a passive boost.
+    if (h.antonio && !(TF.Week && TF.Week.active())) { m.zoneR += 2; m.buyP = Math.min(0.95, m.buyP + 0.1); m.spawnMul *= 1.3; }
     if (h.aaron) { m.orderT *= 0.85; m.cookT *= 0.85; m.handT *= 0.85; }
     if (ex.cooler2 && t === 0) m.stockMax *= 2;
     m.cannon = !!(ex.cannon && h.phillip && t >= 3);
@@ -63,6 +64,7 @@
     Sim.stats.money -= Crew.STAND2_PRICE;
     if (TF.Week) TF.Week.bought('stand2');
     var st = Sim.addStand();
+    if (TF.Invest) TF.Invest.noteBuy('stand2', Crew.STAND2_PRICE, st);
     st.needsBuild = !!(TF.Build && TF.Build.live());   // built (12 s) once it's placed
     Sim.sel = st.idx;
     Crew.applyMods();
@@ -138,6 +140,7 @@
     if (!reserveOk(id, u.price)) return false;
     Sim.stats.money -= u.price;
     if (TF.Week) TF.Week.bought(id);
+    if (TF.Invest) TF.Invest.noteBuy(u.id, u.price, st);
     st.building = u.id;
     var done = function () {
       st.building = null;
@@ -361,7 +364,7 @@
       Crew.lastDrawn.push('jared');
       return;
     }
-    var hacking = it.id === 'antonio' && TF.Events && TF.Events.hack.phase === 'typing';
+    var hacking = it.id === 'antonio' && ((TF.Events && TF.Events.hack.phase === 'typing') || (TF.Hacks && TF.Hacks.typingT > 0));
     var fr = frameFor(it.id), bob = hacking ? Math.abs(Math.sin(Crew.t * 30)) * 1.6 * z : busy(it.id) ? Math.abs(Math.sin(Crew.t * 7)) * 1.2 * z : 0;
     // Crew inside the stand face its order side; crew outside face the stand.
     var face = it.where === 'in' ? R.toScreen(it.x + st.geom.n[0], it.y + st.geom.n[1]) : R.toScreen(st.geom.cx, st.geom.cy);
@@ -393,6 +396,8 @@
       R.text('\u25CF LIVE', p.x, p.y - 40 * z, 8 * z * pulse, '#ff3355', 'rgba(0,0,0,0.7)');
       R.text('RAID!', p.x, p.y - 52 * z, 9 * z * pulse, '#c58aff', 'rgba(40,0,60,0.85)');
     } else if (it.id === 'antonio' && Math.floor(Crew.t * (hacking ? 8 : 2)) % 2) R.text('\u25CF LIVE', p.x, p.y - 38 * z, 7 * z, '#ff4a4a', 'rgba(0,0,0,0.6)');
+    if (it.id === 'antonio' && TF.Hacks) TF.Hacks.drawLaptop(ctx, p, z, mir);   // his laptop levels up with him
+    if (TF.Arcs) TF.Arcs.drawCrew(ctx, it.id, p, z, mir);   // rants, the jar / chain, speech bubbles
     if (it.id === 'matt' && TF.Events && TF.Events.shooing()) R.text('SHOO!', p.x, p.y - 44 * z + Math.sin(Crew.t * 20) * 2 * z, 10 * z, '#fff', 'rgba(120,20,20,0.9)');
     if (Crew.flash[it.id]) R.text('★', p.x, p.y - 44 * z, 12 * z, '#ffd23a', 'rgba(0,0,0,0.5)');
     Crew.lastDrawn.push(it.id);
@@ -521,6 +526,8 @@
       b.disabled = h || locked || !!hb || money < r.price;
       show(b, !h && !locked && !dayLock(hb), r.name, !h && (dayLock(hb) ? hb : locked && 'needs ' + TIER_NAME[r.tier]));
     });
+    var fp = document.getElementById('flipPolicy');   // in Taco Week the coin flip lives in the Invest panel
+    if (fp) fp.closest('details').hidden = !!(TF.Week && TF.Week.active());
     var pl = document.getElementById('permitLine'), pt = TF.Week ? TF.Week.permitLine() : '';
     pl.hidden = !pt; if (pl.textContent !== pt) pl.textContent = pt;
     var line = document.getElementById('soonLine'), keys = Object.keys(soon);

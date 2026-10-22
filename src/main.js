@@ -140,7 +140,12 @@
     clearTimeout(toastTimer); toastTimer = setTimeout(function () { el.toast.hidden = true; }, 2600);
   }
   var popupTimer = null;
-  function showHackPopup() {
+  function showHackPopup(title, body) {
+    // Antonio's ladder hacks put their own text in the glitchy popup; the old hack keeps the default
+    var bar = el.popup.querySelector('.bar span'), b = el.popup.querySelector('.body b'), sm = el.popup.querySelector('.body small');
+    bar.textContent = title || 'TXST Campus Schedule';
+    b.textContent = body || 'Classes dismissed early!';
+    sm.textContent = title ? 'Antonio, level ' + (TF.Hacks ? TF.Hacks.level() : 1) + ' hacker' : 'All afternoon sections cancelled. Enjoy the Quad :)';
     el.popup.hidden = false;
     el.popup.classList.remove('glitch'); void el.popup.offsetWidth; el.popup.classList.add('glitch');
     clearTimeout(popupTimer); popupTimer = setTimeout(function () { el.popup.hidden = true; }, 3000);
@@ -256,6 +261,7 @@
       else if (ev.type === 'handoff') Audio.pop();
       else if (ev.type === 'toast') toast(ev.text);
       else if (ev.type === 'hack') { showHackPopup(); toast('Classes dismissed early!'); }
+      else if (ev.type === 'hackpop') { showHackPopup(ev.title, ev.body); toast(ev.text); }
     }
     Sim.events.length = 0;
   }
@@ -263,13 +269,15 @@
   function frame(now) {
     var real = Math.min(0.25, (now - (state.last || now)) / 1000);
     state.last = now;
-    if (state.running) {
+    if (TF.CallLine) TF.CallLine.frame(real);
+    if (state.running && !(TF.Title && TF.Title.active) && !(TF.CallLine && TF.CallLine.active)) {
       state.acc += real * state.speed;
       var steps = 0;
-      while (state.acc >= C.DT && steps < 40) { Sim.step(C.DT); state.acc -= C.DT; steps++; }
+      while (state.acc >= C.DT && steps < 40 && !(TF.CallLine && TF.CallLine.active)) { Sim.step(C.DT); state.acc -= C.DT; steps++; }
       if (steps >= 40) state.acc = 0;
       handleEvents();
     }
+    if (TF.FX) TF.FX.frame(real, state.running && !(TF.Title && TF.Title.active) && !(TF.CallLine && TF.CallLine.active));
     R.draw(state.running ? state.acc / C.DT : 1, { placing: state.mode === 'place', building: state.mode === 'build', ghost: state.ghost, hover: state.hover, lineBad: state.lineBad });
 
     var target = Sim.stats.money;
@@ -279,15 +287,15 @@
     if (el.money.textContent !== m) el.money.textContent = m;
     var s = Sim.stats.served + ' served';
     if (el.served.textContent !== s) el.served.textContent = s;
-    var hasAnt = TF.Crew && TF.Crew.hiredSet.antonio, h = TF.Events.hack;
-    el.hack.hidden = !hasAnt;
-    if (hasAnt) {
+    var hasAnt = TF.Crew && TF.Crew.hiredSet.antonio, h = TF.Events.hack, ladder = TF.Hacks && TF.Hacks.refreshButton(el.hack);
+    if (!ladder) el.hack.hidden = !hasAnt;
+    if (hasAnt && !ladder) {
       var ht = h.phase !== 'idle' ? 'Hacking\u2026' : h.cooldown > 0 ? 'Hack agenda (' + Math.ceil(h.cooldown) + 's)' : 'Hack agenda';
       if (el.hack.textContent !== ht) el.hack.textContent = ht;
       el.hack.disabled = !TF.Events.canHack();
     }
-    el.raid.hidden = !hasAnt;
-    if (hasAnt) {
+    el.raid.hidden = !hasAnt || !!ladder;   // in Taco Week the raid is Antonio's level-4 hack
+    if (hasAnt && !ladder) {
       var r = TF.Events.raid, rt = r.phase !== 'idle' ? 'Raid incoming\u2026' : r.cooldown > 0 ? 'Twitch raid (' + Math.ceil(r.cooldown) + 's)' : 'Twitch raid';
       if (el.raid.textContent !== rt) el.raid.textContent = rt;
       el.raid.disabled = !TF.Events.canRaid();
@@ -394,9 +402,13 @@
         build: TF.Build ? { started: TF.Build.started, finished: TF.Build.finished, jobs: TF.Build.jobs.map(function (j) { return { id: j.id, phase: j.phase, t: Math.round(j.t * 10) / 10 }; }), log: TF.Build.log.slice() } : null,
         permit: TF.Week ? { majorUsed: TF.Week.majorUsed, openMinorUsed: TF.Week.openMinorUsed } : null, confirmId: TF.Crew ? TF.Crew.confirmId : null,
         objects: TF.Objects ? { list: TF.Objects.list.map(function (o) { return { kind: o.kind, x: o.x, y: o.y, st: o.st ? o.st.idx : null, ready: o.ready }; }), day: TF.Objects.day, totals: TF.Objects.totals, placing: TF.Objects.placing ? TF.Objects.placing.kind : null, shade: TF.Objects.shadeStats, litter: TF.Objects.litter.length, litterStats: TF.Objects.litterStats, litterMul: Sim.stands.map(function (st) { return Math.round((st.litterMul || 1) * 100) / 100; }), eating: Sim.guests.filter(function (g) { return g.state === 'EAT'; }).length, spots: TF.Objects.placing ? TF.Objects.placing.spots.length : 0 } : null,
+        story: TF.Story ? { started: TF.Story.started, profit: TF.Story.profit(), target: TF.Story.target, log: TF.Story.log, walker: TF.Story.walker ? TF.Story.walker.kind + ':' + TF.Story.walker.phase : null, challenge: TF.Story.challenge, verdict: TF.Story.verdict ? { won: TF.Story.verdict.won, profit: TF.Story.verdict.profit } : null, angel: TF.Story.angel, popup: TF.Story.popup, hud: document.getElementById('betHud').textContent } : null,
+        hacks: TF.Hacks ? { level: TF.Hacks.level(), log: TF.Hacks.log, run: TF.Hacks.run ? { id: TF.Hacks.run.id, spawned: TF.Hacks.run.spawned } : null, last: TF.Hacks.last ? { id: TF.Hacks.last.id, spawned: TF.Hacks.last.spawned, bailed: TF.Hacks.last.bailed, wait: TF.Hacks.last.wait, shifted: TF.Hacks.last.shifted } : null, premium: TF.Hacks.premium, buyMul: TF.Hacks.buyMul, card: !document.getElementById('hackCard').hidden, btn: document.getElementById('btnHack').textContent } : null,
+        invest: TF.Invest ? { owned: TF.Invest.owned.map(function (o) { return { id: o.id, cost: o.cost, earned: Math.round(TF.Invest.earned(o)) }; }), metals: TF.Invest.metals, price: TF.Invest.price, flips: TF.Invest.flips, lastFlip: TF.Invest.lastFlip || null, ready: !!TF.Invest.ready, pitched: TF.Invest.pitched || 0, report: TF.Week && TF.Week.active() ? TF.Invest.report() : [] } : null,
+        arcs: TF.Arcs ? { beats: TF.Arcs.beats, rants: TF.Arcs.rants || 0, ranting: TF.Arcs.ranting(), rantRate: Sim.rantRate, wager: TF.Arcs.wager, aliChoice: TF.Arcs.aliChoice, kingOn: TF.Arcs.kingOn, kingDown: TF.Arcs.kingDown, banter: TF.Arcs.lastBanter || null, prototype: !!TF.Arcs.prototype } : null,
         lost: JSON.parse(JSON.stringify(Sim.lost)), lostTotal: Sim.lostTotal(), lostThenServed: Sim.stats.lostThenServed, lostHud: document.getElementById('lostHud').textContent, noline: Sim.stats.noline, closedTurnaway: Sim.stats.closedTurnaway,
         week: TF.Week ? { mode: TF.Week.mode, day: TF.Week.day, phase: TF.Week.phase, t: Math.round(TF.Week.t * 10) / 10, soldToday: TF.Week.soldToday(), goal: TF.Week.goal(),
-          majorUsed: TF.Week.majorUsed, eventsToday: TF.Week.eventsToday, bellsRung: TF.Week.bellsRung || 0, bellCountdown: TF.Week.bellCountdown(), bellSpawned: TF.Week.bellSpawned || 0, hud: document.getElementById('dayHud').textContent, results: TF.Week.results, won: TF.Week.won } : null
+          majorUsed: TF.Week.majorUsed, betWon: TF.Week.betWon, eventsToday: TF.Week.eventsToday, bellsRung: TF.Week.bellsRung || 0, bellCountdown: TF.Week.bellCountdown(), bellSpawned: TF.Week.bellSpawned || 0, hud: document.getElementById('dayHud').textContent, results: TF.Week.results, won: TF.Week.won } : null
       };
     },
     // Test helpers (client pixels).
@@ -449,7 +461,7 @@
       el.crowd.textContent = 'Crowd: ' + Sim.crowd[0].toUpperCase() + Sim.crowd.slice(1);
       return Sim.crowd;
     },
-    hack: function () { return TF.Events.startHack(false); },
+    hack: function () { return TF.Hacks && TF.Hacks.week() ? TF.Hacks.preview() : TF.Events.startHack(false); },
     raid: function () { return TF.Events.startRaid(); },
     offerBet: function () { return TF.Bets.offerBet(); },   // test hooks: the card / closing / a flip offer also happen on their own
     endDay: function () { TF.Bets.endDay(); },

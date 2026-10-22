@@ -1,0 +1,186 @@
+{
+  "banter": {
+    "mon": [
+      {
+        "who": "Jared",
+        "line": "Gold's up. Tacos better sell or I'm flipping coins for rent."
+      },
+      {
+        "who": "Antonio",
+        "line": "WiFi's mine now. Quad's about to get a free upgrade."
+      },
+      {
+        "who": "Ali",
+        "line": "Grill's hot. Don't let Mrs. West near the salsa."
+      },
+      {
+        "who": "Matt",
+        "line": "Grackles already circling. This is war."
+      }
+    ],
+    "tue": [
+      {
+        "who": "Phillip",
+        "line": "Tortilla Cannon v0.1 loaded. Aim careful."
+      },
+      {
+        "who": "Jared",
+        "line": "Silver's looking soft. Need more soft-shell sales."
+      },
+      {
+        "who": "Antonio",
+        "line": "Hacked the campus map. We're the new pin."
+      },
+      {
+        "who": "Ali",
+        "line": "She's coming back. I can feel the handbag energy."
+      }
+    ],
+    "wed": [
+      {
+        "who": "Matt",
+        "line": "King Grackle stole a napkin. Personal now."
+      },
+      {
+        "who": "Jared",
+        "line": "Coin flip later. Double or nothing on lunch rush."
+      },
+      {
+        "who": "Antonio",
+        "line": "Bell schedule's mine. Early lunch is free real estate."
+      },
+      {
+        "who": "Phillip",
+        "line": "Cannon range test: three tables out."
+      }
+    ],
+    "thu": [
+      {
+        "who": "Ali",
+        "line": "If she says 'y'all' one more time I quit."
+      },
+      {
+        "who": "Matt",
+        "line": "Birds brought friends. Pickup's a battlefield."
+      },
+      {
+        "who": "Jared",
+        "line": "Gold stack growing. Keep the line moving."
+      },
+      {
+        "who": "Antonio",
+        "line": "Stream raid locked. Tonight we trend."
+      }
+    ],
+    "fri": [
+      {
+        "who": "Phillip",
+        "line": "Final Cannon. One shot, one glory."
+      },
+      {
+        "who": "Ali",
+        "line": "Profit goal or we become her pop-up interns."
+      },
+      {
+        "who": "Jared",
+        "line": "Last day. Flip for the soul of the table."
+      },
+      {
+        "who": "Matt",
+        "line": "Grackle King dies today. Or we do."
+      }
+    ]
+  },
+  "west": {
+    "mon": "Y'all think folding tables make an empire? Cute.",
+    "tue": "My rival's already measuring this spot for her pop-up.",
+    "wed": "Profit's looking thin, sugar. Angel money ain't free.",
+    "thu": "Big hair, bigger checkbook. Don't disappoint me.",
+    "fri_win": "Fine. Angel Round it is. Don't make me regret this.",
+    "fri_lose": "Pack it up. Designer Pop-Up starts Monday. My terms."
+  },
+  "jared": {
+    "gold_pitch": [
+      "Gold never sleeps. Neither should our margins.",
+      "Stack these tacos like bars. Physical is forever.",
+      "Paper money burns. Gold and salsa last."
+    ],
+    "silver_pitch": [
+      "Silver's the underdog. Just like us on this quad.",
+      "Cheap entry, big upside. Like a two-dollar soft shell.",
+      "When gold's loud, silver whispers profit."
+    ],
+    "coin_flip_offer": [
+      "Heads we double the tip jar. Tails I scrub the grill.",
+      "One flip. Winner takes the next hour's tips.",
+      "Coin says destiny. You in or you broke?"
+    ],
+    "coin_win": [
+      "Called it. Gold standard decision.",
+      "The market loves a winner. Pay up.",
+      "See? Risk is just profit with better lighting."
+    ],
+    "coin_lose": [
+      "Temporary setback. Gold recovers. So will I.",
+      "Fine. Grill duty. But the thesis still holds.",
+      "Lost the flip, not the war. Next coin."
+    ]
+  },
+  "antonio": {
+    "lvl1_agenda_swap": [
+      "Campus agenda now lists us first. You're welcome.",
+      "Old Main events just got a taco sponsorship."
+    ],
+    "lvl2_taco_net_wifi": [
+      "Free WiFi password is LoliRules. Traffic incoming.",
+      "Every phone on the quad just got our menu."
+    ],
+    "lvl3_early_bell": [
+      "Bell rang early. Lunch stampede in three, two...",
+      "Schedule glitch. Suddenly everyone's hungry."
+    ],
+    "lvl4_stream_raid": [
+      "Raid goes live in five. Chat's already hungry.",
+      "Thousand viewers just got the taco drop."
+    ],
+    "lvl5_golden_taco": [
+      "Golden Taco code deployed. Only the worthy see it.",
+      "One limited drop. Screenshots in three, two..."
+    ]
+  },
+  "ali": [
+    "Mrs. West, the grill's fine, really, no need to hover.",
+    "Your handbag is... very close to the open flame.",
+    "I—I can handle the salsa. Please stop correcting me.",
+    "Enough, Mrs. West. Step back from my station."
+  ],
+  "matt": [
+    "King Grackle, this napkin was not an invitation.",
+    "You want the scraps? Earn them. Fair fight.",
+    "Birds versus pickup. Scoreboard starts now.",
+    "Today the King falls. Tomorrow the line moves faster."
+  ],
+  "phillip": [
+    "Tortilla Cannon prototype: air pressure and pure hope.",
+    "Range test successful. Table three is now armed.",
+    "Reload is the weak point. Working on a hopper.",
+    "Final version fires soft shells like destiny."
+  ],
+  "invest": [
+    "Angel Round unlocked if profit goal clears.",
+    "Designer Pop-Up is the failure state. Avoid.",
+    "Mrs. West's checkbook opens only on numbers.",
+    "Daily margin is the real scoreboard.",
+    "Folding table today. Empire tomorrow."
+  ],
+  "ali_sports_rants": [
+    "Mavs need a real center or this season's toast.",
+    "Cowboys defense folds like a cheap tortilla every December.",
+    "They traded Luka. I still haven't recovered. Flip that taco.",
+    "Jerry Jones still thinks 1995 is next year. Unreal.",
+    "If the Mavs tank one more time I'm switching to the Spurs.",
+    "Cowboys always start 8-2 then vanish. Classic.",
+    "Grill's hot, Mavs are cold. Perfect metaphor.",
+    "One more pick-six and I'm putting Jerry on the menu."
+  ]
+}

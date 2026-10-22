@@ -38,7 +38,7 @@
     waits: [],              // recent pay -> taco-in-hand seconds
     stands: [mkStand(0)],
     sel: 0,                 // the stand the player is editing (move / line / upgrades)
-    rand: World.rng(7)
+    rand: World.rng(+((/[?&]seed=(\d+)/.exec(location.search) || [])[1] || 7))
   };
   // Stand 1 aliases kept for the rest of the code base (crew, events, tests).
   Sim.stand = Sim.stands[0];
@@ -436,7 +436,7 @@
     if (!g.considered) {
       var st = chooseStand(g);
       if (st) {
-        if (Sim.rand() < st.mods.buyP * (TF.Objects ? TF.Objects.litterMul(st) : 1)) {   // litter puts people off
+        if (Sim.rand() < st.mods.buyP * (TF.Objects ? TF.Objects.litterMul(st) : 1) * (TF.Hacks ? TF.Hacks.buyMul : 1)) {   // litter puts people off; TACO-NET pulls them in
           if (Sim.closing) { /* closing time: no new joiners */ }
           else if (!st.connected) { g.emote = 'noline'; g.emoteT = 1.6; Sim.stats.noline++; loseSale(g, st, 'no line'); }
           else if (g.maxPay < Sim.menuPrice(st)) { think(g, 'pricey'); loseSale(g, st, 'too pricey'); }
@@ -477,6 +477,7 @@
   function loseSale(g, st, why) {
     if (g.lostWhy) return;
     g.lostWhy = why; g.lostSt = st;
+    if (TF.FX) TF.FX.balk(g, st, why);
     Sim.lost[why]++;
     if (st) { st.lost = st.lost || {}; st.lost[why] = (st.lost[why] || 0) + 1; }
     Sim.lostFlash = { t: Sim.t, why: why };
@@ -531,17 +532,22 @@
     var st = g.st;
     var price = C.PRICE_MIN + Math.floor(Sim.rand() * (C.PRICE_MAX - C.PRICE_MIN + 1)) + (st.mods.priceAdd || 0);
     if (Sim.priceBoostT > 0) price += Math.max(1, Math.round(price * 0.1));
+    if (TF.CallLine) price += TF.CallLine.onPay(g, st);
     g.paid = true;
     g.paidAt = Sim.t;
     var drink = TF.Objects ? TF.Objects.onPay(g, st) : 0;   // + a $2 agua fresca
     if (drink) { Sim.stats.money += drink; if (TF.Week) TF.Week.earn(drink); var wp = Sim.windowPos(st); Sim.floaters.push({ x: wp.x + 0.3, y: wp.y - 0.4, text: '+$' + drink + ' \uD83E\uDD64', t: 0 }); }
+    var prem = TF.Hacks ? TF.Hacks.onPay() : 0;   // GOLDEN TACO +$1 event premium
+    if (prem) { price += prem; }
     Sim.stats.money += price;
+    st.rev = (st.rev || 0) + price + drink;   // revenue per stand (investment tallies)
     st.sold = (st.sold || 0) + 1;
     if (TF.Bets) TF.Bets.earn(price);
     if (TF.Week) TF.Week.earn(price);
     var w = Sim.windowPos(st);
     Sim.floaters.push({ x: w.x, y: w.y, text: '+$' + price, t: 0 });
     Sim.events.push({ type: 'cash', amount: price });
+    if (TF.FX) TF.FX.cash(g, st);
     g.order = { guest: g, t: st.mods.cookT, total: st.mods.cookT, ready: false, progress: 0, handT: 0 };
     st.cook.pending.push(g.order);
     st.stock = Math.max(0, st.stock - 1);
@@ -552,7 +558,7 @@
     g.px = g.x; g.py = g.y; g.pOffX = g.offX; g.pOffY = g.offY;
     if (g.emoteT > 0) { g.emoteT -= dt; if (g.emoteT <= 0) g.emote = null; }
     if (g.thoughtT > 0) { g.thoughtT -= dt; if (g.thoughtT <= 0) g.thought = null; }
-    var laneOn = false, faceTo = null, st = g.st, slow = st === Sim.stand ? Sim.serviceSlow : 1;
+    var laneOn = false, faceTo = null, st = g.st, slow = (st === Sim.stand ? Sim.serviceSlow : 1) / (TF.CallLine ? TF.CallLine.rate() : 1);
 
     switch (g.state) {
       case 'WANDER':
@@ -616,7 +622,7 @@
         if (!g.hasTaco && g.waitT > 8 && !g.thoughtSlow) { g.thoughtSlow = true; think(g, 'slow'); }
         if (!g.hasTaco && g.order && g.order.ready) {
           g.order.handT += dt / slow / (st.info && !st.info.pickupClear ? 1.35 : 1);
-          if (g.order.handT >= st.mods.handT + (TF.Objects ? TF.Objects.handExtra(g, st) : 0)) {
+          if (g.order.handT >= st.mods.handT * (TF.Arcs ? TF.Arcs.handMul() : 1) + (TF.Objects ? TF.Objects.handExtra(g, st) : 0)) {
             g.hasTaco = true; if (g.lostWhy) Sim.stats.lostThenServed++;
             g.timer = C.GOT_IT_T;
             Sim.stats.served++;
@@ -624,6 +630,7 @@
             Sim.waits.push({ at: g.paidAt, w: Sim.t - g.paidAt });
             if (Sim.waits.length > 60) Sim.waits.shift();
             Sim.events.push({ type: 'handoff' });
+            if (TF.FX) TF.FX.handoff(g, st);
             // Tortilla cannon (Phillip's gadget): the taco flies from the stand to the pickup spot.
             if (st.mods.cannon && !g.atWindow) {
               Sim.flyers.push({ x0: st.geom.cx, y0: st.geom.cy, x1: g.x, y1: g.y, t: 0, T: 0.45 });
@@ -669,7 +676,7 @@
 
   // Sim.cookRate < 1 while something distracts stand 1's cook (Mrs. West chatting with Ali).
   function updateCook(st, dt) {
-    var ck = st.cook, rate = st === Sim.stand ? Sim.cookRate : 1;
+    var ck = st.cook, rate = (st === Sim.stand ? Sim.cookRate * (Sim.rantRate || 1) : 1) * (TF.CallLine ? TF.CallLine.rate() : 1);   // Ali's sports rant slows it too
     while (ck.grill.length < st.mods.grill && ck.pending.length) ck.grill.push(ck.pending.shift());
     if (ck.grill.length && st === Sim.stand) Sim.stats.grillWork += dt * rate;
     for (var i = ck.grill.length - 1; i >= 0; i--) {
@@ -759,6 +766,7 @@
   };
 
   Sim.step = function (dt) {
+    if (TF.CallLine && TF.CallLine.active) return;
     Sim.t += dt;
     Sim.spawnT -= dt;
     if (Sim.priceBoostT > 0) Sim.priceBoostT -= dt;
@@ -774,6 +782,7 @@
     if (TF.Ambient) TF.Ambient.step(dt);
     if (TF.Bets) TF.Bets.step(dt);
     if (TF.Week) TF.Week.step(dt);
+    if (TF.CallLine) TF.CallLine.step(dt);
     Sim.stands.forEach(function (st) { if (st.placed) { updateCook(st, dt); updateRestock(st, dt); } });
     if (TF.Supply) TF.Supply.step(dt);
     TF.plugins.forEach(function (p) { if (p.step) p.step(dt); });   // Pass 5 systems (build, drinks, ...)

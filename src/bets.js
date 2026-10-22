@@ -92,6 +92,7 @@
     if (B.card) { B.cardT -= dt; if (B.cardT <= 0) { if (B.card === 'flip') B.flips.skipped++; hideCard(); } }
     if (!Sim.stand.placed) { B.dayStart = Sim.t; return; }
     var week = TF.Week && TF.Week.active();
+    if (week) return;   // in Taco Week Jared's metals + coin flip live in the Invest panel (TF.Invest)
     if (!B.offeredToday && Sim.t - B.dayStart >= B.betAt && B.dayEarn >= 20 && !B.card && (!week || TF.Week.eventAllowed('bets', true))) B.offerBet();
     if (!week && Sim.t - B.dayStart >= DAY) B.endDay();   // in Taco Week, closing time ends the day
   };

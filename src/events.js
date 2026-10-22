@@ -83,7 +83,7 @@
       }
     } else if (Sim.walkEntity(w, dt, false)) {
       if (w.phase === 'in') {
-        w.phase = 'chat'; w.t = 10; w.ct = 0; w.whereDone = false;
+        w.phase = 'chat'; w.t = w.short ? 2.5 : 10; w.ct = 0; w.whereDone = false;
         var tip = w.tip = TIPS[Math.floor(Sim.rand() * TIPS.length)];
         if (tip.boost) Sim.priceBoostT = tip.boost;
       } else {
@@ -97,7 +97,7 @@
   // ---- Antonio hacks the class agenda -------------------------------------------
   // Button (90 s cooldown) or now and then on its own: Antonio types ~2 s, a glitchy campus
   // schedule popup says classes are out, and ~50 students pour out of Old Main over ~10 s.
-  Ev.canHack = function () { return !!(TF.Crew && TF.Crew.hiredSet.antonio) && Ev.hack.phase === 'idle' && Ev.hack.cooldown <= 0 && (!TF.Week || TF.Week.eventAllowed('hack', false)); };
+  Ev.canHack = function () { return !!(TF.Crew && TF.Crew.hiredSet.antonio) && !(TF.Week && TF.Week.active()) && Ev.hack.phase === 'idle' && Ev.hack.cooldown <= 0 && (!TF.Week || TF.Week.eventAllowed('hack', false)); };
   Ev.startHack = function (auto) {
     if (!Ev.canHack()) return false;
     var h = Ev.hack;
@@ -148,7 +148,7 @@
   // and ~36 students arrive from the map edges (not Old Main, unlike the agenda hack).
   Ev.raid = { phase: 'idle', t: 0, cooldown: 0, next: Infinity, spawnLeft: 0, spawnT: 0, raids: 0, lastSpawned: 0, fromEdges: 0 };
   var RAIDERS = ['TacoTuesdayTV', 'BobcatGamer', 'QuadSquad', 'xX_Salsa_Xx', 'RoundRockRaids'];
-  Ev.canRaid = function () { return !!(TF.Crew && TF.Crew.hiredSet.antonio) && Ev.raid.phase === 'idle' && Ev.raid.cooldown <= 0 && (!TF.Week || TF.Week.eventAllowed('raid', false)); };
+  Ev.canRaid = function () { return !!(TF.Crew && TF.Crew.hiredSet.antonio) && !(TF.Week && TF.Week.active()) && Ev.raid.phase === 'idle' && Ev.raid.cooldown <= 0 && (!TF.Week || TF.Week.eventAllowed('raid', false)); };
   Ev.startRaid = function () {
     if (!Ev.canRaid()) return false;
     var r = Ev.raid;
@@ -222,11 +222,11 @@
       else { b.x += b.vx * dt; b.y += b.vy * dt; b.h += 40 * dt; }
     });
     var matt = TF.Crew && TF.Crew.hiredSet.matt;
-    if (g.phase === 'arrive' && g.t <= 0) { g.phase = 'peck'; g.t = matt ? 1.5 : 8; }
+    if (g.phase === 'arrive' && g.t <= 0) { g.phase = 'peck'; g.t = matt ? 1.5 : 8; if (TF.Arcs) TF.Arcs.grackles('peck'); }
     else if (g.phase === 'peck') {
       if (!matt) { Sim.serviceSlow = 1.5; g.slowSeconds += dt; }
       if (g.t <= 0 || (matt && g.t <= 0)) {
-        if (matt) { g.shooed++; Sim.events.push({ type: 'toast', text: 'Matt: \u201CSHOO!\u201D' }); }
+        if (matt) { g.shooed++; Sim.events.push({ type: 'toast', text: 'Matt: \u201CSHOO!\u201D' }); if (TF.Arcs) TF.Arcs.grackles('shoo'); }
         g.phase = 'flee'; g.t = 1.6; Sim.serviceSlow = 1;
         g.birds.forEach(function (b) { var a = Math.atan2(b.y - st.geom.cy, b.x - st.geom.cx) + (Sim.rand() - 0.5); b.vx = Math.cos(a) * 7; b.vy = Math.sin(a) * 7; });
       }
@@ -235,6 +235,9 @@
   Ev.shooing = function () { return Ev.grackle.phase === 'peck' && TF.Crew && TF.Crew.hiredSet.matt; };
 
   // Staging helpers for the renderer / crew drawing.
+  // Story beat (Tuesday): send her over now, if she isn't already on her way.
+  // short: the story version keeps the stall to ~2.5 s (nothing interrupts the rush for long).
+  Ev.startWestNow = function (short) { if (Ev.west || !(TF.Crew && TF.Crew.hiredSet.ali) || !Sim.stand.placed) return false; startWest(); if (Ev.west) Ev.west.short = !!short; return !!Ev.west; };
   Ev.westChat = function () { return Ev.west && Ev.west.phase === 'chat' ? Ev.west : null; };
   Ev.grillStalled = function () { var w = Ev.westChat(); return !!w && w.ct >= 1 && !(TF.Crew && TF.Crew.extras.aiali); };
   Ev.flustered = 0;
@@ -275,7 +278,7 @@
       // line in the last seconds.
       var ct = w.ct || 0, pop = Math.min(1, ct / 0.25), hs = (22 + 6 * Math.sin(Sim.t * 6)) * pop;
       R.text('\u2665', a.x, a.y - 46 * z - (1 - pop) * 10 * z, hs * z, '#ff3d7f', 'rgba(255,255,255,0.9)');
-      if (ct >= 1.5) {
+      if (ct >= (w.short ? 0.3 : 1.5)) {
         bubble(ctx, w.t > 1.5 ? 'Darling, these tacos!' : (w.tip ? w.tip.text : 'Toodle-oo!'), p.x, p.y - 46 * z, z);
         bubble(ctx, '\uD83D\uDE33 uh\u2026 hi Mrs. West!', a.x - 10 * z, a.y - 84 * z, z);
       }
@@ -287,7 +290,13 @@
   };
   // A great-tailed grackle: glossy black body, long keel tail, yellow eye, flapping when airborne.
   function drawBird(ctx, b, z) {
+    var king = TF.Arcs && TF.Arcs.crowned() && b === Ev.grackle.birds[0];   // the Grackle King: bigger, crowned
+    if (king) z *= 1.8;
     var R = TF.Render, p = R.toScreen(b.x, b.y), y = p.y - b.h * z;
+    if (king) {
+      ctx.fillStyle = '#ffd23a';
+      ctx.beginPath(); ctx.moveTo(p.x + 1 * z, y - 6.5 * z); ctx.lineTo(p.x + 1.5 * z, y - 9 * z); ctx.lineTo(p.x + 2.6 * z, y - 7.4 * z); ctx.lineTo(p.x + 3.6 * z, y - 9.4 * z); ctx.lineTo(p.x + 4.4 * z, y - 7.2 * z); ctx.lineTo(p.x + 5.2 * z, y - 9 * z); ctx.lineTo(p.x + 5.2 * z, y - 6.5 * z); ctx.closePath(); ctx.fill();
+    }
     if (b.h < 4) { ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(p.x, p.y, 3 * z, 1.2 * z, 0, 0, Math.PI * 2); ctx.fill(); }
     ctx.fillStyle = '#14141e';
     ctx.beginPath(); ctx.ellipse(p.x, y - 3 * z, 3.2 * z, 2 * z, -0.2, 0, Math.PI * 2); ctx.fill();

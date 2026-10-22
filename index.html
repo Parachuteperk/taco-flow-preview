@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>Taco Flow — TXST Quad Taco Tycoon prototype</title>
+<title>The Loli's Connection: A SIFE Operation</title>
 <link rel="icon" href="data:,">
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #3f6f35; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
@@ -39,6 +39,29 @@
   #btnHack { background: #1b2a1b; color: #50ff78; border-color: #0a140a; box-shadow: 0 2px 0 #0a140a; }
   #btnHack:disabled { opacity: .7; }
   #betCard { position: fixed; left: 8px; bottom: max(56px, calc(env(safe-area-inset-bottom) + 48px)); width: 250px; background: #fff5d6; border: 2px solid #501214; border-radius: 10px; box-shadow: 0 3px 0 #501214; padding: 8px; z-index: 4; font-size: 13px; color: #2a1810; }
+  #btnInvest { background: #c9a227; color: #2a1810; font-weight: 900; font-size: 15px; border-color: #7a5a10; box-shadow: 0 2px 0 #7a5a10; }
+  #btnInvest.glow { animation: investGlow 0.9s ease-in-out infinite alternate; }
+  @keyframes investGlow { from { box-shadow: 0 2px 0 #7a5a10, 0 0 0 rgba(255,210,58,0); } to { box-shadow: 0 2px 0 #7a5a10, 0 0 18px 4px rgba(255,210,58,0.95); transform: scale(1.06); } }
+  #investPanel { position: fixed; right: 8px; top: 64px; width: 340px; box-sizing: border-box; max-height: calc(100% - 90px); overflow: auto; background: #fff8e0; border: 2px solid #7a5a10; border-radius: 10px; box-shadow: 0 4px 0 #7a5a10; z-index: 5; padding: 8px; color: #2a1810; }
+  #investPanel .head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-bottom: 6px; }
+  #investPanel .head span { font-size: 11px; flex: 1 1 100%; order: 3; color: #6a4a3a; }
+  #investPanel .head button { margin-left: auto; padding: 4px 9px; }
+  #investPanel .tip { font-size: 12px; font-style: italic; color: #7a5a10; margin-bottom: 4px; }
+  #investPanel .permit { font-size: 11px; font-weight: 700; background: #fde8a6; border-radius: 6px; padding: 3px 6px; margin-bottom: 6px; }
+  #investPanel .icard { display: flex; align-items: center; justify-content: space-between; gap: 8px; border-top: 1px solid #e3cfa5; padding: 6px 2px; font-size: 13px; }
+  #investPanel .icard small { color: #6a4a3a; font-size: 11px; }
+  #investPanel .icard .nums { font-size: 11px; color: #3a2a1a; margin-top: 2px; }
+  #investPanel .icard.lock { opacity: .6; font-size: 12px; } #investPanel .icard.lock span { font-size: 11px; }
+  #investPanel .icard button { padding: 6px 9px; font-size: 12px; white-space: nowrap; }
+  #investPanel .pair { display: flex; gap: 4px; }
+  #investPanel .metal.gold { background: linear-gradient(90deg, rgba(255,215,90,.25), transparent); } #investPanel .metal.silver { background: linear-gradient(90deg, rgba(200,210,220,.35), transparent); }
+  #coinFlip { position: fixed; left: 50%; top: 42%; transform: translate(-50%, -50%); width: min(300px, calc(100% - 32px)); background: #fff5d6; border: 3px solid #501214; border-radius: 12px; box-shadow: 0 6px 0 #501214; padding: 12px; z-index: 7; text-align: center; color: #2a1810; font-size: 13px; }
+  #coinFlip .coin { width: 64px; height: 64px; margin: 10px auto; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #fff3b0, #e0b020 55%, #9a7510); border: 3px solid #7a5a10; font: 900 30px system-ui; color: #7a5a10; line-height: 58px; }
+  #coinFlip .coin.spin { animation: coinSpin 0.35s linear infinite; }
+  #coinFlip .coin.tails { background: radial-gradient(circle at 35% 35%, #fff, #c8ccd2 55%, #808890); border-color: #555; color: #444; }
+  @keyframes coinSpin { 0% { transform: scaleX(1) translateY(0); } 50% { transform: scaleX(0.08) translateY(-18px); } 100% { transform: scaleX(1) translateY(0); } }
+  #coinFlip .react { font-weight: 800; min-height: 1.2em; }
+  @media (max-width: 480px) { #investPanel { left: 8px; right: 8px; width: auto; top: auto; bottom: 8px; max-height: 60%; } }
   #betCard .btns { display: flex; gap: 6px; margin-top: 6px; }
   #betCard button { padding: 6px 10px; font-size: 13px; }
   #btnRaid { background: #2a1640; color: #d8b4ff; border-color: #120820; box-shadow: 0 2px 0 #120820; }
@@ -59,7 +82,14 @@
   #dayHud { background: #7a1e2c; color: #ffd23a; font-weight: 800; box-shadow: 0 2px 0 #3a0c14; }
   #lostHud { background: #3a1a14; color: #ffb4a4; font-weight: 800; }
   #lostHud.bump { background: #b8283a; color: #fff; }
+  #betHud { background: #5a1a3c; color: #ffd6ea; font-weight: 800; }
+  #betHud.ok { background: #1f8a3a; color: #fff; }
+  .card2 .comic { display: flex; gap: 6px; margin: 6px 0 10px; } .card2 .comic div { flex: 1; border: 2px solid #2a1810; border-radius: 6px; background: #fff; padding: 6px 4px; font-size: 11px; text-align: center; }
+  .card2 .comic b { display: block; font-size: 22px; }
+  .card2 .inv { margin-top: 6px; } .card2 .row.small { font-size: 12px; padding: 2px 0; } .card2 .row.small small { color: #7a5a4a; }
   .card2 .brief { margin-top: 8px; padding: 8px; background: #fde8a6; border: 2px dashed #c9a227; border-radius: 8px; font-size: 13px; }
+  .card2.hack { background: #0f1a12; color: #c8ffd4; border-color: #50ff78; box-shadow: 0 6px 0 #0a3014; } .card2.hack h2 { color: #50ff78; } .card2.hack .row { border-top-color: #1f4a2a; }
+  .card2.hack .riskHigh { color: #ff6a6a; } .card2.hack .riskMedium { color: #ffd23a; } .card2.hack .riskLow { color: #50ff78; }
   #dayHud.bell { background: #c9a227; color: #3a0c14; animation: bellPulse 0.6s ease-in-out infinite alternate; }
   @keyframes bellPulse { to { transform: scale(1.08); box-shadow: 0 0 14px #ffd23a; } }
   .card2 { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(360px, calc(100% - 32px)); background: #fff5d6; border: 3px solid #501214; border-radius: 12px; box-shadow: 0 6px 0 #501214; padding: 14px; z-index: 6; color: #2a1810; }
@@ -81,7 +111,9 @@
 <div id="hud">
   <span class="chip" id="dayHud" hidden></span>
   <span class="chip" id="lostHud" hidden title="Customers who walked away without a taco"></span>
+  <span class="chip" id="betHud" hidden title="Mrs. West’s term sheet: profit this week vs. her target. Hit it and she invests."></span>
   <span class="chip" id="money">$0</span>
+  <button id="btnInvest" hidden title="Invest: stand upgrades, buildings, gold + silver">&#128176; INVEST</button>
   <button id="btnPlay" title="Play / pause (space)">&#9654;</button>
   <button id="btnSpeed">1&times;</button>
   <button id="btnBuild" title="Move the stand / draw the queue line">&#128296; Build</button>
@@ -106,10 +138,16 @@
 <div id="hint"></div>
 <div id="reportCard" class="card2" hidden></div>
 <div id="endCard" class="card2" hidden></div>
+<div id="hackCard" class="card2 hack" hidden></div>
 <div id="starterPins" hidden></div>
 <button id="btnAcceptLine" hidden>&#10003; Use suggested line</button>
 <button id="btnOpen" hidden>OPEN</button>
 <div id="toast" hidden></div>
+<div id="investPanel" hidden>
+  <div class="head"><b>&#128176; Invest</b><span>Cost, estimated $/day and payback. Tallies on the quad show what each has earned.</span><button id="btnInvestClose" aria-label="Close">&times;</button></div>
+  <div id="investList"></div>
+</div>
+<div id="coinFlip" hidden><div class="offer"></div><div class="coin"></div><div class="react"></div></div>
 <div id="betCard" hidden><div class="txt"></div><div class="btns"></div></div>
 <div id="hackPopup" hidden>
   <div class="bar"><span>TXST Campus Schedule</span><span>_ &#9633; &times;</span></div>
@@ -120,6 +158,7 @@
   <div id="crewList"></div>
 </div>
 <script src="src/config.js"></script>
+<script src="src/data/dialogue.js"></script>
 <script src="assets/gemini/rct_sheet_v1.js"></script>
 <script src="assets/gemini/quad_tiles_v1.js"></script>
 <script src="assets/gemini/stand_stages_v1.js"></script>
@@ -139,9 +178,16 @@
 <script src="src/supply.js"></script>
 <script src="src/build.js"></script>
 <script src="src/objects.js"></script>
+<script src="src/story.js"></script>
 <script src="src/ambient.js"></script>
 <script src="src/bets.js"></script>
 <script src="src/week.js"></script>
+<script src="src/hacks.js"></script>
+<script src="src/invest.js"></script>
+<script src="src/arcs.js"></script>
+<script src="src/title.js"></script>
+<script src="src/callline.js"></script>
+<script src="src/fx.js"></script>
 <script src="src/main.js"></script>
 <script src="src/onboard.js"></script>
 </body>

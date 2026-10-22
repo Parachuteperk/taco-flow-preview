@@ -167,6 +167,7 @@
   function endDay() {
     Sim.closing = true;
     if (TF.Build) TF.Build.finishAll();
+    if (TF.Hacks) TF.Hacks.endDay();
     var objDay = TF.Objects ? TF.Objects.endDay() : null;   // upkeep + drink costs
     Sim.flushQueue();   // overtime is up: anyone still waiting leaves politely
     TF.ui.api.pause();
@@ -174,18 +175,19 @@
     if (TF.Crew) TF.Crew.cheer();
     var a = W.today, b = snap();
     var betNet = 0;
-    if (TF.Bets && W.day >= 3) { var before = TF.Bets.bets.net; TF.Bets.endDay(); betNet = TF.Bets.bets.net - before; }
+    if (TF.Invest) TF.Invest.nightly();   // gold + silver move overnight
     var neck = Object.keys(W.necks).sort(function (x, y) { return W.necks[y] - W.necks[x]; })[0];
     var r = {
       day: W.day, name: W.dayName(), goal: W.goal(), sold: b.served - a.served, cash: b.earn - a.earn,
       lost: diffLost(a.lost, b.lost),
-      neck: neck ? { name: neck, secs: Math.round(W.necks[neck]) } : null, betNet: betNet, hadBet: TF.Bets && W.day >= 3, obj: objDay
+      neck: neck ? { name: neck, secs: Math.round(W.necks[neck]) } : null, betNet: betNet, hadBet: false, obj: objDay, invest: TF.Invest ? TF.Invest.report() : []
     };
     r.hit = r.sold >= r.goal;
     if (Sim.stands.length > 1) r.standSold = Sim.stands.map(function (st, i) { return (st.served || 0) - (a.stSold[i] || 0); });
     r.top = Object.keys(r.lost).sort(function (x, y) { return r.lost[y] - r.lost[x]; }).filter(function (k) { return r.lost[k] > 0; })[0] || null;
     r.suggest = W.suggestBuy(r);
     W.results[W.day - 1] = r;
+    if (TF.Arcs) TF.Arcs.endDay(r);   // Jared's wager settles
     showReport(r);
   }
 
@@ -254,14 +256,32 @@
       '<div class="row"><span>Customers lost</span><b>' + lostN + '</b></div>' + (lost.length ? '<div class="why">' + lost.join(' · ') + '</div>' : '') +
       '<div class="row"><span>Biggest bottleneck</span><b>' + (r.neck ? r.neck.name + ' (' + r.neck.secs + 's)' : 'none — smooth day!') + '</b></div>' +
       (r.standSold ? '<div class="row"><span>Best stand</span><b>Stand ' + (r.standSold[1] > r.standSold[0] ? 2 : 1) + ' (' + r.standSold.join(' vs ') + ' sold)</b></div>' : '') +
+      investRows(r.invest) +
       '<div class="brief" id="briefing"><b>Briefing:</b> ' + r.suggest.text + '</div>' +
       (r.obj && (r.obj.drinks || r.obj.upkeep) ? '<div class="row"><span>Drinks / upkeep</span><b>' + r.obj.drinks + ' drinks +$' + r.obj.drinkRev + ' \u00B7 costs -$' + (r.obj.upkeep + r.obj.drinkCost) + '</b></div>' : '') +
       (r.obj && r.obj.litter ? '<div class="row"><span>Litter on the quad</span><b>' + r.obj.litter + ' wrappers' + (r.obj.litterPct ? ' (\u2212' + r.obj.litterPct + '% draw)' : '') + '</b></div>' : '') +
       (r.hadBet ? '<div class="row"><span>Jared’s bets</span><b>' + (r.betNet === 0 ? 'no change' : (r.betNet > 0 ? '+$' : '-$') + Math.abs(r.betNet)) + '</b></div>' : '') +
       '<button id="btnNextDay">' + (r.day < 5 ? 'Next day →' : 'See how the week went →') + '</button>';
     card.hidden = false;
-    $('btnNextDay').addEventListener('click', function () { TF.Audio.unlock(); r.day < 5 ? nextDay() : showEnding(); });
+    $('btnNextDay').addEventListener('click', function () {
+      TF.Audio.unlock();
+      if (r.day < 5) { nextDay(); return; }
+      // Friday: Mrs. West's limo pulls up for the verdict, then the ending
+      card.hidden = true;
+      if (TF.Story && TF.Story.started) TF.Story.playVerdict(function () { showEnding(); }); else showEnding();
+    });
     W.refresh();
+  }
+
+  // The day report's Investments section: ROI per item, best first; metals at today's price.
+  function investRows(rows) {
+    if (!rows || !rows.length) return '';
+    var h = '<div class="inv"><div class="row"><span><b>Investments</b></span><b>earned / cost \u00B7 ROI</b></div>';
+    rows.forEach(function (x, i) {
+      var tag = rows.length > 1 && i === 0 ? ' \u2B50 best' : rows.length > 1 && i === rows.length - 1 ? ' \u2B07 worst' : '';
+      h += '<div class="row small"><span>' + x.name + (x.est ? ' <small>(est.)</small>' : '') + tag + '</span><b>' + (x.earned < 0 ? '-$' : '+$') + Math.abs(x.earned) + ' / $' + x.cost + ' \u00B7 ' + x.roi + '%' + (x.metal ? ' (now $' + x.value + ')' : '') + '</b></div>';
+    });
+    return h + '</div>';
   }
 
   function nextDay() {
@@ -282,11 +302,19 @@
     var cash = W.results.reduce(function (s, r) { return s + (r ? r.cash : 0); }, 0);
     var win = hits >= 4;
     W.won = win;
-    var end = $('endCard');
-    end.innerHTML = win
-      ? '<h2>🌮 Taco Week Champions! 🌮</h2><p>The Quad will be talking about this for semesters. Old Main rang its bell just for you.</p>'
-      : '<h2>Well… it was a week.</h2><p>The grackles ate well, Mrs. West says Ali “has potential”, and Jared is already planning a comeback. There’s always next semester.</p>';
-    end.innerHTML += '<div class="row"><span>Goals hit</span><b>' + hits + ' / 5</b></div>' +
+    var end = $('endCard'), Sy = TF.Story, profit = Sy ? Sy.profit() : 0, bet = Sy && Sy.started ? profit >= Sy.target : null;
+    W.betWon = bet;
+    if (bet === true) end.innerHTML = '<h2>\uD83D\uDCBC The Angel Round! \uD83C\uDF2E</h2><p>Mrs. West signs her term sheet: \u201C$' + profit + ' in five days. Gentlemen, I\u2019m investing.\u201D</p>' +
+      '<div class="comic"><div><b>\uD83D\uDE97</b>The limo pulls up.</div><div><b>\uD83D\uDC5C</b>SNAP. A gold check.</div><div><b>\u2728</b>ANGEL-BACKED tacos.</div></div>' +
+      '<div class="row"><span>Angel Round</span><b>+$100 for 10% of the stand</b></div>';
+    else if (bet === false) end.innerHTML = '<h2>\uD83C\uDFEC WEST & CO. opens next door</h2><p>\u201C$' + profit + '? Adorable.\u201D Her Designer Pop-Up sells $29 artisanal tacos. To nobody.</p>' +
+      '<div class="comic"><div><b>\uD83D\uDE97</b>The limo pulls up.</div><div><b>\uD83D\uDC5C</b>SNAP. \u201CAdorable.\u201D</div><div><b>\uD83C\uDFEC</b>$29 tacos. Zero customers. Jared smirks.</div></div>';
+    else end.innerHTML = '';
+    end.innerHTML += win
+      ? '<p><b>\uD83C\uDF2E Taco Week Champions!</b> The Quad will be talking about this for semesters.</p>'
+      : '<p><b>Well\u2026 it was a week.</b> The grackles ate well and Jared is already planning a comeback.</p>';
+    end.innerHTML += (bet !== null ? '<div class="row"><span>Mrs. West\u2019s term sheet</span><b>$' + profit + ' / $' + Sy.target + (bet ? ' \u2714 won' : ' \u2718 lost') + '</b></div>' : '') +
+      '<div class="row"><span>Goals hit</span><b>' + hits + ' / 5</b></div>' +
       '<div class="row"><span>Tacos sold</span><b>' + total + '</b></div>' +
       '<div class="row"><span>Cash earned</span><b>$' + cash + '</b></div>' +
       '<div class="row"><span>Score</span><b>' + (total * 10 + cash + hits * 100) + '</b></div>' +
@@ -294,7 +322,7 @@
     end.hidden = false;
     $('btnPlayAgain').addEventListener('click', function () { location.href = location.pathname; });
     $('btnFreePlay').addEventListener('click', function () {
-      end.hidden = true; W.mode = 'free'; Sim.closing = false; Sim.reopenStand(); TF.ui.api.play(); W.refresh(); if (TF.Crew) TF.Crew.refresh();
+      end.hidden = true; if (TF.Story && bet !== null) TF.Story.applyEnding(bet); W.mode = 'free'; Sim.closing = false; Sim.reopenStand(); TF.ui.api.play(); W.refresh(); if (TF.Crew) TF.Crew.refresh();
     });
     W.refresh();
   }
@@ -316,6 +344,9 @@
   }
   W.refresh = function () {
     refreshLost();
+    if (TF.Arcs) TF.Arcs.refresh();   // banter + Wednesday's wager (before Jared's metals pitch)
+    if (TF.Invest) TF.Invest.refresh();
+    if (TF.Story) TF.Story.refresh();
     if (!W.active()) {   // Free Play: the chip just counts tacos
       hud.hidden = false;
       var ft = '\uD83C\uDF2E ' + Sim.stats.served + ' served';

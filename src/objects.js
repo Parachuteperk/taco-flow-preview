@@ -103,6 +103,7 @@
     var o = { kind: p.kind, x: x, y: y, st: st, ready: false, day: TF.Week ? TF.Week.day : 0 };
     if (p.kind === 'picnic') o.seats = [null, null, null, null];
     O.list.push(o);
+    if (TF.Invest) TF.Invest.onPlaced(o);
     tiles(p.kind, x, y).forEach(function (t) { O.mask[t[1] * World.W + t[0]] = 1; });
     World.version++;   // walkers re-route around it
     O.placing = null;
