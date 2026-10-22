@@ -95,16 +95,16 @@
       if (!(TF.Week && TF.Week.phase === 'report' && TF.Calendar)) return;
       var day = absDay();
       var key = 'report:' + day;
-      if (SB.shown[key]) return;
       var beats = SB.beats(day, 'report');
       var card = typeof document !== 'undefined' && document.getElementById('reportCard');
       if (!card || card.hidden || !beats[0]) return;
       // Key the inject by abs day so each report day gets its beat (innerHTML rebuilds wipe children).
-      if (card.dataset.storyBeat === String(day)) { SB.shown[key] = true; return; }
+      if (card.querySelector('[data-story-beat="' + day + '"]')) { SB.shown[key] = true; return; }
       card.dataset.storyBeat = String(day);
       SB.shown[key] = true;
       var div = document.createElement('div');
       div.className = 'scene';
+      div.setAttribute('data-story-beat', String(day));
       div.style.cssText = 'overflow-wrap:anywhere';
       div.textContent = beats[0].text;
       if (card.firstChild) card.insertBefore(div, card.firstChild.nextSibling);

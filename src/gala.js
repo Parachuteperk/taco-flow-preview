@@ -37,14 +37,14 @@
     return { verdict: v, lines: G.script(v), epilogue: G.epilogue(v), won: v === 'win' };
   };
   G.scoreFromLive = function (TF) {
-    var west = TF && TF.Econ && TF.Econ.M, score = 0;
+    var west = TF && TF.Econ && TF.Econ.M;
     try {
-      if (west && typeof west.galaScore === 'function' && TF.Ledger) {
-        var split = TF.Ledger.split();
-        score = west.galaScore({ operatingProfitCents: split.operating, tradingNetCents: split.trading }).total;
-      }
-    } catch (e) { score = 0; }
-    return score;
+      if (!west || typeof west.galaScore !== 'function' || !TF.Ledger) throw new Error('Gala state missing');
+      var split = TF.Ledger.split();
+      var score = west.galaScore({ operatingProfitCents: split.operating, tradingNetCents: split.trading });
+      G.verdict(score);
+      return score.total;
+    } catch (e) { console.warn('[gala] score failed', e); throw e; }
   };
   G.mount = function (host, scoreOrVerdict, opts) {
     opts = opts || {};
@@ -58,7 +58,7 @@
     overlay.setAttribute('aria-label', play.won ? 'Angel Round' : 'West and Co Pop-Up');
     overlay.style.cssText = 'position:fixed;inset:0;z-index:1100;background:#170d20dd;display:grid;place-items:center;padding:12px;box-sizing:border-box;overflow:auto';
     var panel = doc.createElement('div');
-    panel.style.cssText = 'width:100%;max-width:390px;box-sizing:border-box;background:#fff5d6;color:#2a1810;border:3px solid #501214;border-radius:12px;padding:14px;font:14px/1.4 system-ui;overflow-wrap:anywhere;word-break:break-word';
+    panel.style.cssText = 'max-height:calc(100vh - 24px);max-height:calc(100dvh - 24px);overflow:auto;overscroll-behavior:contain;width:100%;max-width:390px;box-sizing:border-box;background:#fff5d6;color:#2a1810;border:3px solid #501214;border-radius:12px;padding:14px;font:15px/1.5 system-ui;overflow-wrap:anywhere;word-break:break-word';
     overlay.appendChild(panel);
     function el(tag, text) {
       var n = doc.createElement(tag); if (text !== undefined) n.textContent = text;
@@ -72,17 +72,17 @@
     scene.style.cssText = 'background:#fff;border:2px solid #e3cfa5;border-radius:8px;padding:8px;margin:0 0 10px;max-height:40vh;overflow:auto;overflow-wrap:anywhere';
     play.lines.forEach(function (line) {
       var row = doc.createElement('div');
-      row.style.cssText = 'margin:0 0 6px;font-size:13px;overflow-wrap:anywhere';
+      row.style.cssText = 'margin:0 0 6px;font-size:15px;overflow-wrap:anywhere';
       var who = doc.createElement('b'); who.textContent = (line.who || 'narrator').toUpperCase() + ': ';
       row.appendChild(who); row.appendChild(doc.createTextNode(line.text));
       scene.appendChild(row);
     });
     panel.appendChild(scene);
-    el('p', play.epilogue).style.cssText = 'font-size:13px;color:#5a3a2a;overflow-wrap:anywhere';
+    el('p', play.epilogue).style.cssText = 'font-size:15px;color:#5a3a2a;overflow-wrap:anywhere';
     var btn = doc.createElement('button');
     btn.type = 'button';
     btn.textContent = opts.button || (play.won ? 'Continue → Results' : 'See results');
-    btn.style.cssText = 'width:100%;min-height:48px;margin-top:8px;border:2px solid #501214;border-radius:8px;background:#c9a227;color:#2a1810;font:bold 16px system-ui;cursor:pointer';
+    btn.style.cssText = 'position:sticky;bottom:-14px;width:100%;min-height:48px;margin-top:8px;border:2px solid #501214;border-radius:8px;background:#c9a227;color:#2a1810;font:bold 16px system-ui;cursor:pointer';
     btn.addEventListener('click', function () {
       overlay.remove();
       if (typeof opts.onDone === 'function') opts.onDone(play);

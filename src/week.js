@@ -19,7 +19,7 @@
     ali: 2, matt: 2, cooler2: 2, runner: 2, drinks: 2, picnic: 2,
     antonio: 3, phillip: 3, trash: 3,
     cannon: 4, aiali: 4, stand2: 4,
-    canopy: 5, aaron: 5
+    canopy: 5, aaron: 3
   };
   var MAJOR = { grill: 1, banner: 1, serving: 1, canopy: 1, stand2: 1, picnic: 1 };
   // Old Main class bells (item 7): seconds into OPEN. Each rings after a 5 s countdown and sends
@@ -53,7 +53,7 @@
   W.GOALS = DAYS.map(function (d) { return d.goal; });
 
   // ---- Shop rules ------------------------------------------------------------------
-  W.unlockDay = function (id) { return UNLOCK[id] || 1; };
+  W.unlockDay = function (id) { return id === 'aaron' && lvl() > 1 ? 1 : UNLOCK[id] || 1; };
   W.isMajor = function (id) { return !!MAJOR[id]; };
   // null if allowed, otherwise a short reason for the button.
   // Build permits (Pass 5 item 2): one major build a day, in PREP or during OPEN (unused permits
@@ -363,7 +363,7 @@
   // how the Star's tips did this week.
   function verdictRows(paid) {
     var L = TF.Ledger.split(), d = function (c) { return (c < 0 ? '\u2212$' : '$') + (Math.abs(c) / 100).toFixed(2); }, h = '';
-    var scene = TF.STORY && TF.STORY.rent && TF.STORY.rent.L1 && TF.STORY.rent.L1[paid ? 'paid' : 'short'];
+    var scene = TF.STORY && TF.STORY.rent && TF.STORY.rent['L' + (TF.Econ.levelNo || 1)] && TF.STORY.rent['L' + (TF.Econ.levelNo || 1)][paid ? 'paid' : 'short'];
     if (scene) h += '<div class="scene">' + scene.slice(0, 4).map(function (l) { return '<div><b>' + l.who.toUpperCase() + ':</b> ' + l.text + '</div>'; }).join('') + '</div>';
     h += '<div class="row"><span>Operating profit</span><b>' + d(L.operating) + '</b></div>' +
       '<div class="row"><span>Trading gains</span><b>' + d(L.trading) + '</b></div>' +
@@ -429,8 +429,8 @@
       else TF.Checkpoint.retry();
     });
     if (finale && camp && TF.Campaign.runFinale) {
-      if ($('btnPlayAgain')) $('btnPlayAgain').addEventListener('click', function () { TF.Campaign.runFinale('again'); });
-      if ($('btnFreePlay')) $('btnFreePlay').addEventListener('click', function () { TF.Campaign.runFinale('free'); });
+      if ($('btnPlayAgain')) $('btnPlayAgain').addEventListener('click', function () { TF.Campaign.runFinale('again', finale.score); });
+      if ($('btnFreePlay')) $('btnFreePlay').addEventListener('click', function () { TF.Campaign.runFinale('free', finale.score); });
     } else {
       // Start over / Play again (gameOver or rent-short): fresh L1, keep local leaderboard.
       if ($('btnPlayAgain')) $('btnPlayAgain').addEventListener('click', function () {
@@ -440,7 +440,7 @@
         location.href = base;
       });
       if ($('btnFreePlay')) $('btnFreePlay').addEventListener('click', function () {
-        end.hidden = true; if (TF.Story && bet !== null) TF.Story.applyEnding(bet); W.mode = 'free'; Sim.closing = false; Sim.reopenStand(); TF.ui.api.play(); W.refresh(); if (TF.Crew) TF.Crew.refresh();
+        end.hidden = true; if (TF.Story && bet !== null) TF.Story.applyEnding(bet); TF.Campaign.freePlay();
       });
     }
     W.refresh();

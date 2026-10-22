@@ -22,7 +22,8 @@
     streams: { customers: new Stream(seed), market: new Stream(seed * 31 + 7), events: new Stream(seed * 131 + 3), objects: new Stream(seed * 17 + 31),
       // C3b: wagers / coin flips, story beats and ambient extras + chatter each own a stream, so none shifts prices or customers
       wager: new Stream(seed * 7 + 11), story: new Stream(seed * 53 + 5), ambient: new Stream(seed * 97 + 13),
-      matt: new Stream(seed * 211 + 17) },   // C4: Matt's breakdown schedule (TF.Matt draws from it)
+      matt: new Stream(seed * 211 + 17),   // C4: Matt's breakdown schedule (TF.Matt draws from it)
+      cast: new Stream(seed * 43 + 19) },  // chunk 3: cast exits + chance rolls (Chads / scooter / …); restored with the save
     getState: function () { var o = {}; Object.keys(R.streams).forEach(function (k) { o[k] = R.streams[k].getState(); }); return o; },
     setState: function (o) { Object.keys(o || {}).forEach(function (k) { if (R.streams[k]) R.streams[k].setState(o[k]); }); }
   };
@@ -33,6 +34,7 @@
   R.wager = function () { return R.streams.wager.next(); };       // Jared's stash bets + coin flips
   R.story = function () { return R.streams.story.next(); };       // arc beats (rants, crew lines)
   R.ambient = function () { return R.streams.ambient.next(); };   // extras, sitters, hack chatter
+  R.cast = function () { return R.streams.cast.next(); };         // cast walk exits + effect chance rolls
   Sim.rand = R.customers;   // the crowd's stream (was World.rng(seed))
 
   // ---- Ledger ---------------------------------------------------------------------------------
@@ -69,7 +71,7 @@
     return { cash: L.cash, expected: L.seedCents + rest, ok: L.cash === L.seedCents + rest, unrouted: L.unrouted, rows: L.rows.length };
   };
   // The three numbers kept separate (PLAN §2).
-  var OPERATING = { sales: 1, drinks: 1, tips: 1, premium: 1, supplies: 1, spoilage: 1, upkeep: 1, wages: 1, favor: 1, insurance: 1 };
+  var OPERATING = { sales: 1, drinks: 1, tips: 1, premium: 1, supplies: 1, spoilage: 1, upkeep: 1, wages: 1, favor: 1, insurance: 1, grant: 1, beautify: 1, permit: 1 };   // + the President's inspection grant / fee (chunk 3)
   var TRADING = { trade: 1, fee: 1, dividend: 1, wager: 1, metal: 1, fine: 1 };
   var CAPITAL = { build: 1, upgrade: 1, hire: 1, crew: 1 };
   L.split = function (filter) {

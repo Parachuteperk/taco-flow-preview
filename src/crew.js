@@ -16,7 +16,7 @@
     { id: 'antonio', name: 'Antonio', role: 'Laptop + stream', effect: 'Hype: more students', price: 40, tier: 2, spot: 'out' },
     { id: 'phillip', name: 'Phillip', role: 'Prep', effect: 'Cooking 20% faster', price: 30, tier: 2, spot: 'out' },
     { id: 'matt', name: 'Matt', role: 'Hand-off', effect: 'Instant hand-off', price: 25, tier: 3, spot: 'in' },
-    { id: 'aaron', name: 'Aaron', role: 'Manager', effect: 'Everyone 15% faster', price: 50, tier: 4, spot: 'out' },
+    { id: 'aaron', name: 'Aaron', role: 'SIFE', effect: '+8s nearby patience, bulk orders; $8/day', price: 40, tier: 0, spot: 'out' },
     { id: 'runner', name: 'Freshman Runner', role: 'Supply runs', effect: 'Restocks from the van', price: 50, tier: 0, spot: 'none' }
   ];
 
@@ -50,7 +50,6 @@
     if (h.matt) m.handT = TF.Handyman && TF.Handyman.away() ? TF.Handyman.coverHandT(m.handT) : 0.25;
     // In Taco Week Antonio makes demand only through his hacks (TF.Hacks), not as a passive boost.
     if (h.antonio && !(TF.Week && TF.Week.active())) { m.zoneR += 2; m.buyP = Math.min(0.95, m.buyP + 0.1); m.spawnMul *= 1.3; }
-    if (h.aaron) { m.orderT *= 0.85; m.cookT *= 0.85; m.handT *= 0.85; }
     if (ex.cooler2 && t === 0) m.stockMax *= 2;
     m.cannon = !!(ex.cannon && h.phillip && t >= 3);
     if (m.cannon) m.handT *= 0.5;
@@ -121,6 +120,7 @@
   };
 
   Crew.hire = function (id) {
+    if (id === 'aaron') return !!(TF.Aaron && TF.Aaron.hireLive && TF.Aaron.hireLive().ok);
     var r = ROSTER.filter(function (x) { return x.id === id; })[0];
     if (!r || Crew.hiredSet[id] || Sim.stand.tier < r.tier || Sim.stats.money < r.price || blocked(id)) return false;
     if (!reserveOk(id, r.price)) return false;
@@ -173,6 +173,7 @@
   }
   function label(id, normal) { return Crew.confirmId === id ? 'Confirm?' : normal; }
   Crew.blocked = blocked;
+  Crew.reserveOk = reserveOk;
   // Closing-time moment: everyone at the stand cheers.
   Crew.cheer = function () { Crew.hired().forEach(function (id) { Crew.flash[id] = 2.5; }); };
 

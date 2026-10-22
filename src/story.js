@@ -152,7 +152,7 @@
     if (S.verdict && !S.verdict.over) items.push({ kind: 'story', plugin: S, what: 'limo', x: 0, y: 0, k: 999 });
   };
   S.drawOverlay = function (ctx, z) {
-    if (S.bubble) { R.pill(S.bubble.text, S.bubble.x, S.bubble.y, 9 * z, 'rgba(90,20,60,0.95)'); S.bubble = null; }
+    if (S.bubble) { R.speech(S.bubble.text, S.bubble.x, S.bubble.y, 9 * z, 'rgba(90,20,60,0.95)'); S.bubble = null; }
   };
   S.draw = function (ctx, it, z) {
     var p = R.toScreen(it.x, it.y);

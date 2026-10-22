@@ -48,6 +48,7 @@
   };
   EC.endDay = function (day) {
     if (!EC.on()) return null;
+    if (TF.Aaron && TF.Aaron.live) TF.Aaron.live.payWage();
     EC.K.setPhase('report', EC.abs(day));
     var sp = EC.K.closeDay();
     var out = { spoiledKits: sp.spoiledKits, spoiledCents: sp.spoiledCostCents, kept: sp.kept, rent: null };

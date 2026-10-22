@@ -198,7 +198,7 @@
   };
   A.bubbles = [];
   A.drawOverlay = function (ctx, z) {
-    A.bubbles.forEach(function (b) { R.pill(b.text, b.x, b.y, (b.small ? 7 : 8.5) * z, b.bg); });
+    A.bubbles.forEach(function (b) { R.speech(b.text, b.x, b.y, (b.small ? 7 : 8.5) * z, b.bg); });
     A.bubbles = [];
   };
   A.crowned = function () { return A.kingOn && !A.kingDown; };

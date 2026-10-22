@@ -72,7 +72,7 @@
       var n = TF.Econ.levelNo || 1;
       var abs = TF.Econ.abs ? TF.Econ.abs(TF.Week.day) : TF.Week.day;
       var flag = n + ':' + abs + ':' + (TF.Week.rentPaid ? 'w' : 'l');
-      if (end.dataset.levelText === flag) return;
+      if (end.querySelector('[data-friday-lines="' + flag + '"]')) return;
       var win = !!TF.Week.rentPaid;
       var lines = LT.friday(n, win);
       if (!lines.length) return;

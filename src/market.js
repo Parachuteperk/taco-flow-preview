@@ -43,6 +43,7 @@
     if (!MK.X || !econ() || phase() !== 'prep' || day() !== abs()) return null;
     var c = MK.X.close(abs());
     MK.log.push(c);
+    if (MK.log.length > 20) MK.log.shift();
     return c;
   };
   // Week went back to a Monday (a level load or reset): the market's timeline goes back with it. The

@@ -7,10 +7,12 @@
   function limit(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
   function create(options) {
     var o = options || {}, W = o.W, H = o.H, vw = o.width, vh = o.height;
+    var top = o.viewportTop === undefined ? 0 : o.viewportTop;
     var tw = o.tileWidth === undefined ? 64 : o.tileWidth, th = o.tileHeight === undefined ? 32 : o.tileHeight;
     var levels = o.zoomLevels || [0.5, 1, 2], damping = o.damping === undefined ? 8 : o.damping;
     if (!positive(W) || !positive(H) || !positive(vw) || !positive(vh) || !positive(tw) || !positive(th) || !positive(damping)) throw new RangeError('Invalid camera dimensions/damping');
     if (levels.length !== 3 || !positive(levels[0]) || !(levels[1] > levels[0]) || !(levels[2] > levels[1]) || !positive(levels[2])) throw new RangeError('Three increasing zoom levels required');
+    if (typeof top !== 'number' || !isFinite(top) || top < 0 || top >= vh) throw new RangeError('Invalid viewport top');
     // Copy configuration once; all hot-path outputs and pointer slots are pooled.
     levels = [levels[0], levels[1], levels[2]];
     if (o.zoom !== undefined && !positive(o.zoom)) throw new RangeError('Invalid zoom');
@@ -36,7 +38,7 @@
     // otherwise leave the entire diamond off-screen after a diagonal phone pan.
     function clamp() {
       var hw = tw / 2 * cam.z, hh = th / 2 * cam.z;
-      var rx = vw / (2 * hw), ry = vh / (2 * hh);
+      var rx = vw / (2 * hw), ry = (vh - top) / (2 * hh);
       var ax0 = W + H <= 2 * rx ? (W - H) / 2 : -H + rx;
       var ax1 = W + H <= 2 * rx ? ax0 : W - rx;
       var by0 = W + H <= 2 * ry ? (W + H) / 2 : ry;
@@ -44,9 +46,9 @@
       // Feasible cy interval for cx in [ax0,ax1] and world center in [0,W]x[0,H].
       by0 = Math.max(by0, -ax1, ax0);
       by1 = Math.min(by1, 2 * W - ax0, 2 * H + ax1);
-      var cy = limit((vh / 2 - cam.y) / hh, by0, by1);
+      var cy = limit(((vh + top) / 2 - cam.y) / hh, by0, by1);
       var cx = limit((vw / 2 - cam.x) / hw, Math.max(ax0, -cy, cy - 2 * H), Math.min(ax1, 2 * W - cy, cy));
-      var x = vw / 2 - cx * hw, y = vh / 2 - cy * hh;
+      var x = vw / 2 - cx * hw, y = (vh + top) / 2 - cy * hh;
       if (Math.abs(x - cam.x) > 1e-8) vx = 0;
       if (Math.abs(y - cam.y) > 1e-8) vy = 0;
       cam.x = x; cam.y = y;
@@ -55,11 +57,11 @@
     function stop() { vx = vy = 0; target = null; }
     function snapTo(x, y) {
       stop(); cam.x = vw / 2 - (x - y) * tw / 2 * cam.z;
-      cam.y = vh / 2 - (x + y) * th / 2 * cam.z; return clamp();
+      cam.y = (vh + top) / 2 - (x + y) * th / 2 * cam.z; return clamp();
     }
     function zoomAt(z, x, y) {
       if (!positive(z)) throw new RangeError('Invalid zoom');
-      if (x === undefined) { x = vw / 2; y = vh / 2; }
+      if (x === undefined) { x = vw / 2; y = (vh + top) / 2; }
       toWorld(x, y, point); var wx = point.x, wy = point.y;
       stop(); cam.z = limit(z, levels[0], levels[2]);
       cam.x = x - (wx - wy) * tw / 2 * cam.z;
@@ -75,9 +77,17 @@
     }
     function resize(width, height) {
       if (!positive(width) || !positive(height)) throw new RangeError('Invalid viewport');
-      toWorld(vw / 2, vh / 2, point); var x = point.x, y = point.y;
-      vw = width; vh = height; api.width = vw; api.height = vh;
+      toWorld(vw / 2, (vh + top) / 2, point); var x = point.x, y = point.y;
+      vw = width; vh = height; top = Math.min(top, vh - 1); api.width = vw; api.height = vh;
       cancel(); return snapTo(x, y);
+    }
+    // Keep the same map focus as a wrapping/scrolling HUD changes the playable area.
+    // Screen coordinates stay absolute for pointer input and renderer projection.
+    function setViewportTop(y) {
+      if (typeof y !== 'number' || !isFinite(y) || y < 0 || y >= vh) throw new RangeError('Invalid viewport top');
+      if (y === top) return cam;
+      cam.y += (y - top) / 2; top = y;
+      return clamp();
     }
     function setLevel(w, h, x, y) {
       if (!positive(w) || !positive(h)) throw new RangeError('Invalid map');
@@ -101,7 +111,7 @@
       if (target) {
         var f = 1 - Math.exp(-10 * dt);
         cam.x += (vw / 2 - (target.x - target.y) * tw / 2 * cam.z - cam.x) * f;
-        cam.y += (vh / 2 - (target.x + target.y) * th / 2 * cam.z - cam.y) * f;
+        cam.y += ((vh + top) / 2 - (target.x + target.y) * th / 2 * cam.z - cam.y) * f;
       } else if (slots[0].id === null && slots[1].id === null) {
         var decay = Math.exp(-damping * dt), distance = (1 - decay) / damping;
         cam.x += vx * distance; cam.y += vy * distance; vx *= decay; vy *= decay;
@@ -150,8 +160,8 @@
       if (other) { other.ox = other.x; other.oy = other.y; vx = vy = 0; }
       return consumed;
     }
-    var api = { cam: cam, width: vw, height: vh, W: W, H: H, toScreen: toScreen, toWorld: toWorld,
-      clamp: clamp, snapTo: snapTo, centerOn: snapTo, zoomAt: zoomAt, wheel: wheel, resize: resize, setLevel: setLevel,
+    var api = { cam: cam, width: vw, height: vh, get viewportTop() { return top; }, W: W, H: H, toScreen: toScreen, toWorld: toWorld,
+      setViewportTop: setViewportTop, clamp: clamp, snapTo: snapTo, centerOn: snapTo, zoomAt: zoomAt, wheel: wheel, resize: resize, setLevel: setLevel,
       visibleRect: visibleRect, renderView: renderView, update: update, stop: stop, cancel: cancel,
       zoomBucket: function () { return cam.z < Math.sqrt(levels[0] * levels[1]) ? 0 : cam.z < Math.sqrt(levels[1] * levels[2]) ? 1 : 2; },
       follow: function (t) { stop(); target = t; }, pointerDown: pointerDown, pointerMove: pointerMove, pointerUp: pointerUp };

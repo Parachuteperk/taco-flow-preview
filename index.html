@@ -13,11 +13,11 @@
   #miniJumps { position: fixed; z-index: 2; display: flex; gap: 4px; } #miniJumps[hidden] { display: none; } #miniJumps button { flex: 1; font-size: 11px; padding: 4px 6px; }
   #hud { position: fixed; top: max(8px, env(safe-area-inset-top)); left: 8px; right: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; pointer-events: none; z-index: 2; }
   #hud > * { pointer-events: auto; }
-  button { font: 600 14px/1 inherit; font-family: inherit; padding: 9px 12px; border-radius: 8px; border: 2px solid #501214; background: #fff5d6; color: #501214; box-shadow: 0 2px 0 #501214; cursor: pointer; touch-action: manipulation; }
+  button { font: 600 14px/1.2 system-ui, sans-serif; font-family: inherit; padding: 9px 12px; border-radius: 8px; border: 2px solid #501214; background: #fff5d6; color: #501214; box-shadow: 0 2px 0 #501214; cursor: pointer; touch-action: manipulation; }
   button:active { transform: translateY(2px); box-shadow: none; }
   button.active { background: #c9a227; }
   button:disabled { opacity: .55; cursor: default; }
-  .chip { font: 700 14px/1 inherit; font-family: inherit; padding: 9px 11px; border-radius: 8px; background: rgba(40,20,15,0.82); color: #fff5d6; }
+  .chip { font: 700 14px/1.2 system-ui, sans-serif; font-family: inherit; padding: 9px 11px; border-radius: 8px; background: rgba(40,20,15,0.82); color: #fff5d6; }
   #money { color: #b6ff8f; min-width: 3.5em; text-align: right; }
   #served { font-size: 12px; font-weight: 600; }
   #hint { position: fixed; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); background: rgba(40,20,15,0.85); color: #fff5d6; padding: 8px 12px; border-radius: 8px; font-size: 13px; max-width: calc(100% - 32px); text-align: center; transition: opacity .3s; pointer-events: none; z-index: 2; }
@@ -64,7 +64,7 @@
   #investPanel .head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-bottom: 6px; }
   #investPanel .head span { font-size: 11px; flex: 1 1 100%; order: 3; color: #6a4a3a; }
   #investPanel .head button { margin-left: auto; padding: 4px 9px; }
-  #endCard .scene { background: #fff5d6; border-radius: 8px; padding: 6px 8px; margin: 6px 0; font-size: 12px; text-align: left; color: #2a1810; }
+  #endCard .scene { line-height: 1.5; background: #fff5d6; border-radius: 8px; padding: 6px 8px; margin: 6px 0; font-size: 14px; text-align: left; color: #2a1810; }
   #investPanel .exch { background: #1d3b2a; color: #f4efe4; } #investPanel .icard.exch small, #investPanel .icard.exch b { color: #e6f4ea; } #investPanel .tick .star { font-size: 11px; color: #5a4a2a; margin-top: 2px; }
   #investPanel .tip { font-size: 12px; font-style: italic; color: #7a5a10; margin-bottom: 4px; }
   #investPanel .permit { font-size: 11px; font-weight: 700; background: #fde8a6; border-radius: 6px; padding: 3px 6px; margin-bottom: 6px; }
@@ -114,13 +114,14 @@
   .card2.hack .riskHigh { color: #ff6a6a; } .card2.hack .riskMedium { color: #ffd23a; } .card2.hack .riskLow { color: #50ff78; }
   #dayHud.bell { background: #c9a227; color: #3a0c14; animation: bellPulse 0.6s ease-in-out infinite alternate; }
   @keyframes bellPulse { to { transform: scale(1.08); box-shadow: 0 0 14px #ffd23a; } }
-  .card2 { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(360px, calc(100% - 32px)); background: #fff5d6; border: 3px solid #501214; border-radius: 12px; box-shadow: 0 6px 0 #501214; padding: 14px; z-index: 6; color: #2a1810; }
+  .card2 { box-sizing: border-box; max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); overflow: auto; overscroll-behavior: contain; overflow-wrap: anywhere; position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(360px, calc(100% - 32px)); background: #fff5d6; border: 3px solid #501214; border-radius: 12px; box-shadow: 0 6px 0 #501214; padding: 14px; z-index: 6; color: #2a1810; }
   .card2 h2 { margin: 0 0 8px; font-size: 18px; color: #7a1e2c; }
   .card2 .big { font-size: 22px; font-weight: 900; margin: 6px 0 10px; }
   .card2 .big.hit { color: #1f8a3a; } .card2 .big.miss { color: #b8283a; }
   .card2 .row { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; border-top: 1px solid #e3cfa5; font-size: 14px; }
   .card2 .why { font-size: 12px; color: #6a4a3a; padding: 0 0 4px; }
   .card2 button { margin-top: 12px; width: 100%; font-size: 16px; padding: 11px; }
+  #endCard .btns { position: sticky; bottom: -14px; background: #fff5d6; padding-bottom: 6px; }
   .card2 .btns { display: flex; gap: 8px; } .card2 .btns button { flex: 1; }
   .card2 p { font-size: 14px; margin: 0 0 8px; }
   @media (max-width: 480px) { #betCard { top: 168px; bottom: auto; left: 8px; right: 8px; width: auto; } }
@@ -133,6 +134,50 @@
     #betCard:not([hidden]) { display: flex; align-items: center; gap: 6px; padding: 6px 8px; font-size: 12px; }
     #betCard .txt { flex: 1; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
     #betCard .btns { flex-direction: column; margin-top: 0; } #betCard button { padding: 5px 8px; font-size: 12px; }
+  }
+  /* Later levels expose more controls: retain touch targets within a bounded HUD. */
+  @media (max-width: 480px) {
+    #hud { max-height: 42vh; max-height: 42dvh; overflow: auto; overscroll-behavior: contain; pointer-events: auto; padding-bottom: 4px; }
+    #hud > * { box-sizing: border-box; max-width: 100%; min-width: 0; }
+    #hud button { min-height: 44px; font-size: 14px; flex: 1 0 auto; }
+    #hud .chip { font-size: 14px; line-height: 1.35; overflow-wrap: anywhere; }
+    #hud #dayHud { flex: 1 1 100%; animation: none; }
+    #hud #lostHud { min-width: 0; white-space: normal; flex: 1 1 55%; }
+    #hud #money { flex: 1 1 25%; }
+    #hud .viewControls { flex: 1 1 100%; flex-wrap: wrap; }
+    #hud #btnInvest { font-size: 14px; }
+    #hud #btnInvest.glow { animation: none; }
+    #betCard:not([hidden]) { font-size: 14px; align-items: flex-start; max-height: 30dvh; overflow: auto; box-sizing: border-box; }
+    #betCard .txt { display: block; overflow: visible; }
+    #betCard button { min-height: 44px; font-size: 14px; }
+    #endCard .btns { flex-direction: column; gap: 0; }
+    .card2 .row > * { min-width: 0; }
+    .card2 .row b { text-align: right; }
+    #endCard .row > span { flex-shrink: 0; overflow-wrap: normal; word-break: normal; }
+    #endCard .row > b { min-width: 0; }
+    #endCard .row.small, .card2 .why { font-size: 14px; line-height: 1.4; }
+  }
+
+  #btnManage[hidden], #manageSheet[hidden], #rentHint[hidden] { display:none; }
+  #rentHint { position:fixed; top:64px; left:50%; transform:translateX(-50%); z-index:2; background:#28140fd9; color:#fff5d6; padding:6px 10px; border-radius:8px; font-size:13px; pointer-events:none; white-space:nowrap; }
+  .starter:not(.best) { animation:none; opacity:.55; box-shadow:0 2px 0 #155c2b; }
+  @media(max-width:430px) {
+    #hud { display:flex; gap:4px; overflow:visible; max-height:none; padding:0; }
+    #hud #dayHud { flex:1 1 calc(70% - 4px); font-size:13px; }
+    #hud #money { flex:1 1 25%; font-size:13px; }
+    #hud #rentHud { order:1; flex:1 1 100%; font-size:12px; padding:5px 8px; animation:none; white-space:nowrap; }
+    #hud #btnStock, #hud #btnManage, #hud #btnOpen, #hud #btnPlay, #hud #btnSpeed { flex:1 1 auto; min-width:0; font-size:13px; padding:8px 6px; min-height:44px; order:2; }
+    #hud #btnOpen { position:static; transform:none; letter-spacing:0; animation:none; order:2; }
+    #hud .phone-hide { display:none; }
+    #btnManage.ready { background:#ffd23a; animation:pinPulse 1.2s ease-in-out infinite; }
+    #manageSheet { position:fixed; left:8px; right:8px; bottom:max(8px, env(safe-area-inset-bottom)); z-index:6; max-height:65dvh; overflow:auto; padding:12px; background:#fff5d6; border:2px solid #501214; border-radius:14px; color:#501214; }
+    #manageSheet .head { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+    #manageBody { display:flex; flex-wrap:wrap; gap:8px; }
+    #manageBody button { min-height:44px; }
+    #manageBody .viewControls { flex-wrap:wrap; }
+    #manageBody .bar:not([hidden]) { display:flex; flex-wrap:wrap; gap:8px; width:100%; }
+    #hint { box-sizing:border-box; width:calc(100% - 24px); max-width:none; bottom:max(68px, calc(env(safe-area-inset-bottom) + 60px)); overflow-wrap:anywhere; }
+    #btnAcceptLine { bottom:max(148px, calc(env(safe-area-inset-bottom) + 140px)); width:max-content; max-width:calc(100% - 24px); }
   }
 </style>
 </head>
@@ -151,6 +196,7 @@
   <button class="chip" id="mattChip" hidden title="Matt: send him to fix a breakdown, or call him back"></button>
   <button id="btnInvest" hidden title="Invest: stand upgrades, buildings, gold + silver">&#128176; INVEST</button>
   <button id="btnPlay" title="Play / pause (space)">&#9654;</button>
+  <button id="btnManage" aria-controls="manageSheet" aria-expanded="false" hidden>Manage</button>
   <button id="btnSpeed">1&times;</button>
   <button id="btnBuild" title="Move the stand / draw the queue line">&#128296; Build</button>
   <button id="btnCrew">Stand &amp; crew</button>
@@ -176,6 +222,10 @@
     <span class="chip" id="served">0 served</span>
   </span>
 </div>
+<div id="manageSheet" role="region" aria-label="Manage" hidden>
+  <div class="head"><b>Manage</b><button id="btnManageClose" aria-label="Close Manage">×</button></div><div id="manageBody"></div>
+</div>
+<div id="rentHint" hidden></div>
 <div id="hint"></div>
 <div id="reportCard" class="card2" hidden></div>
 <div id="endCard" class="card2" hidden></div>
@@ -229,6 +279,7 @@
 <script src="src/art.js?v=202610220851"></script>
 <script src="src/people.js?v=202610220851"></script>
 <script src="src/render.js?v=202610220851"></script>
+<script src="src/speech.js"></script>
 <script src="src/crew.js?v=202610220851"></script>
 <script src="src/events.js?v=202610220851"></script>
 <script src="src/supply.js?v=202610220851"></script>
@@ -272,6 +323,8 @@
 <script src="src/title.js?v=202610220851"></script>
 <script src="src/callline.js?v=202610220851"></script>
 <script src="src/fx.js?v=202610220851"></script>
+<script src="src/data/cast-extra.js?v=202610220851"></script>
+<script src="src/castextra.js?v=202610220851"></script>
 <script src="src/main.js?v=202610220851"></script>
 <script src="src/minimap-ui.js?v=202610220851"></script>
 <script src="src/onboard.js?v=202610220851"></script>
@@ -288,5 +341,6 @@
 <script src="src/storybeats.js?v=202610220851"></script>
 <script src="src/chunk2-boot.js?v=202610220851"></script>
 <script src="src/save.js?v=202610220851"></script>
+<script src="src/phone-ui.js"></script>
 </body>
 </html>

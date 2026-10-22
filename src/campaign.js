@@ -15,6 +15,7 @@
   CA.live = function (phaseOverride) {
     var s = TF.LevelFlow.fromLive({ Econ: TF.Econ, Week: { day: TF.Week.day, phase: phaseOverride || TF.Week.phase }, Ledger: TF.Ledger,
       Crew: TF.Crew, Rng: TF.Rng, World: World, Market: TF.Market, standTier: Sim.stand.tier, flags: {} });
+    if (TF.CastExtra) s.flags.cast = TF.CastExtra.getState();
     if (TF.Invest) s.flags.invest = JSON.parse(JSON.stringify({ metals: TF.Invest.metals, price: TF.Invest.price, lastPrice: TF.Invest.lastPrice }));
     if (TF.Aaron && TF.Aaron.live) {
       try { s.flags.aaron = TF.Aaron.live.getState(); } catch (e) { /* best-effort */ }
@@ -31,6 +32,7 @@
     TF.Rng.setState(s.rng);
     E.levelNo = s.level; E.K.setState(s.stock); E.M.setState(s.west); E.rent = null;
     TF.Market.setState(s.exchange);
+    if (TF.CastExtra) TF.CastExtra.setState(s.flags.cast);
     TF.Crew.hiredSet = { jared: true }; s.crew.hired.forEach(function (id) { TF.Crew.hiredSet[id] = true; });
     TF.Crew.extras = s.crew.extras || {};
     if (s.crew.levels) TF.Crew.levels = s.crew.levels;
@@ -50,6 +52,7 @@
     Sim.stand.tier = s.standTier;
     TF.Crew.applyMods(); TF.Crew.spotKey = '';
     TF.Mkt.openDay(); TF.Mkt.syncPrices();   // Monday's market rolls happen here, so they enter the checkpoint
+    if (TF.Aaron && TF.Aaron.restore) TF.Aaron.restore(s.flags.aaron, !!TF.Crew.hiredSet.aaron);
     E.sync(); TF.Week.refresh(); if (TF.Crew.refresh) TF.Crew.refresh();
     if (TF.Onboard && TF.Onboard.resetForLevel) TF.Onboard.resetForLevel();   // pins for this map, after its restores
     return CA.live('prep');
@@ -145,24 +148,30 @@
     CA.monday = null; CA.pending = null; CA.pendingDurable = false; CA.locked = false; CA._finaleBusy = false;
     if (TF.Checkpoint) { TF.Checkpoint.monday = null; TF.Checkpoint.retried = 0; }
   };
-  // L4 month complete: Gala first (both endings), then Results + local board, then navigate.
-  // choice: 'again' (fresh campaign from L1) | 'free' (?mode=free).
-  CA.runFinale = function (choice) {
+  // Retire campaign persistence before switching modes; keep the player's live stand and cash.
+  CA.freePlay = function () {
+    CA.clearForNewRun();
+    if (TF.Save) TF.Save.disabled = true;
+    TF.Week.mode = 'free'; Sim.closing = false; Sim.reopenStand();
+    if (TF.ui && TF.ui.api) TF.ui.api.play();
+    TF.Week.refresh(); if (TF.Crew) TF.Crew.refresh();
+  };
+  // L4 month complete: Gala, Results + local board, then restart or continue in place.
+  CA.runFinale = function (choice, finalScore) {
     if (CA._finaleBusy) return;
+    var score = finalScore === undefined ? TF.Gala.scoreFromLive(TF) : finalScore;
+    TF.Gala.verdict(score);
     CA._finaleBusy = true;
     var end = document.getElementById('endCard');
     if (end) end.hidden = true;
-    var score = TF.Gala && TF.Gala.scoreFromLive ? TF.Gala.scoreFromLive(TF) : 0;
     function goNext() {
       CA._finaleBusy = false;
       // Keep file:// (and http) base; bare pathname drops the scheme and can crash Chromium.
       var base = String(location.href || '').split('#')[0].split('?')[0] || location.pathname;
-      if (choice === 'again') CA.clearForNewRun();
+      if (choice === 'free') { CA.freePlay(); return; }
+      CA.clearForNewRun();
       // Defer so Results teardown finishes before unload (avoids Chromium file:// crashes after L4).
-      setTimeout(function () {
-        if (choice === 'free') location.href = base + '?mode=free';
-        else location.href = base;
-      }, 0);
+      setTimeout(function () { location.href = base; }, 0);
     }
     function showResults(play) {
       if (!(TF.Results && TF.Results.buildPayload && TF.Results.mount)) { goNext(); return; }
@@ -172,6 +181,9 @@
       if (TF.Crew && TF.Crew.hired) {
         TF.Crew.hired().forEach(function (id) { crewStats[id] = { fixes: 0, sales: 0, hacks: 0 }; });
       }
+      if (crewStats.matt) crewStats.matt.fixes = TF.Handyman ? TF.Handyman.fixes || 0 : 0;
+      if (crewStats.antonio) crewStats.antonio.hacks = TF.Hacks && TF.Hacks.log ? TF.Hacks.log.length : 0;
+      var stocks = TF.Mkt && TF.Mkt.summary ? TF.Mkt.summary().slice().sort(function (a, b) { return b.pct - a.pct; }) : [];
       var payload;
       try {
         payload = TF.Results.buildPayload({
@@ -180,7 +192,7 @@
           tradingNetCents: split.trading,
           seed: TF.Rng.seed,
           date: (function () { var d = new Date(); return d.toISOString().slice(0, 10); })(),
-          bestStock: '',
+          bestStock: stocks.length ? stocks[0].sym : '',
           crewStats: crewStats,
           west: west
         });
@@ -193,7 +205,7 @@
     }
     if (TF.Gala && TF.Gala.mount) {
       TF.Gala.mount(document.body, score, { onDone: showResults });
-    } else showResults({ won: score >= 700 });
+    } else showResults({ won: TF.Gala.verdict(score) === 'win' });
   };
   CA.resumePending = function () {
     if (!CA.pending) return;

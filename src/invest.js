@@ -93,6 +93,7 @@
     var avg = h.paid / h.units, p = I.price[m];
     h.units--; h.paid -= avg; TF.Ledger.add('metal', p, 'sell ' + m);
     I.history.push({ m: m, gain: Math.round(p - avg) });
+    if (I.history.length > 64) I.history.shift();
     Sim.events.push({ type: 'toast', text: 'Sold 1 ' + m + ' for $' + p + ' (' + (p - avg >= 0 ? '+' : '-') + '$' + Math.abs(Math.round(p - avg)) + ')' });
     I.render(); return true;
   };

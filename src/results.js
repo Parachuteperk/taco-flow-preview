@@ -99,13 +99,13 @@
     wrap.id = 'resultsScreen';
     wrap.style.cssText = 'position:fixed;inset:0;z-index:1200;background:#170d20ee;display:grid;place-items:center;padding:12px;box-sizing:border-box;overflow:auto';
     var panel = doc.createElement('div');
-    panel.style.cssText = 'width:100%;max-width:390px;box-sizing:border-box;background:#fff5d6;color:#2a1810;border:3px solid #501214;border-radius:12px;padding:14px;overflow-wrap:anywhere;word-break:break-word;font:14px/1.4 system-ui';
+    panel.style.cssText = 'max-height:calc(100vh - 24px);max-height:calc(100dvh - 24px);overflow:auto;overscroll-behavior:contain;width:100%;max-width:390px;box-sizing:border-box;background:#fff5d6;color:#2a1810;border:3px solid #501214;border-radius:12px;padding:14px;overflow-wrap:anywhere;word-break:break-word;font:15px/1.5 system-ui';
     wrap.appendChild(panel);
     function row(label, value) {
       var r = doc.createElement('div');
       r.style.cssText = 'display:flex;justify-content:space-between;gap:8px;padding:4px 0;border-top:1px solid #e3cfa5;overflow-wrap:anywhere';
       var a = doc.createElement('span'); a.textContent = label;
-      var b = doc.createElement('b'); b.textContent = value; b.style.cssText = 'text-align:right;overflow-wrap:anywhere';
+      var b = doc.createElement('b'); b.textContent = value; b.style.cssText = 'min-width:0;text-align:right;overflow-wrap:anywhere';
       r.appendChild(a); r.appendChild(b); panel.appendChild(r);
     }
     var h = doc.createElement('h2'); h.textContent = L.title || 'Night Results'; h.style.cssText = 'margin:0 0 6px;color:#7a1e2c;overflow-wrap:anywhere';
@@ -156,7 +156,7 @@
     }
     var close = doc.createElement('button');
     close.type = 'button'; close.textContent = 'Close';
-    close.style.cssText = 'width:100%;min-height:44px;margin-top:10px';
+    close.style.cssText = 'position:sticky;bottom:-14px;background:#fff5d6;color:#501214;font:bold 16px system-ui;width:100%;min-height:44px;margin-top:10px';
     close.onclick = function () { wrap.remove(); if (opts.onClose) opts.onClose(); };
     panel.appendChild(close);
     host.appendChild(wrap);

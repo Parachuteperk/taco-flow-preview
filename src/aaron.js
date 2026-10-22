@@ -221,7 +221,7 @@
     pass.style.cssText = 'flex:1;min-height:44px';
     hire.onclick = function () {
       var r = api && api.hire ? api.hire() : { ok: false };
-      wrap.remove();
+      if (r && r.ok) wrap.remove();
       if (r && r.ok && opts.onHired) opts.onHired(T.hired || []);
       else if (opts.onResult) opts.onResult(r);
     };

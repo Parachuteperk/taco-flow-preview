@@ -57,11 +57,17 @@
     if (TF.ArtPeople && !TF.ArtPeople.ALL_LOOKS) {
       TF.ArtPeople.ALL_LOOKS = (TF.ArtPeople.VARIANTS || []).concat(TF.ArtPeople.VARIANTS_B2 || [], TF.ArtPeople.VARIANTS_B3 || [], TF.ArtPeople.VARIANTS_B4 || []);
     }
+    function chatter() { return TF.Rng && TF.Rng.ambient ? TF.Rng.ambient() : Math.random(); }
+    // Adapt the existing idle caller without touching the parallel Aaron integration lane.
+    if (TF.Aaron && TF.Aaron.idleLine) {
+      var idleLine = TF.Aaron.idleLine;
+      TF.Aaron.idleLine = function () { return idleLine({ next: chatter }); };
+    }
     var wrap = TF.Sim && TF.Sim.spawnGuest;
 
     // Cosmetic quips must NOT touch Sim.rand — per-frame rolls desync the customer stream
     // (week-run desktop then can't afford Day-4 stand 2).
-    function quipRand() { return Math.random(); }
+    function quipRand() { return chatter(); }   // ambient stream, not the customer RNG (review M5)
     if (typeof wrap === 'function') {
       TF.Sim.spawnGuest = function () {
         var g = wrap.apply(this, arguments);

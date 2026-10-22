@@ -16,6 +16,8 @@
       levelData: lv.id && lv.id !== 'L1' ? lv : null,
       ledger: { rows: L.rows, cash: L.cash, seedCents: L.seedCents },
       rng: TF.Rng.getState(),
+      aaron: TF.Aaron && TF.Aaron.live ? TF.Aaron.live.getState() : null,
+      cast: TF.CastExtra ? TF.CastExtra.getState() : null,
       stock: EC && EC.K ? EC.K.getState() : null,
       market: TF.Market ? TF.Market.getState() : null,
       invest: I ? { metals: I.metals, price: I.price, lastPrice: I.lastPrice } : null,
@@ -31,6 +33,7 @@
     }
     L.rows = d.ledger.rows; L.cash = d.ledger.cash; L.seedCents = d.ledger.seedCents; L.unrouted = 0;
     TF.Rng.setState(d.rng);
+    if (TF.CastExtra) TF.CastExtra.setState(d.cast);
     if (EC && EC.K && d.stock) { EC.K.setState(d.stock); EC.K.setPhase('prep', EC.abs(W.day)); }
     if (EC && EC.M && d.west) { EC.M.setState(d.west); EC.M.startLevel(d.level, { retry: true }); }
     if (TF.Market && d.market) { TF.Market.setState(d.market); if (TF.Mkt) TF.Mkt.syncPrices(); }
@@ -40,6 +43,8 @@
       d.roster.forEach(function (id) { TF.Crew.hiredSet[id] = true; });
       TF.Crew.applyMods(); TF.Crew.spotKey = ''; TF.Crew.refresh();
     }
+    if (TF.Aaron && TF.Aaron.restore) TF.Aaron.restore(d.aaron, !!TF.Crew.hiredSet.aaron);
+    else if (TF.Aaron) TF.Aaron.pendingRestore = {state: d.aaron, hired: !!TF.Crew.hiredSet.aaron};
     if (EC && EC.sync) EC.sync();
     CP.retried = (d.retried || 0) + 1;
   };

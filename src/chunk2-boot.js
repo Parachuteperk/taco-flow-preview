@@ -31,6 +31,7 @@
     var lastPhaseKey = '';
 
     function ensureAaron() {
+      if (TF.Aaron.live && TF.Aaron.live !== instance) instance = TF.Aaron.live;
       if (instance) return instance;
       if (!TF.Rng || !TF.Ledger) return null;
       var seed = (TF.Rng.seed || 1) ^ 0xAA80;
@@ -51,16 +52,57 @@
         }
       });
       TF.Aaron.live = instance;
+      if (TF.Aaron.pendingRestore) { var pending = TF.Aaron.pendingRestore; delete TF.Aaron.pendingRestore; TF.Aaron.restore(pending.state, pending.hired); }
       return instance;
     }
     TF.Aaron.ensure = ensureAaron;
 
+    TF.Aaron.restore = function (saved, hired) {
+      var a = ensureAaron();
+      if (!saved) {
+        instance = null; TF.Aaron.live = null; a = ensureAaron();
+        saved = a.getState(); saved.hired = hired; // migrate old roster-only saves
+      }
+      a.setState(saved); a._bulk = null; hireShownFor = null;
+    };
+    TF.Aaron.hireLive = function () {
+      var a = ensureAaron(); syncDayPhase();
+      if (TF.Crew.hiredSet.aaron) return {ok: false, reason: 'alreadyHired'};
+      var can = a.canHire(); if (!can.ok) return can;
+      if (TF.Crew.blocked('aaron')) return {ok: false, reason: 'blocked'};
+      if (!TF.Crew.reserveOk('aaron', 40)) return {ok: false, reason: 'reserve'};
+      var r = a.hire();
+      if (r.ok) {
+        TF.Crew.hiredSet.aaron = true; TF.Crew.applyMods(); TF.Crew.spotKey = '';
+        TF.Week.bought('aaron'); TF.Crew.refresh();
+        if (TF.Save) TF.Save.write('prep');
+      }
+      return r;
+    };
+    // A bulk order reserves eight kits, cooks over time, then posts one contract receipt.
+    function bulkStep(a, dt) {
+      var E = TF.Econ, st = TF.Sim.stands[0];
+      if (!st.placed || !E || !E.on()) return;
+      var order = a.getState().orders.filter(function (o) { return o.status === 'requested'; })[0];
+      if (!order) return;
+      if (!a._bulk || a._bulk.id !== order.id) {
+        if (E.kits(st) < order.tacos) return;
+        var ks = E.state(); ks.standKits -= order.tacos; E.K.setState(ks); E.sync();
+        a._bulk = {id: order.id, left: order.tacos * (st.mods.cookT + st.mods.handT)};
+      }
+      a._bulk.left -= dt;
+      if (a._bulk.left <= 0 && a.completeBulkOrder(order.id)) {
+        TF.Sim.stats.served += order.tacos; st.served += order.tacos; st.rev += order.cents / 100;
+        a._bulk = null;
+      }
+    }
     function absDay() {
       return TF.Econ && TF.Econ.abs ? TF.Econ.abs(TF.Week.day) : TF.Week.day;
     }
     function openDuration() { return 180; }
 
     function syncDayPhase() {
+      if ((TF.Save && TF.Save.restoring) || (TF.Campaign && TF.Campaign.busy)) return;
       if (!(TF.Week && TF.Week.active && TF.Week.active())) return;
       var a = ensureAaron(); if (!a) return;
       var abs = absDay();
@@ -101,7 +143,7 @@
       if (!can.ok) return;
       if (hireShownFor === abs) return;
       hireShownFor = abs;
-      TF.Aaron.mountHire(document.body, a, {
+      TF.Aaron.mountHire(document.body, {hire: TF.Aaron.hireLive}, {
         onHired: function (lines) {
           if (TF.Crew) { TF.Crew.hiredSet.aaron = true; TF.Crew.applyMods && TF.Crew.applyMods(); TF.Crew.spotKey = ''; }
           (lines || []).forEach(function (l) {
@@ -174,6 +216,8 @@
         try {
           syncDayPhase();
           if (a.getState().day === abs) a.step(dt, abs, mapPhase);
+          if (phase === 'open' && a.getState().hired) bulkStep(a, dt);
+          a.drainEvents();
         } catch (e) {
           var msg = (e && e.message) || String(e);
           // Aaron.step throws these on legitimate Week phase transitions; do not spam the console.

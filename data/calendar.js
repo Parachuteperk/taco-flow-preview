@@ -50,7 +50,7 @@
     [{ id: 'finals2am', patienceS: 15 }],
     [{ id: 'lukasFarewell', nextDayDraw: true },
       { id: 'antonioHack', level: 8, levels: [6, 7, 8], readOnly: true }],
-    [{ id: 'gala', location: 'Old Main' }, { id: 'brendanRepays', cents: 4500, condition: 'aaronHired' },
+    [{ id: 'gala', location: 'Old Main' }, { id: 'brendanRepays', amount: 'accruedTab', condition: 'aaronHired' },
       { id: 'riverEpilogue' }]
   ];
   var unlocks = {

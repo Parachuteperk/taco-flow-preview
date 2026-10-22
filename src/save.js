@@ -32,6 +32,36 @@
   var SIM_KEYS = ['t', 'nextId', 'spawnT', 'thoughts', 'cookRate', 'serviceSlow', 'priceBoostT', 'crowd', 'rushT', 'nextRush', 'capExtra', 'waits', 'lost', 'demandMul', 'closing'];
   var STAND_KEYS = ['placed', 'sx', 'sy', 'rot', 'tier', 'restocks', 'rev', 'sold', 'served', 'ekits', 'wasteAcc', 'litterMul', 'needRestock'];
 
+  // Keep recent receipts; archive older rows by day/phase/category and customer kind.
+  // Cash, seed, daily totals and Gala splits stay exact, including inside Monday checkpoints.
+  function ledgerSnapshot(l) {
+    var rows = l.rows || [], cut = Math.max(0, rows.length - 512), groups = new Map(), old = [];
+    for (var i = 0; i < cut; i++) {
+      var r = rows[i];
+      if (r.cat === 'rent' || r.cat === 'seed') { old.push(copy(r)); continue; }
+      var cast = /^cast:([^ ]+)/.exec(r.ref || '');
+      var ref = cast ? 'cast:' + cast[1] + ' archive' : 'archive';
+      var key = JSON.stringify([r.day, r.phase, r.cat, ref]), a = groups.get(key);
+      if (a) a.cents += r.cents;
+      else groups.set(key, { day: r.day, phase: r.phase, cat: r.cat, cents: r.cents, ref: ref });
+    }
+    groups.forEach(function (r) { if (r.cents) old.push(r); });
+    return { rows: old.concat(copy(rows.slice(cut))), cash: l.cash, seedCents: l.seedCents, unrouted: l.unrouted || 0 };
+  }
+  // Checkpoints carry their own ledger. Compact before copying, avoiding three huge JSON copies.
+  function durable(value, key) {
+    if (!value || typeof value !== 'object') return value;
+    if (key === 'ledger' && Array.isArray(value.rows)) return ledgerSnapshot(value);
+    if (Array.isArray(value)) return value.map(function (v) { return durable(v); });
+    var out = {}; Object.keys(value).forEach(function (k) { out[k] = durable(value[k], k); }); return out;
+  }
+  SV.compact = function (d) {
+    var out = durable(d);
+    if (out.flags && out.flags.invest && out.flags.invest.history) out.flags.invest.history = out.flags.invest.history.slice(-64);
+    if (out.flags && out.flags.arcs && out.flags.arcs.beats) out.flags.arcs.beats = out.flags.arcs.beats.slice(-64);
+    return out;
+  };
+  SV.MAX_CHARS = 1500000; // <= 3 MB UTF-16, below common file:// localStorage quotas
   SV.snapshot = function (resume) {
     var W = TF.Week, E = TF.Econ, O = TF.Objects, I = TF.Invest, lv = World.level || {};
     var sim = {}; SIM_KEYS.forEach(function (k) { if (Sim[k] !== undefined) sim[k] = copy(Sim[k]); });
@@ -39,7 +69,7 @@
     return {
       version: VERSION, seed: TF.Rng.seed, savedAt: Date.now(), resume: resume,
       day: W.day, level: { id: lv.id || 'L1', data: lv.id && lv.id !== 'L1' ? lv : null },
-      ledger: { rows: copy(TF.Ledger.rows), cash: TF.Ledger.cash, seedCents: TF.Ledger.seedCents, unrouted: TF.Ledger.unrouted },
+      ledger: ledgerSnapshot(TF.Ledger),
       rngStates: TF.Rng.getState(),
       week: { results: copy(W.results), earnTotal: W.earnTotal || 0, bellSpawned: W.bellSpawned || 0 },
       econ: E && E.K ? { stock: E.K.getState(), west: E.M.getState(), levelNo: E.levelNo, rent: E.rent, wasted: E.wasted || 0, spoil: copy(E.spoil || []), last: E.last || null, autoOrders: copy(E.autoOrders || []), want: E.want } : null,
@@ -59,8 +89,9 @@
         arcs: plain(TF.Arcs, ['rng', 'rant']), bets: plain(TF.Bets, ['card']), hacks: plain(TF.Hacks, ['run']),
         events: plain(TF.Events, ['west']), supply: TF.Supply ? { trips: TF.Supply.trips, tripsByStand: TF.Supply.tripsByStand, soldOutSeconds: TF.Supply.soldOutSeconds } : null,
         handyman: TF.Handyman && TF.Handyman.M ? { m: TF.Handyman.M.getState(), day: TF.Handyman.day, fixes: TF.Handyman.fixes, faultsSeen: TF.Handyman.faultsSeen } : null,
-        checkpoint: TF.Checkpoint ? TF.Checkpoint.monday : null, retried: TF.Checkpoint ? TF.Checkpoint.retried : 0,
-        campaign: TF.Campaign ? { monday: TF.Campaign.monday, pending: TF.Campaign.pending } : null,   // the month's Monday checkpoint (6B B2)
+        checkpoint: TF.Checkpoint ? durable(TF.Checkpoint.monday) : null, retried: TF.Checkpoint ? TF.Checkpoint.retried : 0,
+        campaign: TF.Campaign ? { monday: durable(TF.Campaign.monday), pending: durable(TF.Campaign.pending) } : null,   // the month's Monday checkpoint (6B B2)
+        castExtra: TF.CastExtra && TF.CastExtra.getState ? TF.CastExtra.getState() : null,   // regulars remember: Brendan's tab, Lukas, inspections (chunk 3)
         aaron: TF.Aaron && TF.Aaron.live ? TF.Aaron.live.getState() : null
       }
     };
@@ -87,6 +118,7 @@
     var keys = Object.keys(live);
     for (var i = 0; i < keys.length; i++) {
       var k = keys[i];
+      if (k === 'scheduledCatalysts' && saved[k] === undefined) continue; // pre-inspection saves
       if (!(k in saved)) return path + '.' + k + ' missing';
       // keyed-by-day / -by-symbol maps hold whatever days or tickers there are: check only fixed-shape objects
       if (/^(holdings|prices|preRolls|publicCatalysts|fineDays|weeks|weeklyCounts|active|permits|ctx|openPrices)$/.test(k)) continue;
@@ -130,6 +162,17 @@
     if (!d.flags || typeof d.flags !== 'object' || !d.flags.objects || !Array.isArray(d.flags.objects.litter) || !d.flags.story || !d.flags.events || !d.flags.arcs) return 'flags';
     if (!d.week || !Array.isArray(d.week.results) || !d.week.results.every(function (r) { return r && int(r.day) && typeof r.sold === 'number'; })) return 'week results';
     if (!d.crew || !Array.isArray(d.crew.hired) || !d.crew.hired.every(function (h) { return typeof h === 'string'; }) || typeof d.crew.extras !== 'object' || !d.crew.extras) return 'crew';
+    if (d.flags.aaron && TF.Aaron && TF.Aaron.create) {
+      try {
+        var probe = TF.Aaron.create({rng: {next: function () { return 0; }, getState: function () { return 0; }, setState: function () {}}, getCash: function () { return 0; }, postTransaction: function () { throw new Error('validation must not spend'); }});
+        probe.setState(d.flags.aaron);
+        if (d.flags.aaron.hired !== (d.crew.hired.indexOf('aaron') >= 0)) return 'Aaron roster mismatch';
+      } catch (aaronError) { return 'Aaron: ' + aaronError.message; }
+    }
+    var cast = d.flags.castExtra;
+    if (cast && (!cast.brendan || !int(cast.brendan.owed) || cast.brendan.owed < 0 || !int(cast.brendan.repaid) || cast.brendan.repaid < 0 ||
+        !int(cast.brendan.lost) || cast.brendan.lost < 0 || !Array.isArray(cast.brendan.visits) || !cast.brendan.visits.every(function (n) { return int(n) && n >= 1 && n <= 20; }) ||
+        !cast.met || typeof cast.met !== 'object' || !Array.isArray(cast.inspections) || !cast.inspections.every(function (i) { return i && int(i.day) && typeof i.pass === 'boolean'; }))) return 'cast memory';
     var I = d.flags.invest;
     if (TF.Invest) {
       if (!I || !I.metals || !I.price || !I.lastPrice || !['gold', 'silver'].every(function (m) {
@@ -233,16 +276,20 @@
     if (SV.disabled || (TF.Campaign && TF.Campaign.locked && !TF.Campaign.persisting) || !TF.Week || !TF.Week.active() || !TF.Econ || !TF.Econ.on()) return false;
     var ls = store();
     if (!ls) return false;
-    try { var d = SV.snapshot(resume); ls.setItem(KEY, JSON.stringify(d)); SV.writes++; SV.lastWrite = { day: d.day, resume: resume }; return true; }
-    catch (e) { return false; }   // quota / blocked storage: play on without saves
+    try { var d = SV.compact(SV.snapshot(resume)), raw = JSON.stringify(d);
+      if (raw.length > SV.MAX_CHARS) throw new Error('save exceeds size budget');
+      ls.setItem(KEY, raw); SV.writes++; SV.lastWrite = { day: d.day, resume: resume }; return true; }
+    catch (e) { SV.writeError = e.message; return false; }   // quota / blocked storage: play on without saves
   };
   SV.clear = function () { var ls = store(); try { if (ls) ls.removeItem(KEY); } catch (e) { /* ignore */ } };
 
   // ---- Resume: restart the saved day at PREP ------------------------------------------------------------
   SV.restore = function (d, importing) {
     var W = TF.Week, E = TF.Econ, O = TF.Objects, I = TF.Invest, L = TF.Ledger;
-    SV.disabled = true;   // no auto-saves while rebuilding
+    SV.disabled = true; SV.restoring = true;   // no auto-saves or Aaron phase sync while rebuilding
     try {
+      var invalid = SV.validate(d); if (invalid) throw new Error(invalid);
+      d = SV.compact(d);
       // always from a clean copy of the saved level: nothing placed today survives (B1 review: an import kept
       // the current stand on top of the saved state)
       TF.LEVELS[d.level.id] = TF.LEVELS[d.level.id] || d.level.data;
@@ -282,27 +329,28 @@
       if (TF.Handyman && f.handyman) { TF.Handyman.M = null; TF.Handyman.step && TF.Handyman.on() && TF.Handyman.step(0); if (TF.Handyman.M) { TF.Handyman.M.setState(f.handyman.m); TF.Handyman.day = f.handyman.day; TF.Handyman.S = TF.Handyman.M.getState(); } TF.Handyman.fixes = f.handyman.fixes; TF.Handyman.faultsSeen = f.handyman.faultsSeen; }
       if (TF.Checkpoint && f.checkpoint) { TF.Checkpoint.monday = f.checkpoint; TF.Checkpoint.retried = f.retried || 0; }
       if (TF.Campaign && f.campaign) { TF.Campaign.monday = f.campaign.monday || null; TF.Campaign.pending = f.campaign.pending || null; }
+      if (TF.CastExtra && TF.CastExtra.setState) TF.CastExtra.setState(f.castExtra);
+      // Restore Aaron before Week.refresh can start a day or charge a wage.
+      if (TF.Aaron && TF.Aaron.restore) TF.Aaron.restore(f.aaron, !!TF.Crew.hiredSet.aaron);
+      else if (TF.Aaron) TF.Aaron.pendingRestore = { state: f.aaron, hired: !!TF.Crew.hiredSet.aaron };
       // the day itself: PREP of the saved day (an after-REPORT save moves on to the next day's PREP; Friday's
       // REPORT comes back as that week's verdict, with its retry)
       W.setDayForResume(d.day, d.resume === 'report');
       TF.Crew.applyMods(); TF.Crew.spotKey = '';
       if (E) E.sync();
-      if (TF.Aaron && TF.Aaron.ensure && f.aaron) {
-        try {
-          var a = TF.Aaron.ensure();
-          if (a) a.setState(f.aaron);
-          if (f.aaron.hired && TF.Crew) { TF.Crew.hiredSet.aaron = true; TF.Crew.applyMods(); TF.Crew.spotKey = ''; }
-        } catch (aaronErr) { SV.aaronRestoreError = aaronErr.message; }
-      }
       SV.resumed = { day: W.day, from: d.resume };
     } catch (err) {
       // a save that validated but still fails to apply: put it aside and start clean rather than play on half-restored
       SV.disabled = false; SV.rejected = 'restore failed: ' + err.message;
       if (importing) return false;
-      try { var ls = store(); ls.setItem(KEY + '.bad', ls.getItem(KEY) || ''); ls.removeItem(KEY); } catch (e2) { /* ignore */ }
+      // Remove the bad slot first: copying a quota-sized save to .bad used to throw
+      // before removal, so each automatic reload offered the same broken save again.
+      var ls = store();
+      try { if (ls) ls.removeItem(KEY); } catch (e2) { /* blocked storage */ }
+      try { if (ls) ls.setItem(KEY + '.bad', JSON.stringify({reason: SV.rejected, savedAt: d && d.savedAt})); } catch (e3) { /* diagnostics are optional */ }
       if (!SV.noReload) location.reload();
       return false;
-    } finally { SV.disabled = false; }
+    } finally { SV.disabled = false; SV.restoring = false; }
     if (TF.Campaign && TF.Campaign.pending && !importing) { TF.Campaign.resumePending(); return true; }
     if (!importing) SV.write(d.resume === 'report' && d.day >= 5 ? 'report' : 'prep');
     return true;
@@ -347,7 +395,7 @@
       Object.keys(props).forEach(function (k) { if ('value' in props[k]) visit(props[k].value); });
     }
     visit(TF);
-    [TF.Econ && TF.Econ.K, TF.Econ && TF.Econ.M, TF.Market, TF.Handyman && TF.Handyman.M].forEach(function (m) {
+    [TF.Econ && TF.Econ.K, TF.Econ && TF.Econ.M, TF.Market, TF.Handyman && TF.Handyman.M, TF.Aaron && TF.Aaron.live].forEach(function (m) {
       if (m && m.getState && m.setState) states.push({ module: m, state: m.getState() });
     });
     var level = World.level;
@@ -372,7 +420,9 @@
     if (why) return { ok: false, why: why };
     var rollback = importRollback();
     if (!SV.restore(d, true)) { var rejected = SV.rejected; rollback(); return { ok: false, why: rejected }; }
-    try { store().setItem(KEY, typeof text === 'string' ? text : JSON.stringify(text)); }
+    try { var raw = JSON.stringify(SV.compact(d), enc);
+      if (raw.length > SV.MAX_CHARS) throw new Error('save exceeds size budget');
+      store().setItem(KEY, raw); }
     catch (e) { rollback(); return { ok: false, why: 'storage blocked' }; }
     return { ok: true };
   };
@@ -389,5 +439,8 @@
   // a level load is a new Monday: save it (after the level's resets and its Monday checkpoint; not while restoring)
   World.onLoad.push(function () { if (!SV.disabled) SV.write('prep'); });
   if (TF.Campaign && !TF.Campaign.monday && TF.Week.day === 1 && TF.Week.phase === 'prep') TF.Campaign.captureMonday();
+  if (TF.Week && !TF.Week.active()) { // explicit Free play boot retires campaign and retry slots
+    if (TF.Campaign && TF.Campaign.clearForNewRun) TF.Campaign.clearForNewRun(); else SV.clear();
+  }
   if (!SV.offer()) { if (SV.future) SV.disabled = true; else SV.write('prep'); }   // boot: Day 1 PREP is the first save (unless there's one to resume)
 })(window.TF);

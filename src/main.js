@@ -30,17 +30,18 @@
   // ---- Layout ------------------------------------------------------------
   var dpr = 1;
   function resize() {
+    var oldCenter = CAM ? CAM.toWorld(CAM.width / 2, (CAM.height + CAM.viewportTop) / 2, {}) :
+      R.vw0 ? R.toWorld(R.vw0 / 2, R.vh0 / 2) : { x: World.W / 2, y: World.H / 2 - 2 };
     dpr = Math.min(window.devicePixelRatio || 1, 2);
     R.dpr = dpr;
     R.vw = window.innerWidth; R.vh = window.innerHeight;
     canvas.width = Math.round(R.vw * dpr); canvas.height = Math.round(R.vh * dpr);
     canvas.style.width = R.vw + 'px'; canvas.style.height = R.vh + 'px';
-    var oldCenter = R.vw0 ? R.toWorld(R.vw0 / 2, R.vh0 / 2) : { x: World.W / 2, y: World.H / 2 - 2 };
     // Start zoomed in enough that a 2x2 stand and its line read clearly; +/-, wheel and pinch zoom.
     if (!R.vw0) { R.cam.z = Math.max(1.1, Math.min(2.0, Math.min(R.vw, R.vh) / 520)); R.defaultZ = R.cam.z; }
+    makeCamera();
     R.centerOn(oldCenter.x, oldCenter.y);
     R.vw0 = R.vw; R.vh0 = R.vh;
-    makeCamera();
   }
   // ---- 6B camera (src/camera.js): zoom buckets [whole quad, default, close-up], pinch about the fingers,
   // inertia, and the view clamped to the level. R.cam *is* the camera's {x,y,z}, so the renderer, onboarding
@@ -51,7 +52,7 @@
     if (!TF.Camera) return null;
     var lo = minimumZoom(), mid = Math.max(lo * 1.05, R.defaultZ || 1.2), hi = Math.max(mid * 1.05, 2.6);
     var z = Math.max(lo, Math.min(hi, R.cam.z)), x = R.cam.x, y = R.cam.y;
-    CAM = TF.Camera.create({ W: World.W, H: World.H, width: R.vw, height: R.vh, tileWidth: C.TW, tileHeight: C.TH, zoomLevels: [lo, mid, hi], zoom: z });
+    CAM = TF.Camera.create({ W: World.W, H: World.H, width: R.vw, height: R.vh, viewportTop: R.vw <= 480 ? Math.min(R.hudBottom || 0, R.vh - 1) : 0, tileWidth: C.TW, tileHeight: C.TH, zoomLevels: [lo, mid, hi], zoom: z });
     CAM.cam.x = x; CAM.cam.y = y; CAM.clamp();
     R.cam = CAM.cam;
     R.centerOn = function (wx, wy) { CAM.snapTo(wx, wy); };   // centred where the bounds allow
@@ -165,17 +166,23 @@
   el.hack.addEventListener('click', function () { Audio.unlock(); api.hack(); });
   el.raid.addEventListener('click', function () { Audio.unlock(); api.raid(); });
 
-  var toastTimer = null;
+  var toastTimer = null, toastQueue = [], toastActive = null;
   function toastTop() {
-    var bc = $('betCard'), y = R.hudBottom || 0;
+    var bc = $('betCard'), y = R.hudBottom || 0, rent = $('rentHint');
+    if (rent && !rent.hidden) y = Math.max(y, rent.getBoundingClientRect().bottom);
     if (bc && !bc.hidden) y = Math.max(y, bc.getBoundingClientRect().bottom);
     return Math.round(y + 8);
   }
-  function toast(text) {
-    el.toast.textContent = text; el.toast.hidden = false;
-    // phone: below the (wrapped) HUD, so a breakdown toast never covers the MATT chip it points at (C4)
+  function showNextToast() {
+    if (!toastQueue.length) { toastActive = null; toastTimer = null; el.toast.hidden = true; return; }
+    toastActive = toastQueue.shift(); el.toast.textContent = toastActive; el.toast.hidden = false;
     el.toast.style.top = innerWidth < 480 && R.hudBottom ? toastTop() + 'px' : '';
-    clearTimeout(toastTimer); toastTimer = setTimeout(function () { el.toast.hidden = true; }, 2600);
+    toastTimer = setTimeout(showNextToast, 2600);
+  }
+  function toast(text) {
+    if (!text || text === toastActive || toastQueue.indexOf(text) >= 0) return;
+    toastQueue.push(text);
+    if (toastTimer === null) showNextToast();
   }
   var popupTimer = null;
   function showHackPopup(title, body) {
@@ -334,11 +341,20 @@
       handleEvents();
     }
     if (TF.FX) TF.FX.frame(real, state.running && !(TF.Title && TF.Title.active) && !(TF.CallLine && TF.CallLine.active));
-    if (CAM) CAM.update(real);
     R.hudBottom = $('hud').getBoundingClientRect().bottom;
+    var rentHint = $('rentHint');
+    if (R.vw <= 430 && rentHint && !rentHint.hidden) R.hudBottom = Math.max(R.hudBottom, rentHint.getBoundingClientRect().bottom);
+    if (CAM) {
+      // Center and clamp within the map area below the phone HUD, including when
+      // Build opens another row. Otherwise taps hit HUD controls and starter pins
+      // remain clamped into their 'pan first' state even after centering the spot.
+      CAM.setViewportTop(R.vw <= 480 ? Math.min(R.hudBottom, R.vh - 1) : 0);
+      CAM.update(real);
+    }
     // phones: Jared's card sits just below the HUD, however many rows it wraps to
     var bc = $('betCard');
     if (bc && !bc.hidden && R.vw <= 480) { var top = Math.round(R.hudBottom + 8) + 'px'; if (bc.style.top !== top) bc.style.top = top; }
+    R.speechTop = bc && !bc.hidden && R.vw <= 480 ? bc.getBoundingClientRect().bottom : R.hudBottom;
     // phone toasts stack under the HUD and under Jared's card when it's up (it used to cover them, C4 final review)
     if (!el.toast.hidden && innerWidth < 480) el.toast.style.top = toastTop() + 'px';
     R.draw(state.running ? state.acc / C.DT : 1, { placing: state.mode === 'place', building: state.mode === 'build', ghost: state.ghost, hover: state.hover, lineBad: state.lineBad });

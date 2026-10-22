@@ -6,7 +6,10 @@
   var ctx = null, mainCtx = null;
 
   R.setContext = function (c) { ctx = mainCtx = c; };
-  World.onLoad.push(function () { R.groundDirty = true; buildingEntries = null; });
+  World.onLoad.push(function () { R.groundDirty = true; buildingEntries = null; propPool.length = 0; });
+  var pointScratch = { x: 0, y: 0 }, propPoint = { x: 0, y: 0 }, boxScratch = {}, shields = [], shieldCount = 0;
+  var TREE_LOBES = [[-13, -27, 11], [12, -28, 11], [0, -32, 13], [-5, -36, 9], [7, -37, 8]];
+  function depthOrder(a, b) { return a.k - b.k; }
   var scene = [], propPool = [], guestPool = [], buildingEntries = null, buildingImages = {};
   function buildings() {
     if (buildingEntries) return buildingEntries;
@@ -26,9 +29,11 @@
   }
 
   // World (tile units) -> screen (CSS px). h lifts the point vertically in px at zoom 1.
-  R.toScreen = function (wx, wy, h) {
+  R.toScreen = function (wx, wy, h, out) {
     var z = R.cam.z;
-    return { x: (wx - wy) * (C.TW / 2) * z + R.cam.x, y: (wx + wy) * (C.TH / 2) * z + R.cam.y - (h || 0) * z };
+    out = out || {};
+    out.x = (wx - wy) * (C.TW / 2) * z + R.cam.x; out.y = (wx + wy) * (C.TH / 2) * z + R.cam.y - (h || 0) * z;
+    return out;
   };
   R.toWorld = function (sx, sy) {
     var z = R.cam.z, a = (sx - R.cam.x) / ((C.TW / 2) * z), b = (sy - R.cam.y) / ((C.TH / 2) * z);
@@ -179,22 +184,25 @@
   var PROP_ART = {};
   PROP_ART[T.TREE] = 'oak'; PROP_ART[T.PLANTER] = 'planter'; PROP_ART[T.LAMP] = 'lamp'; PROP_ART[T.BENCH] = 'bench';
   // Screen-space box (CSS px, relative to the foot) of each prop sprite, for fading/overlap tests.
-  R.propBox = function (kind, z) {
+  R.propBox = function (kind, z, out) {
     var im = TF.Art.has(PROP_ART[kind]) ? TF.Art.img[PROP_ART[kind]] : null, sc = C.TW * z / (TF.Art.quadTileW || 254);
-    if (im) return { l: -im.ax * sc, r: (im.width - im.ax) * sc, t: -im.ay * sc, b: (im.height - im.ay) * sc };
-    if (kind === T.TREE) return { l: -24 * z, r: 24 * z, t: -50 * z, b: 4 * z };
-    if (kind === T.LAMP) return { l: -4 * z, r: 4 * z, t: -40 * z, b: 2 * z };
-    return { l: -16 * z, r: 16 * z, t: -16 * z, b: 6 * z };
+    out = out || {};
+    if (im) { out.l = -im.ax * sc; out.r = (im.width - im.ax) * sc; out.t = -im.ay * sc; out.b = (im.height - im.ay) * sc; }
+    else if (kind === T.TREE) { out.l = -24 * z; out.r = 24 * z; out.t = -50 * z; out.b = 4 * z; }
+    else if (kind === T.LAMP) { out.l = -4 * z; out.r = 4 * z; out.t = -40 * z; out.b = 2 * z; }
+    else { out.l = -16 * z; out.r = 16 * z; out.t = -16 * z; out.b = 6 * z; }
+    return out;
   };
 
+  var benchA = {}, benchB = {};
   R.drawProp = function (kind, tx, ty, alpha) {
-    var z = R.cam.z, p = R.toScreen(tx + 0.5, ty + 0.5), s = World.shade[ty * World.W + tx];
+    var z = R.cam.z, p = R.toScreen(tx + 0.5, ty + 0.5, 0, propPoint), s = World.shade[ty * World.W + tx];
     var type = World.propType[ty * World.W + tx], art = TF.Art.has(type) ? type : PROP_ART[kind];   // sprite by prop type first
     if (alpha !== undefined) ctx.globalAlpha = alpha;
     if (TF.Art.has(art)) {
       var im = TF.Art.img[art], sc = C.TW * z / (TF.Art.quadTileW || 254);
       // The planter is a 1 x 1/2 tile box: its bottom corner sits on the tile's bottom-middle.
-      if (kind === T.PLANTER) p = R.toScreen(tx + 0.75, ty + 1);
+      if (kind === T.PLANTER) p = R.toScreen(tx + 0.75, ty + 1, 0, propPoint);
       if (kind === T.TREE) { ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(p.x, p.y, 24 * z, 10 * z, 0, 0, Math.PI * 2); ctx.fill(); }
       ctx.drawImage(im, p.x - im.ax * sc, p.y - im.ay * sc, im.width * sc, im.height * sc);
       ctx.globalAlpha = 1;
@@ -213,16 +221,17 @@
       ctx.strokeStyle = '#5e4630'; ctx.lineWidth = 3 * z;
       ctx.beginPath(); ctx.moveTo(p.x, p.y - 14 * z); ctx.lineTo(p.x - 11 * z, p.y - 24 * z); ctx.moveTo(p.x, p.y - 15 * z); ctx.lineTo(p.x + 12 * z, p.y - 25 * z); ctx.stroke();
       var base = shadeHex('#3b6a2c', 0.9 + s * 0.2), hi = shadeHex('#4f8a37', 0.9 + s * 0.2);
-      [[-13, -27, 11], [12, -28, 11], [0, -32, 13], [-5, -36, 9], [7, -37, 8]].forEach(function (b, i) {
+      for (var i = 0; i < TREE_LOBES.length; i++) {
+        var b = TREE_LOBES[i];
         ctx.fillStyle = i < 3 ? base : hi;
         ctx.beginPath(); ctx.ellipse(p.x + b[0] * z, p.y + b[1] * z, b[2] * z * 1.3, b[2] * z * 0.85, 0, 0, Math.PI * 2); ctx.fill();
-      });
+      }
     } else if (kind === T.BENCH) {
-      var a = R.toScreen(tx + 0.2, ty + 0.5, 6), b = R.toScreen(tx + 0.8, ty + 0.5, 6);
+      var a = R.toScreen(tx + 0.2, ty + 0.5, 6, benchA), b = R.toScreen(tx + 0.8, ty + 0.5, 6, benchB);
       ctx.strokeStyle = '#4a3220'; ctx.lineWidth = 1.5 * z;
-      [0.25, 0.75].forEach(function (u) {
-        var f = R.toScreen(tx + u, ty + 0.5); ctx.beginPath(); ctx.moveTo(f.x, f.y); ctx.lineTo(f.x, f.y - 6 * z); ctx.stroke();
-      });
+      for (var leg = 0; leg < 2; leg++) {
+        var f = R.toScreen(tx + (leg ? 0.75 : 0.25), ty + 0.5, 0, pointScratch); ctx.beginPath(); ctx.moveTo(f.x, f.y); ctx.lineTo(f.x, f.y - 6 * z); ctx.stroke();
+      }
       ctx.strokeStyle = '#8a5a32'; ctx.lineWidth = 4 * z;
       ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
       ctx.lineWidth = 2.5 * z;
@@ -513,33 +522,35 @@
   }
   R.drawTaco = function (c, x, y, z) { var keep = ctx; ctx = c; drawTaco(x, y, z); ctx = keep; };
 
+  function personArm(g, sx, sy, z, bob, stride, fdx, fdy, side, isTaco) {
+    var shx = sx + side * 4.2 * z, shy = sy - 17 * z + bob;
+    var swing = isTaco ? 0 : (side === -1 ? -stride : stride) * 0.9;
+    var hx = isTaco ? shx + fdx * 3 * z : shx + fdx * swing;
+    var hy = isTaco ? shy + 5 * z + fdy * 3 * z : shy + 7.5 * z + fdy * swing;
+    ctx.strokeStyle = g.shirt; ctx.lineWidth = 2.2 * z;
+    ctx.beginPath(); ctx.moveTo(shx, shy); ctx.lineTo(hx, hy); ctx.stroke();
+    ctx.fillStyle = g.skin; ctx.beginPath(); ctx.arc(hx, hy, 1.3 * z, 0, Math.PI * 2); ctx.fill();
+    if (isTaco) drawTaco(hx + fdx * 1.5 * z, hy - 0.5 * z, z);
+  }
+
   // Placeholder RCT-style person: 4 facings, 4-frame walk cycle by distance.
   R.drawPerson = function (g, sx, sy, z) {
     var front = g.facing < 2, sd = (g.facing === 0 || g.facing === 3) ? 1 : -1;
     var fdx = sd * 0.89, fdy = front ? 0.45 : -0.45;
     var frame = g.moving ? Math.floor(g.anim / 0.16) % 4 : -1;
     z = z * (g.tall || 1);
-    var stride = frame < 0 ? 0 : [1, 0, -1, 0][frame] * 2.6 * z;
+    var stride = frame < 0 ? 0 : (frame === 0 ? 1 : frame === 2 ? -1 : 0) * 2.6 * z;
     var liftL = frame === 3 ? 1.4 * z : 0, liftR = frame === 1 ? 1.4 * z : 0;
     var bob = frame === 1 || frame === 3 ? -0.7 * z : 0;
     ctx.fillStyle = 'rgba(0,0,0,0.25)';
     ctx.beginPath(); ctx.ellipse(sx, sy, 5.5 * z, 2.6 * z, 0, 0, Math.PI * 2); ctx.fill();
     ctx.lineCap = 'round'; ctx.strokeStyle = g.pants; ctx.lineWidth = 2.4 * z;
     var hipY = sy - 9 * z + bob;
-    [{ hx: sx - 1.8 * z, s: stride, lift: liftL }, { hx: sx + 1.8 * z, s: -stride, lift: liftR }].forEach(function (l) {
-      ctx.beginPath(); ctx.moveTo(l.hx, hipY); ctx.lineTo(l.hx + fdx * l.s, sy - 0.8 * z + fdy * l.s - l.lift); ctx.stroke();
-    });
-    function arm(side, isTaco) {
-      var shx = sx + side * 4.2 * z, shy = sy - 17 * z + bob;
-      var swing = isTaco ? 0 : (side === -1 ? -stride : stride) * 0.9;
-      var hx = isTaco ? shx + fdx * 3 * z : shx + fdx * swing;
-      var hy = isTaco ? shy + 5 * z + fdy * 3 * z : shy + 7.5 * z + fdy * swing;
-      ctx.strokeStyle = g.shirt; ctx.lineWidth = 2.2 * z;
-      ctx.beginPath(); ctx.moveTo(shx, shy); ctx.lineTo(hx, hy); ctx.stroke();
-      ctx.fillStyle = g.skin; ctx.beginPath(); ctx.arc(hx, hy, 1.3 * z, 0, Math.PI * 2); ctx.fill();
-      if (isTaco) drawTaco(hx + fdx * 1.5 * z, hy - 0.5 * z, z);
+    for (var leg = 0; leg < 2; leg++) {
+      var hx = sx + (leg ? 1.8 : -1.8) * z, strideLeg = leg ? -stride : stride, lift = leg ? liftR : liftL;
+      ctx.beginPath(); ctx.moveTo(hx, hipY); ctx.lineTo(hx + fdx * strideLeg, sy - 0.8 * z + fdy * strideLeg - lift); ctx.stroke();
     }
-    if (!front && g.hasTaco) arm(sd, true);
+    if (!front && g.hasTaco) personArm(g, sx, sy, z, bob, stride, fdx, fdy, sd, true);
     if (g.backpack && front) { ctx.fillStyle = g.pack; ctx.fillRect(sx - sd * 5.5 * z, sy - 18.5 * z + bob, 3 * z, 8 * z); }
     ctx.fillStyle = g.shirt;
     var tw = 8.5 * z, top = sy - 19.5 * z + bob;
@@ -547,8 +558,8 @@
     if (ctx.roundRect) ctx.roundRect(sx - tw / 2, top, tw, 11 * z, 2.5 * z); else ctx.rect(sx - tw / 2, top, tw, 11 * z);
     ctx.fill();
     if (g.backpack && !front) { ctx.fillStyle = g.pack; ctx.fillRect(sx - 3.5 * z, sy - 18.5 * z + bob, 7 * z, 8.5 * z); }
-    arm(-sd, false);
-    if (front || !g.hasTaco) arm(sd, front && g.hasTaco);
+    personArm(g, sx, sy, z, bob, stride, fdx, fdy, -sd, false);
+    if (front || !g.hasTaco) personArm(g, sx, sy, z, bob, stride, fdx, fdy, sd, front && g.hasTaco);
     var hy2 = sy - 24 * z + bob;
     ctx.fillStyle = g.skin;
     ctx.beginPath(); ctx.arc(sx, hy2, 4.6 * z, 0, Math.PI * 2); ctx.fill();
@@ -628,31 +639,36 @@
   // RCT-style see-through: a tree / lamp / bench / planter drawn in front of the stand or a crew
   // member and overlapping them on screen is faded, so it never hides the stand or the crew.
   R.propFade = 0.22;
+  function shield(l, r, t, b, k) {
+    var s = shields[shieldCount] || (shields[shieldCount] = {}); shieldCount++;
+    s.l = l; s.r = r; s.t = t; s.b = b; s.k = k;
+  }
   function fadeProps(items, z) {
-    var shields = [];
-    Sim.stands.forEach(function (st) {
-      if (!st.placed) return;
-      var c = [R.toScreen(st.sx, st.sy), R.toScreen(st.sx + 2, st.sy), R.toScreen(st.sx + 2, st.sy + 2), R.toScreen(st.sx, st.sy + 2)];
-      shields.push({ l: Math.min(c[0].x, c[3].x) - 6 * z, r: Math.max(c[1].x, c[2].x) + 6 * z, t: c[0].y - 95 * z, b: c[2].y, k: st.sx + st.sy + 0.2 });
-    });
-    items.forEach(function (it) {
-      // crew, people eating at the picnic tables, and the tables themselves stay visible
-      var eater = it.g && it.g.state === 'EAT', table = it.o && it.o.kind === 'picnic';
-      if (it.kind !== 'crew' && !eater && !table) return;
-      var p = R.toScreen(it.x, it.y);
-      if (table) shields.push({ l: p.x - 40 * z, r: p.x + 40 * z, t: p.y - 30 * z, b: p.y + 20 * z, k: it.k + 1.2 });
-      else shields.push({ l: p.x - 12 * z, r: p.x + 12 * z, t: p.y - 36 * z, b: p.y + 2 * z, k: it.k });
-    });
-    if (!shields.length) return;
-    items.forEach(function (it) {
-      if (it.kind !== 'prop' && !it.fadeBox) return;
-      var p = R.toScreen(it.x, it.y), b = it.fadeBox ? { l: it.fadeBox.l * z, r: it.fadeBox.r * z, t: it.fadeBox.t * z, b: it.fadeBox.b * z } : R.propBox(it.t, z);
-      var l = p.x + b.l, r = p.x + b.r, t = p.y + b.t, bt = p.y + b.b;
-      for (var i = 0; i < shields.length; i++) {
+    shieldCount = 0;
+    for (var n = 0; n < Sim.stands.length; n++) {
+      var st = Sim.stands[n];
+      if (!st.placed) continue;
+      var p = R.toScreen(st.sx, st.sy, 0, pointScratch), x = p.x, y = p.y;
+      shield(x - C.TW * z - 6 * z, x + C.TW * z + 6 * z, y - 95 * z, y + 2 * C.TH * z, st.sx + st.sy + 0.2);
+    }
+    for (var n = 0; n < items.length; n++) {
+      var it = items[n], eater = it.g && it.g.state === 'EAT', table = it.o && it.o.kind === 'picnic';
+      if (it.kind !== 'crew' && !eater && !table) continue;
+      var p = R.toScreen(it.x, it.y, 0, pointScratch);
+      if (table) shield(p.x - 40 * z, p.x + 40 * z, p.y - 30 * z, p.y + 20 * z, it.k + 1.2);
+      else shield(p.x - 12 * z, p.x + 12 * z, p.y - 36 * z, p.y + 2 * z, it.k);
+    }
+    if (!shieldCount) return;
+    for (var n = 0; n < items.length; n++) {
+      var it = items[n];
+      if (it.kind !== 'prop' && !it.fadeBox) continue;
+      var p = R.toScreen(it.x, it.y, 0, pointScratch), b = it.fadeBox || R.propBox(it.t, z, boxScratch), scale = it.fadeBox ? z : 1;
+      var l = p.x + b.l * scale, r = p.x + b.r * scale, t = p.y + b.t * scale, bt = p.y + b.b * scale;
+      for (var i = 0; i < shieldCount; i++) {
         var s = shields[i];
-        if (it.k > s.k && l < s.r && r > s.l && t < s.b && bt > s.t) { it.fade = R.propFade; return; }
+        if (it.k > s.k && l < s.r && r > s.l && t < s.b && bt > s.t) { it.fade = R.propFade; break; }
       }
-    });
+    }
   }
 
   // ---- Frame -------------------------------------------------------------
@@ -722,16 +738,18 @@
     }
 
     // Depth-sorted objects by foot point; near the stand, its 2x2 footprint decides front/behind.
-    var items = scene, tx, ty, only = ui.onlyCrew, pn = 0, gn = 0; items.length = 0;
+    var items = scene, tx, ty, only = ui.onlyCrew, gn = 0; items.length = 0;
     if (!only && !ui.noProps) buildings().forEach(function (b) { items.push(b); });
     if (!only) for (ty = 0; ty < World.H; ty++) for (tx = 0; tx < World.W; tx++) {
       var t = World.get(tx, ty);
       if (!World.isProp(t)) continue;
       if (ui.noProps) continue;
-      var pp = R.toScreen(tx + 0.5, ty + 0.5);
+      var pp = R.toScreen(tx + 0.5, ty + 0.5, 0, pointScratch);
       if (pp.x < -60 || pp.x > R.vw + 60 || pp.y < -20 || pp.y > R.vh + 90) continue;   // cull
-      var pe = propPool[pn] || (propPool[pn] = {kind: 'prop'}); pn++;
-      pe.k = tx + ty + 1; pe.t = t; pe.x = tx + 0.5; pe.y = ty + 0.5; pe.fade = undefined; items.push(pe);
+      // Tile-indexed entries retain static coordinates and depth keys across camera moves.
+      var pi = ty * World.W + tx;
+      var pe = propPool[pi] || (propPool[pi] = { kind: 'prop', k: tx + ty + 1, x: tx + 0.5, y: ty + 0.5 });
+      pe.t = t; pe.fade = undefined; items.push(pe);
     }
     if (!ui.noPieces && !only) Sim.stands.forEach(function (s2) {
       if (s2.placed && !(ghost && ui.placing && s2 === Sim.selected())) R.standPieces(s2.sx, s2.sy, s2.rot, s2.tier, !!s2.trip, s2).forEach(function (it) { items.push(it); });
@@ -742,7 +760,7 @@
       var g = gs[i];
       var wx = g.px + (g.x - g.px) * alpha + g.pOffX + (g.offX - g.pOffX) * alpha;
       var wy = g.py + (g.y - g.py) * alpha + g.pOffY + (g.offY - g.pOffY) * alpha;
-      var gp = R.toScreen(wx, wy);
+      var gp = R.toScreen(wx, wy, 0, pointScratch);
       if (gp.x < -40 || gp.x > R.vw + 40 || gp.y < -60 || gp.y > R.vh + 40) continue;
       var ge = guestPool[gn] || (guestPool[gn] = {kind: 'guest'}); gn++;
       ge.k = wx + wy; ge.g = g; ge.x = wx; ge.y = wy; items.push(ge);
@@ -756,7 +774,7 @@
     if (only) items = items.filter(function (it) { return it.kind === 'crew' && it.id === only; });
     if (ui.onlyPieces) items = items.filter(function (it) { return it.kind === 'piece' && !it.ghost; });
     fadeProps(items, z);
-    items.sort(function (a, b) { return a.k - b.k; });
+    items.sort(depthOrder);
     for (var j = 0; j < items.length; j++) {
       var it = items[j];
       if (it.kind === 'building') drawBuilding(it.b);
@@ -768,7 +786,7 @@
       else if (it.kind === 'supply') TF.Supply.draw(ctx, it, z);
       else if (it.plugin) it.plugin.draw(ctx, it, z);
       else {
-        var p = R.toScreen(it.x, it.y);
+        var p = R.toScreen(it.x, it.y, 0, pointScratch);
         if (p.x < -40 || p.x > R.vw + 40 || p.y < -60 || p.y > R.vh + 40) continue;
         var out = Math.max(Math.max(-it.x, it.x - World.W), Math.max(-it.y, it.y - World.H), 0);
         R.drawGuest(it.g, p.x, p.y, Math.max(0, 1 - out * 1.6));

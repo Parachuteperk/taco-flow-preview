@@ -47,7 +47,7 @@
     var rng = new Stream(typeof seed === 'number' ? seed : hash(seed) * 4294967296);
     var state = {seed: seed, tickers: tickers, day: 0, phase: 'idle', prices: {}, holdings: {},
       rngState: 0, viralDay: 6 + Math.floor(rng.next() * 15), preRolls: {}, catalysts: [],
-      hintLog: [], scores: {weeks: {}, month: emptyScores()}, publicCatalysts: {},
+      hintLog: [], scores: {weeks: {}, month: emptyScores()}, publicCatalysts: {}, scheduledCatalysts: [],
       fineDays: {}, goldBoostDay: 0, lastClose: null, ctx: {}};
     tickers.forEach(function (t) { state.prices[t.sym] = t.startCents; state.holdings[t.sym] = 0; });
     function ticker(sym) {
@@ -84,6 +84,7 @@
           }
         });
       });
+      (state.scheduledCatalysts || []).filter(function (c) { return c.day === day; }).forEach(function (c) { add(c.sym, c.type, c.shift, c.jump); });
       if (state.goldBoostDay === day) add('GOLD', 'flight-to-gold', 70 - (ticker('GOLD') || {}).risePct);
       if (day % 5 === 0 && ctx.rentPaidToday) add('WEST', 'rent', 10);
       if (ctx.trashOverflowOnVisit) add('WEST', 'trash', -10);
@@ -202,7 +203,12 @@
       state.lastClose = {day: day, moves: moves};
       return copy(state.lastClose);
     }
-    return {openPrep: openPrep, quote: quote, board: function () {
+    function scheduleCatalyst(c) {
+      if (!ticker(c.sym) || typeof c.type !== 'string' || !c.type || !Number.isInteger(c.day) || c.day <= state.day || c.day > 21 || !Number.isFinite(c.shift) || (c.jump !== undefined && !Number.isFinite(c.jump))) throw new Error('Invalid scheduled catalyst');
+      var pending = state.scheduledCatalysts || (state.scheduledCatalysts = []);
+      if (!pending.some(function (x) { return x.sym === c.sym && x.type === c.type && x.day === c.day; })) pending.push(copy(c));
+    }
+    return {scheduleCatalyst: scheduleCatalyst, openPrep: openPrep, quote: quote, board: function () {
       return tickers.map(function (t) { var q = quote(t.sym); q.sym = t.sym; return q; });
     }, portfolio: function () { return copy(state.holdings); },
     portfolioValueCents: function () {
@@ -212,7 +218,7 @@
     close: close, hint: hint, starHeadlines: starHeadlines,
     scorecard: function () { return {week: copy(state.scores.weeks[Math.ceil(state.day / 5)] || emptyScores()), month: copy(state.scores.month)}; },
     getState: function () { state.rngState = rng.getState(); return copy(state); },
-    setState: function (s) { state = copy(s); tickers = state.tickers; rng.setState(state.rngState); }};
+    setState: function (s) { state = copy(s); state.scheduledCatalysts = state.scheduledCatalysts || []; tickers = state.tickers; rng.setState(state.rngState); }};
   }
   return {create: create, clampP: clampP, hash: hash};
 }));

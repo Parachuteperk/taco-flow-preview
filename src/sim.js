@@ -541,6 +541,7 @@
     g.lostWhy = null; g.lostSt = null;
   }
   Sim.loseSale = loseSale;
+  Sim.leavePolitely = function (g) { leavePolitely(g); };   // cast effects (chunk 3)
 
   // How many students walked away from a stand for a reason in the last 10 s.
   Sim.recentBalks = function (st, why) {
@@ -769,7 +770,9 @@
     var base = lv ? lv.patienceS : C.PATIENCE;
     var shade = TF.Objects ? TF.Objects.patienceBonus(g) : 0;
     var fault = TF.Handyman ? TF.Handyman.patienceDelta(g) : 0;
-    return base + ((g.variant % 7) - 3) + shade + fault;
+    var a = TF.Aaron && TF.Aaron.live, spot = a && a.getState().hired && TF.Crew && TF.Crew.spotOf && TF.Crew.spotOf('aaron');
+    var pitch = a && spot ? a.patienceBonus(spot, {position: {x: g.x, y: g.y}, waiting: true}) : 0;
+    return base + ((g.variant % 7) - 3) + shade + fault + pitch;
   };
   function impatience(g, dt) {
     var st = g.st;
@@ -825,7 +828,9 @@
     if (TF.Crew && TF.Crew.hiredSet.runner && !st.trip) { st.needRestock = false; return; }
     var busyCook = st.cook.grill.length || st.cook.pending.length;
     var handing = st.window && st.window.paid;
-    if (st.needRestock && !st.trip && !busyCook && !handing && st.pickup.every(function (p) { return !p; })) {
+    // The 25% signal also schedules the runner. The cashier must sell the remaining
+    // kits before leaving, including when a larger cooler raises that threshold.
+    if (st.needRestock && st.stock <= 0 && !st.trip && !busyCook && !handing && st.pickup.every(function (p) { return !p; })) {
       var d = cornerPos(st), ex = nearestExit(d);
       if (!ex) return;   // No route: stay sold out and retry; never refill through terrain.
       var r = st.trip = {
@@ -879,7 +884,7 @@
     else if (Sim.t >= Sim.nextRush && !(TF.Week && TF.Week.active())) { Sim.rushT = C.RUSH_T; Sim.nextRush = Sim.t + rnd(C.RUSH_EVERY[0], C.RUSH_EVERY[1]); Sim.events.push({ type: 'toast', text: 'Rush!' }); }
     var crowd = C.CROWD[Sim.crowd];
     if (Sim.spawnT <= 0) {
-      Sim.spawnT = rnd(C.SPAWN_MIN, C.SPAWN_MAX) / (Sim.mods.spawnMul * crowd.mul * (Sim.rushT > 0 ? 2 : 1) * (Sim.demandMul || 1));
+      Sim.spawnT = rnd(C.SPAWN_MIN, C.SPAWN_MAX) / (Sim.mods.spawnMul * crowd.mul * (Sim.rushT > 0 ? 2 : 1) * (Sim.demandMul || 1) * (TF.CastExtra ? TF.CastExtra.demandMul : 1));
       if (Sim.guests.length < crowd.max) spawn();
     }
     if (TF.Events) TF.Events.step(dt);

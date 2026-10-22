@@ -43,6 +43,7 @@
     } else if (object(template)) {
       if (!object(value)) throw new TypeError('Missing object: ' + path);
       Object.keys(template).forEach(function (k) {
+        if (k === 'scheduledCatalysts' && value[k] === undefined) return; // pre-inspection saves
         if (!Object.prototype.hasOwnProperty.call(value, k)) throw new TypeError('Missing state: ' + path + '.' + k);
         shape(template[k], value[k], path + '.' + k);
       });
@@ -133,6 +134,18 @@
           !x.tickers.some(function (t) { return t.sym === h.sym && t.opensDay <= h.day; }) ||
           !['up', 'down', 'flat'].includes(h.dir)) throw new Error('Invalid Exchange hint');
     });
+    if (x.scheduledCatalysts !== undefined) {
+      if (!Array.isArray(x.scheduledCatalysts)) throw new Error('Invalid scheduled catalysts');
+      var scheduledKeys = new Set();
+      x.scheduledCatalysts.forEach(function (c) {
+        if (!object(c) || !x.tickers.some(function (t) { return t.sym === c.sym; }) || typeof c.type !== 'string' ||
+            !whole(c.day) || c.day < 1 || c.day > 21 || !Number.isFinite(c.shift) ||
+            (c.jump !== undefined && !Number.isFinite(c.jump))) throw new Error('Invalid scheduled catalyst');
+        var key = c.sym + ':' + c.type + ':' + c.day;
+        if (scheduledKeys.has(key)) throw new Error('Duplicate scheduled catalyst');
+        scheduledKeys.add(key);
+      });
+    }
     x.catalysts.forEach(function (c) {
       if (!object(c) || typeof c.sym !== 'string' || typeof c.type !== 'string' || c.day !== x.day ||
           typeof c.public !== 'boolean' || (c.shift !== undefined && !Number.isFinite(c.shift)) ||

@@ -49,9 +49,9 @@
     pinBox.innerHTML = '';
     O.pins = out.map(function (s, i) {
       var b = document.createElement('button');
-      b.className = 'starter'; b.id = 'starter' + i;
+      b.className = 'starter' + (i === 0 ? ' best' : ''); b.id = 'starter' + i;
       var loc = TF.locationGrade ? TF.locationGrade(s.sx, s.sy, s.rot).grade : '';
-      b.innerHTML = '★ Set up here' + (loc ? ' <small>' + loc + '</small>' : '') + '<span class="arr"></span>';
+      b.innerHTML = '★ Set up here' + (loc && i === 0 ? ' <small>' + loc + '</small>' : '') + '<span class="arr"></span>';
       b.addEventListener('click', function () {
         if (b.dataset.edge === '1') { R.centerOn(s.sx + 1, s.sy + 1); O.userPanned = true; return; }   // pan first
         O.useSpot(i);
@@ -103,6 +103,8 @@
   // so recompute them (they pointed at L1 tiles on L2 and placeStand refused every pin).
   O.resetForLevel = function () {
     O.centered = false; O.opened = false; O.firstSale = false; O.firstSaleT = 0; O.follow = null; O.userPanned = false;
+    O.phoneZoomed = false;
+    if (R.vw <= 430 && TF.ui.camera) TF.ui.camera.zoomAt(R.defaultZ);
     O.suggestKey = null; O.suggest = null; O.computeSpots();
     if (TF.ui && TF.ui.setHint) TF.ui.setHint('New level! Tap a glowing spot to set up the stand.', 4);
   };
@@ -130,6 +132,11 @@
 
   O.frame = function (real) {
     var st = Sim.selected(), ui = TF.ui.state;
+    if (R.vw <= 430 && st.placed && !O.phoneZoomed && TF.ui.camera) {
+      O.phoneZoomed = true;
+      TF.ui.camera.zoomAt(Math.max(R.cam.z, R.defaultZ * 1.25));
+      R.centerOn(st.geom.cx, st.geom.cy + 0.5);
+    }
     // starter pins: only while the stand being set up isn't placed yet
     var showPins = !st.placed && ui.mode === 'idle';
     pinBox.hidden = !showPins;
@@ -160,17 +167,18 @@
 
   function centerSoft(wx, wy, real) {
     var p = R.toScreen(wx, wy), k = Math.min(1, real * 3);
-    R.cam.x += (R.vw / 2 - p.x) * k; R.cam.y += (R.vh / 2 - p.y) * k;
+    R.cam.x += (R.vw / 2 - p.x) * k; R.cam.y += ((R.vh + (R.vw <= 480 ? (R.hudBottom || 0) : 0)) / 2 - p.y) * k;
   }
 
   // Ground glow: starter footprints and the suggested line (drawn by the renderer).
   O.drawWorld = function (z) {
     var st = Sim.selected(), t = performance.now() / 1000, pulse = 0.35 + 0.25 * Math.sin(t * 4);
     function dia(x, y, fill, stroke) { R.poly([R.toScreen(x, y), R.toScreen(x + 1, y), R.toScreen(x + 1, y + 1), R.toScreen(x, y + 1)], fill, stroke, 2); }
-    if (!st.placed) O.spots.forEach(function (s) {
+    if (!st.placed) O.spots.forEach(function (s, i) {
+      var alpha = i === 0 ? pulse : 0.12, edge = i === 0 ? 0.95 : 0.3;
       var g = World.standGeom(s.sx, s.sy, s.rot);
-      g.tiles.forEach(function (tl) { dia(tl[0], tl[1], 'rgba(60,230,110,' + pulse.toFixed(2) + ')', 'rgba(120,255,160,0.95)'); });
-      dia(g.order[0], g.order[1], 'rgba(255,220,90,' + (pulse * 0.8).toFixed(2) + ')', 'rgba(255,230,120,0.9)');
+      g.tiles.forEach(function (tl) { dia(tl[0], tl[1], 'rgba(60,230,110,' + alpha.toFixed(2) + ')', 'rgba(120,255,160,' + edge + ')'); });
+      dia(g.order[0], g.order[1], 'rgba(255,220,90,' + (alpha * 0.8).toFixed(2) + ')', 'rgba(255,230,120,' + edge + ')');
     });
     if (st.placed && !st.line.length && O.suggest) O.suggest.forEach(function (tl, i) {
       dia(tl.x, tl.y, 'rgba(255,210,60,' + (0.25 + 0.2 * Math.sin(t * 5 - i)).toFixed(2) + ')', 'rgba(255,200,40,0.9)');
