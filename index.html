@@ -30,12 +30,22 @@
   #crewPanel .card[hidden] { display: none; }
   #crewPanel .permit { background: #fde8a6; border-radius: 6px; color: #5a3a10; font-weight: 700; }
   #crewPanel .soon { font-size: 11px; color: #7a5a4a; padding: 4px 6px 6px; }
+  #crewPanel .standtabs { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 4px 6px; }
+  #crewPanel .standtabs[hidden] { display: none; }
+  #crewPanel .standtabs button { font-size: 12px; padding: 4px 9px; background: #fff; color: #7a1e2c; border: 2px solid #7a1e2c; border-radius: 7px; font-weight: 800; }
+  #crewPanel .standtabs button.on { background: #7a1e2c; color: #fff5d6; }
+  #crewPanel .owns { font-size: 11px; color: #3a5a2a; font-weight: 700; padding: 0 6px 6px; }
+  #crewPanel .frlist { padding: 0 6px 6px 58px; font-size: 11px; color: #5a4030; }
+  #crewPanel .frlist:empty { display: none; }
+  #crewPanel .frow { margin-top: 3px; }
+  #crewPanel .frow .mini { font-size: 10px; padding: 1px 6px; margin-left: 4px; }
   .bar { display: contents; }
   .bar[hidden] { display: none; }
   #crewPanel h3 .mini, #crewPanel summary .mini { font-size: 11px; padding: 3px 7px; margin-left: 6px; }
   .card { display: flex; align-items: center; gap: 8px; padding: 6px; border-top: 1px solid #e3cfa5; }
   .card .portrait { width: 44px; height: 64px; background: #f2e4c0; border-radius: 6px; image-rendering: pixelated; flex: none; }
   .card .info { flex: 1; font-size: 13px; }
+  .card button.info { flex: none; padding: 5px 7px; }   /* the (i) button shares the .info class; keep it narrow */
   .card small { color: #7a1e2c; font-weight: 600; }
   .card .fx { font-size: 11px; color: #5a4030; margin-top: 2px; }
   .card button { padding: 7px 9px; font-size: 12px; white-space: nowrap; }
@@ -290,100 +300,100 @@
   <div class="head"><b>Hire / Crew</b><button id="btnCrewClose" aria-label="Close">&times;</button></div>
   <div id="crewList"></div>
 </div>
-<script src="src/config.js?v=202610231340"></script>
-<script src="src/artload.js?v=202610231340"></script>
-<script src="src/data/dialogue.js?v=202610231340"></script>
-<script src="src/data/levels/L1.js?v=202610231340"></script>
-<script src="src/data/levels/L2.js?v=202610231340"></script>
-<script src="src/data/levels/L3.js?v=202610231340"></script>
-<script src="src/data/levels/L4.js?v=202610231340"></script>
-<script src="src/level-buildings.js?v=202610231340"></script>
-<script src="src/data/levels/L1-buildings.js?v=202610231340"></script>
-<script src="assets/levels/buildings_A_v1.js?v=202610231340"></script>
-<script src="assets/levels/buildings_B_v1.js?v=202610231340"></script>
-<script src="src/data/buildings-manifest.js?v=202610231340"></script>
-<script src="src/world.js?v=202610231340"></script>
-<script src="src/level-blocks.js?v=202610231340"></script>
-<script src="src/sim.js?v=202610231340"></script>
-<script src="src/ledger.js?v=202610231340"></script>
-<script src="data/economy.js?v=202610231340"></script>
-<script src="data/favors.js?v=202610231340"></script>
-<script src="src/west.js?v=202610231340"></script>
-<script src="src/stock.js?v=202610231340"></script>
-<script src="data/tickers.js?v=202610231340"></script>
-<script src="src/exchange.js?v=202610231340"></script>
-<script src="src/audio.js?v=202610231340"></script>
-<script src="src/art.js?v=202610231340"></script>
-<script src="src/people.js?v=202610231340"></script>
-<script src="src/render.js?v=202610231340"></script>
-<script src="src/speech.js?v=202610231340"></script>
-<script src="src/speechgate.js?v=202610231340"></script>
-<script src="data/p7content.js?v=202610231340"></script>
-<script src="data/story-copy.js?v=202610231340"></script>
-<script src="src/crew.js?v=202610231340"></script>
-<script src="src/events.js?v=202610231340"></script>
-<script src="src/supply.js?v=202610231340"></script>
-<script src="src/build.js?v=202610231340"></script>
-<script src="src/objects.js?v=202610231340"></script>
-<script src="src/story.js?v=202610231340"></script>
-<script src="src/ambient.js?v=202610231340"></script>
-<script src="src/bets.js?v=202610231340"></script>
-<script src="src/empire.js?v=202610231340"></script>
-<script src="src/week.js?v=202610231340"></script>
-<script src="src/report.js?v=202610231340"></script>
-<script src="src/hacks.js?v=202610231340"></script>
-<script src="src/invest.js?v=202610231340"></script>
-<script src="src/arcs.js?v=202610231340"></script>
-<script src="data/story.js?v=202610231340"></script>
-<script src="data/calendar.js?v=202610231340"></script>
-<script src="src/calendar.js?v=202610231340"></script>
-<script src="src/market.js?v=202610231340"></script>
-<script src="src/econ.js?v=202610231340"></script>
-<script src="src/matt.js?v=202610231340"></script>
-<script src="src/handyman.js?v=202610231340"></script>
-<script src="src/data/star-l1.js?v=202610231340"></script>
-<script src="data/gala.js?v=202610231340"></script>
-<script src="data/results-text.js?v=202610231340"></script>
-<script src="data/aaron-text.js?v=202610231340"></script>
-<script src="data/cast-lines.js?v=202610231340"></script>
-<script src="data/look-quips.js?v=202610231340"></script>
-<script src="data/hints.js?v=202610231340"></script>
-<script src="data/level-text.js?v=202610231340"></script>
-<script src="src/data/cast.js?v=202610231340"></script>
-<script src="src/levelflow.js?v=202610231340"></script>
-<script src="src/levelstart-ui.js?v=202610231340"></script>
-<script src="src/campaign.js?v=202610231340"></script>
-<script src="src/crowd/grid.js?v=202610231340"></script>
-<script src="src/crowd/flowfield.js?v=202610231340"></script>
-<script src="src/crowd/pool.js?v=202610231340"></script>
-<script src="src/crowd/lod.js?v=202610231340"></script>
-<script src="src/crowd/sim.js?v=202610231340"></script>
-<script src="src/crowd/draw.js?v=202610231340"></script>
-<script src="src/crowdlayer.js?v=202610231340"></script>
-<script src="src/camera.js?v=202610231340"></script>
-<script src="src/minimap.js?v=202610231340"></script>
-<script src="src/title.js?v=202610231340"></script>
-<script src="src/callline.js?v=202610231340"></script>
-<script src="src/fx.js?v=202610231340"></script>
-<script src="src/data/cast-extra.js?v=202610231340"></script>
-<script src="src/castextra.js?v=202610231340"></script>
-<script src="src/main.js?v=202610231340"></script>
-<script src="src/minimap-ui.js?v=202610231340"></script>
-<script src="src/onboard.js?v=202610231340"></script>
-<script src="src/checkpoint.js?v=202610231340"></script>
-<script src="src/board.js?v=202610231340"></script>
-<script src="src/sharecard.js?v=202610231340"></script>
-<script src="src/results.js?v=202610231340"></script>
-<script src="src/aaron.js?v=202610231340"></script>
-<script src="src/gala.js?v=202610231340"></script>
-<script src="src/castlines.js?v=202610231340"></script>
-<script src="src/lookquips.js?v=202610231340"></script>
-<script src="src/hints-ui.js?v=202610231340"></script>
-<script src="src/leveltext-ui.js?v=202610231340"></script>
-<script src="src/storycards.js?v=202610231340"></script>
-<script src="src/storybeats.js?v=202610231340"></script>
-<script src="src/chunk2-boot.js?v=202610231340"></script>
-<script src="src/save.js?v=202610231340"></script>
-<script src="src/phone-ui.js?v=202610231340"></script>
+<script src="src/config.js?v=202610231401"></script>
+<script src="src/artload.js?v=202610231401"></script>
+<script src="src/data/dialogue.js?v=202610231401"></script>
+<script src="src/data/levels/L1.js?v=202610231401"></script>
+<script src="src/data/levels/L2.js?v=202610231401"></script>
+<script src="src/data/levels/L3.js?v=202610231401"></script>
+<script src="src/data/levels/L4.js?v=202610231401"></script>
+<script src="src/level-buildings.js?v=202610231401"></script>
+<script src="src/data/levels/L1-buildings.js?v=202610231401"></script>
+<script src="assets/levels/buildings_A_v1.js?v=202610231401"></script>
+<script src="assets/levels/buildings_B_v1.js?v=202610231401"></script>
+<script src="src/data/buildings-manifest.js?v=202610231401"></script>
+<script src="src/world.js?v=202610231401"></script>
+<script src="src/level-blocks.js?v=202610231401"></script>
+<script src="src/sim.js?v=202610231401"></script>
+<script src="src/ledger.js?v=202610231401"></script>
+<script src="data/economy.js?v=202610231401"></script>
+<script src="data/favors.js?v=202610231401"></script>
+<script src="src/west.js?v=202610231401"></script>
+<script src="src/stock.js?v=202610231401"></script>
+<script src="data/tickers.js?v=202610231401"></script>
+<script src="src/exchange.js?v=202610231401"></script>
+<script src="src/audio.js?v=202610231401"></script>
+<script src="src/art.js?v=202610231401"></script>
+<script src="src/people.js?v=202610231401"></script>
+<script src="src/render.js?v=202610231401"></script>
+<script src="src/speech.js?v=202610231401"></script>
+<script src="src/speechgate.js?v=202610231401"></script>
+<script src="data/p7content.js?v=202610231401"></script>
+<script src="data/story-copy.js?v=202610231401"></script>
+<script src="src/crew.js?v=202610231401"></script>
+<script src="src/events.js?v=202610231401"></script>
+<script src="src/supply.js?v=202610231401"></script>
+<script src="src/build.js?v=202610231401"></script>
+<script src="src/objects.js?v=202610231401"></script>
+<script src="src/story.js?v=202610231401"></script>
+<script src="src/ambient.js?v=202610231401"></script>
+<script src="src/bets.js?v=202610231401"></script>
+<script src="src/empire.js?v=202610231401"></script>
+<script src="src/week.js?v=202610231401"></script>
+<script src="src/report.js?v=202610231401"></script>
+<script src="src/hacks.js?v=202610231401"></script>
+<script src="src/invest.js?v=202610231401"></script>
+<script src="src/arcs.js?v=202610231401"></script>
+<script src="data/story.js?v=202610231401"></script>
+<script src="data/calendar.js?v=202610231401"></script>
+<script src="src/calendar.js?v=202610231401"></script>
+<script src="src/market.js?v=202610231401"></script>
+<script src="src/econ.js?v=202610231401"></script>
+<script src="src/matt.js?v=202610231401"></script>
+<script src="src/handyman.js?v=202610231401"></script>
+<script src="src/data/star-l1.js?v=202610231401"></script>
+<script src="data/gala.js?v=202610231401"></script>
+<script src="data/results-text.js?v=202610231401"></script>
+<script src="data/aaron-text.js?v=202610231401"></script>
+<script src="data/cast-lines.js?v=202610231401"></script>
+<script src="data/look-quips.js?v=202610231401"></script>
+<script src="data/hints.js?v=202610231401"></script>
+<script src="data/level-text.js?v=202610231401"></script>
+<script src="src/data/cast.js?v=202610231401"></script>
+<script src="src/levelflow.js?v=202610231401"></script>
+<script src="src/levelstart-ui.js?v=202610231401"></script>
+<script src="src/campaign.js?v=202610231401"></script>
+<script src="src/crowd/grid.js?v=202610231401"></script>
+<script src="src/crowd/flowfield.js?v=202610231401"></script>
+<script src="src/crowd/pool.js?v=202610231401"></script>
+<script src="src/crowd/lod.js?v=202610231401"></script>
+<script src="src/crowd/sim.js?v=202610231401"></script>
+<script src="src/crowd/draw.js?v=202610231401"></script>
+<script src="src/crowdlayer.js?v=202610231401"></script>
+<script src="src/camera.js?v=202610231401"></script>
+<script src="src/minimap.js?v=202610231401"></script>
+<script src="src/title.js?v=202610231401"></script>
+<script src="src/callline.js?v=202610231401"></script>
+<script src="src/fx.js?v=202610231401"></script>
+<script src="src/data/cast-extra.js?v=202610231401"></script>
+<script src="src/castextra.js?v=202610231401"></script>
+<script src="src/main.js?v=202610231401"></script>
+<script src="src/minimap-ui.js?v=202610231401"></script>
+<script src="src/onboard.js?v=202610231401"></script>
+<script src="src/checkpoint.js?v=202610231401"></script>
+<script src="src/board.js?v=202610231401"></script>
+<script src="src/sharecard.js?v=202610231401"></script>
+<script src="src/results.js?v=202610231401"></script>
+<script src="src/aaron.js?v=202610231401"></script>
+<script src="src/gala.js?v=202610231401"></script>
+<script src="src/castlines.js?v=202610231401"></script>
+<script src="src/lookquips.js?v=202610231401"></script>
+<script src="src/hints-ui.js?v=202610231401"></script>
+<script src="src/leveltext-ui.js?v=202610231401"></script>
+<script src="src/storycards.js?v=202610231401"></script>
+<script src="src/storybeats.js?v=202610231401"></script>
+<script src="src/chunk2-boot.js?v=202610231401"></script>
+<script src="src/save.js?v=202610231401"></script>
+<script src="src/phone-ui.js?v=202610231401"></script>
 </body>
 </html>

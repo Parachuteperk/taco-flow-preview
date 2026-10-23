@@ -71,6 +71,11 @@
         "name": "Freshman Runner",
         "title": "Emergency Supply Intern",
         "line": "I'm not lost. This is a supply-side detour."
+      },
+      "freshman": {
+        "name": "Freshman",
+        "title": "Stand Helper",
+        "line": "First week on campus, first week on tacos. I take orders and hand them out. Fast-ish."
       }
     }
   };

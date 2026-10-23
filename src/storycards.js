@@ -80,6 +80,15 @@
       if (B) out.push('Bulk orders: ' + B.perDay + ' a day (' + B.perDayFromL3 + ' from Level 3), ' + B.tacos + ' tacos for $' + B.minDollars + '\u2013$' + B.maxDollars + ' each');
     } else if (id === 'runner') {
       out.push('Walks supply runs: restocks the stand from the van');
+    } else if (id === 'freshman') {   // the repeatable stand helper (not the Freshman Runner)
+      var F = TF.Crew && TF.Crew.FRESHMAN, K2 = copy().cards || {};
+      if (F) {
+        out.push('Order time ' + pct(F.orderMul) + ' and hand-off ' + pct(F.handMul) + ' shorter at the stand they’re assigned to (two: ' + pct(F.orderMul * F.orderMul) + ')');
+        out.push('Hire up to ' + F.capPerStand + ' per stand; move them between stands for free');
+        out.push(SC.fill(K2.hireCost || '{price} to hire', { price: money(F.price * 100) }) + ' each');
+        out.push(SC.fill(K2.wage || '{wage}/day wage', { wage: money(F.wageCents) }) + ' each');
+        var n = TF.Crew.freshmen.length; if (n) out.push('On the crew now: ' + n);
+      }
     }
     var r = roster(id);
     if (r) {

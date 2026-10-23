@@ -22,7 +22,8 @@
       stock: EC && EC.K ? EC.K.getState() : null,
       market: TF.Market ? TF.Market.getState() : null,
       invest: I ? { metals: I.metals, price: I.price, lastPrice: I.lastPrice } : null,
-      roster: TF.Crew ? TF.Crew.hired() : []
+      roster: TF.Crew ? TF.Crew.hired() : [],
+      freshmen: TF.Crew && TF.Crew.freshmen ? TF.Crew.freshmen : []
     });
   };
   CP.restore = function (d) {
@@ -43,6 +44,7 @@
     if (TF.Crew) {
       TF.Crew.hiredSet = { jared: true };
       d.roster.forEach(function (id) { TF.Crew.hiredSet[id] = true; });
+      if (TF.Crew.setFreshmen) TF.Crew.setFreshmen(d.freshmen || []);
       TF.Crew.applyMods(); TF.Crew.spotKey = ''; TF.Crew.refresh();
     }
     if (TF.Aaron && TF.Aaron.restore) TF.Aaron.restore(d.aaron, !!TF.Crew.hiredSet.aaron);

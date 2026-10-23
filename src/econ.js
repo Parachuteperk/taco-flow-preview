@@ -39,6 +39,7 @@
     EC.startRows = TF.Ledger.rows ? TF.Ledger.rows.length : 0;
     EC.startInv = EC.kitsLeft();
     Sim.stands.forEach(function (st) { st.dayRev = st.rev || 0; st.daySold = st.sold || 0; st.dayRep = st.reputation; });
+    if (TF.Crew && TF.Crew.normalizeFreshmen) { TF.Crew.normalizeFreshmen(); TF.Crew.applyMods(); }
     // Day 1 kindness: opening with no kits at all, Jared orders the suggested amount for you.
     if (day === 1 && EC.kitsLeft() === 0) {
       var sg = EC.K.suggestOrder({ yesterdaySold: null });
@@ -88,6 +89,8 @@
     ['payroll','rent','maintenance'].forEach(function (key) {
       if (costs[key]) TF.postTransaction({ day: EC.abs(day), phase: 'report', cat: key === 'payroll' ? 'wages' : key === 'rent' ? 'siteRent' : 'maintenance', cents: -costs[key], ref: n + ' stands' });
     });
+    var fw = TF.Crew && TF.Crew.freshWagesCents ? TF.Crew.freshWagesCents() : 0;   // Freshman helpers, $5/day each
+    if (fw) { TF.postTransaction({ day: EC.abs(day), phase: 'report', cat: 'wages', cents: -fw, ref: TF.Crew.freshmen.length + ' freshmen' }); costs.freshmen = fw; }
     if (TF.Empire && EC.levelNo === 3) {
       var site = stands.reduce(function(n,st) { return n + (TF.Empire.site(st).prime ? 1200 : 300); },0);
       TF.postTransaction({cat:'siteRent',cents:-site,ref:'Hillside access premium'}); costs.rent += site;

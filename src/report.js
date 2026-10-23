@@ -9,10 +9,21 @@
   function row(label, value, cls) { return '<div class="row' + (cls ? ' ' + cls : '') + '"><span>' + label + '</span><b>' + value + '</b></div>'; }
   function why(t) { return '<div class="why">' + t + '</div>'; }
 
+  // Pass 7: with 2+ stands the upgrades are grouped per stand (each stand's upgrades earn on its own till).
   RP.investRows = function (rows) {
     if (!rows || !rows.length) return '';
     var h = '<div class="inv"><div class="row"><span><b>Investments</b></span><b>earned / cost \u00B7 ROI</b></div>';
-    rows.forEach(function (x, i) {
+    var stands = rows.map(function (x) { return x.stand; }).filter(function (n, i, a) { return n && a.indexOf(n) === i; }).sort();
+    var order = rows.map(function (x, i) { return i; });
+    if (stands.length > 1) order.sort(function (a, b) { var sa = rows[a].stand || 99, sb = rows[b].stand || 99; return sa - sb || a - b; });
+    var last = 'none';
+    order.forEach(function (i) {
+      var x = rows[i];
+      if (stands.length > 1 && x.stand !== last) {
+        last = x.stand;
+        var sum = rows.filter(function (y) { return y.stand === x.stand; }).reduce(function (a, y) { return { e: a.e + y.earned, c: a.c + y.cost }; }, { e: 0, c: 0 });
+        h += '<div class="row"><span><b>' + (x.stand ? 'Stand ' + x.stand : 'Other') + '</b></span><b>' + (sum.e < 0 ? '-$' : '+$') + Math.abs(sum.e) + ' / $' + sum.c + '</b></div>';
+      }
       var tag = rows.length > 1 && i === 0 ? ' \u2B50 best' : rows.length > 1 && i === rows.length - 1 ? ' \u2B07 worst' : '';
       h += '<div class="row small"><span>' + x.name + (x.est ? ' <small>(est.)</small>' : '') + tag + '</span><b>' + (x.earned < 0 ? '-$' : '+$') + Math.abs(x.earned) + ' / $' + x.cost + ' \u00B7 ' + x.roi + '%' + (x.metal ? ' (now $' + x.value + ')' : '') + '</b></div>';
     });
@@ -92,6 +103,10 @@
   RP.env = function (r) {
     var C = TF.Crew, EC = TF.Econ, e = r.econ, empire = TF.Empire ? TF.Empire.reportHTML(r) : '';
     var names = C ? C.hired().map(function (id) { var x = C.ROSTER.filter(function (u) { return u.id === id; })[0]; return x ? x.name : id; }) : [];
+    if (C && C.freshmen && C.freshmen.length) {   // Freshman helpers, by stand
+      var by = {}; C.freshmen.forEach(function (f) { by[f.st + 1] = (by[f.st + 1] || 0) + 1; });
+      names.push(Object.keys(by).map(function (n) { return by[n] + ' Freshman' + (by[n] > 1 ? 'en' : '') + ' (Stand ' + n + ')'; }).join(', '));
+    }
     return { cash: TF.Sim && TF.Sim.stats ? TF.Sim.stats.money : undefined, crew: names, empireHTML: empire,
       headlines: (empire.match(/<div class="why"><b>/g) || []).length,
       floatDebt: EC && EC.finance ? EC.finance.floatDebt || 0 : 0, creditDebt: EC && EC.finance ? EC.finance.debt || 0 : 0,

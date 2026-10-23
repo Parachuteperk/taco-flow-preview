@@ -465,6 +465,7 @@
         lineTiles: st.line.length, connected: st.connected, capacity: st.cap,
         avgWait: Math.round(Sim.avgWait() * 100) / 100, hint: el.hint.textContent,
         crew: TF.Crew ? TF.Crew.hired() : [],
+        freshmen: TF.Crew && TF.Crew.freshmen ? TF.Crew.freshmen.map(function (f) { return f.st; }) : [],
         stands: Sim.stands.map(function (o) { return { idx: o.idx, placed: o.placed, sx: o.sx, sy: o.sy, rot: o.rot, tier: o.tier, stock: o.stock, stockMax: o.mods.stockMax, queue: o.queue.length, served: o.served || 0, sold: o.sold || 0, connected: o.connected, lineTiles: o.line.length, restocks: o.restocks, trip: !!o.trip, neck: TF.bottleneckOf(o), info: o.info ? { cap: o.info.cap, blocked: o.info.blocked, pickupClear: o.info.pickupClear } : null }; }),
         sel: Sim.sel,
         tier: st.tier, stock: st.stock, stockMax: Sim.mods.stockMax, restocks: st.restocks, restocking: !!Sim.runner, gaveUp: Sim.stats.gaveUp,

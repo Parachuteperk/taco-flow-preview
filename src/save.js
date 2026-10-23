@@ -79,7 +79,7 @@
         objects: O ? O.list.map(function (o) { return { kind: o.kind, x: o.x, y: o.y, st: o.st ? o.st.idx : 0, ready: o.ready, day: o.day, binned: o.binned || 0 }; }) : [],
         build: TF.Build ? { started: TF.Build.started, finished: TF.Build.finished } : null
       },
-      crew: { hired: TF.Crew.hired(), extras: copy(TF.Crew.extras) },
+      crew: { hired: TF.Crew.hired(), extras: copy(TF.Crew.extras), freshmen: copy(TF.Crew.freshmen || []) },
       sim: sim, stats: stats,
       flags: {
         cargo: TF.Empire ? copy(TF.Empire.cargo) : [],
@@ -166,6 +166,8 @@
     if (!d.flags || typeof d.flags !== 'object' || !d.flags.objects || !Array.isArray(d.flags.objects.litter) || !d.flags.story || !d.flags.events || !d.flags.arcs) return 'flags';
     if (!d.week || !Array.isArray(d.week.results) || !d.week.results.every(function (r) { return r && int(r.day) && typeof r.sold === 'number'; })) return 'week results';
     if (!d.crew || !Array.isArray(d.crew.hired) || !d.crew.hired.every(function (h) { return typeof h === 'string'; }) || typeof d.crew.extras !== 'object' || !d.crew.extras) return 'crew';
+    // Freshman helpers (Pass 7): optional - saves from before them have none
+    if (d.crew.freshmen !== undefined && (!Array.isArray(d.crew.freshmen) || d.crew.freshmen.length > 12 || !d.crew.freshmen.every(function (f) { return f && int(f.st) && f.st >= 0 && f.st < 6; }))) return 'freshmen';
     if (d.flags.aaron && TF.Aaron && TF.Aaron.create) {
       try {
         var probe = TF.Aaron.create({rng: {next: function () { return 0; }, getState: function () { return 0; }, setState: function () {}}, getCash: function () { return 0; }, postTransaction: function () { throw new Error('validation must not spend'); }});
@@ -332,6 +334,7 @@
       if (TF.Build && d.buildings.build) { TF.Build.jobs = []; TF.Build.started = d.buildings.build.started; TF.Build.finished = d.buildings.build.finished; }
       TF.Crew.hiredSet = { jared: true }; d.crew.hired.forEach(function (id) { TF.Crew.hiredSet[id] = true; });
       TF.Crew.extras = d.crew.extras || {};
+      if (TF.Crew.setFreshmen) TF.Crew.setFreshmen(d.crew.freshmen || []);   // old saves: none
       // money, randomness, the economy and the market
       L.rows = d.ledger.rows; L.cash = d.ledger.cash; L.seedCents = d.ledger.seedCents; L.unrouted = d.ledger.unrouted || 0;
       TF.Rng.setState(d.rngStates);

@@ -424,7 +424,7 @@
     if (TF.Week && TF.Week.resetForLevel) TF.Week.resetForLevel();   // Monday PREP of the new level
     if (TF.Econ) TF.Econ.resetLevel(Sim.levelNo());
     // purchased extras (second cooler, cannon, AI Ali) are upgrades: they reset with the stand; the roster stays
-    if (TF.Crew) { TF.Crew.extras = {}; TF.Crew.applyMods(); TF.Crew.spotKey = ''; }
+    if (TF.Crew) { TF.Crew.extras = {}; if (TF.Crew.normalizeFreshmen) TF.Crew.normalizeFreshmen(); TF.Crew.applyMods(); TF.Crew.spotKey = ''; }
     for (var k = 0; k < st.pickup.length; k++) st.pickup[k] = null;
     st.cook.grill = []; st.cook.pending = [];
     Sim.sel = 0;

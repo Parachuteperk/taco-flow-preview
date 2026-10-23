@@ -17,6 +17,7 @@
       Crew: TF.Crew, Rng: TF.Rng, World: World, Market: TF.Market, standTier: Sim.stand.tier, flags: {} });
     if (TF.Empire) s.flags.cargo = JSON.parse(JSON.stringify(TF.Empire.cargo));
     if (TF.Econ.assets) s.flags.businessAssets = TF.Econ.assets();
+    if (TF.Crew && TF.Crew.freshmen) s.flags.freshmen = JSON.parse(JSON.stringify(TF.Crew.freshmen));
     if (TF.Objects && TF.Objects.stock) s.flags.drinkStock = JSON.parse(JSON.stringify(TF.Objects.stock));
     if (TF.CastExtra) s.flags.cast = TF.CastExtra.getState();
     if (TF.Invest) s.flags.invest = JSON.parse(JSON.stringify({ metals: TF.Invest.metals, price: TF.Invest.price, lastPrice: TF.Invest.lastPrice }));
@@ -55,6 +56,7 @@
       return Object.assign({}, o, { st: o.st === null ? null : Sim.stands[o.st], obj: TF.Objects && o.obj >= 0 ? TF.Objects.list[o.obj] : null });
     });
     if (!s.flags.businessAssets) Sim.stand.tier = s.standTier;
+    if (TF.Crew.setFreshmen) TF.Crew.setFreshmen(s.flags.freshmen || []);
     TF.Crew.applyMods(); TF.Crew.spotKey = '';
     if (TF.Empire) TF.Empire.marketSignals();
     TF.Mkt.openDay(); TF.Mkt.syncPrices();   // Monday's market rolls happen here, so they enter the checkpoint

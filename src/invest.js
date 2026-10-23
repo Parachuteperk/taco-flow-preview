@@ -143,7 +143,7 @@
     return -up;
   };
   I.report = function () {
-    var rows = I.owned.map(function (o) { var e = I.earned(o); return { name: o.name, cost: o.cost, earned: Math.round(e), roi: Math.round((e / o.cost) * 100), est: TIER_SHARE[o.id] !== undefined || o.id === 'trash' || o.id === 'picnic' || !!(TF.Empire && TF.Empire.EST_SHARE && TF.Empire.EST_SHARE(o.id) !== undefined) }; });
+    var rows = I.owned.map(function (o) { var e = I.earned(o); return { name: o.name, stand: o.st && Number.isInteger(o.st.idx) ? o.st.idx + 1 : null, cost: o.cost, earned: Math.round(e), roi: Math.round((e / o.cost) * 100), est: TIER_SHARE[o.id] !== undefined || o.id === 'trash' || o.id === 'picnic' || !!(TF.Empire && TF.Empire.EST_SHARE && TF.Empire.EST_SHARE(o.id) !== undefined) }; });
     ['gold', 'silver'].forEach(function (m) { var h = I.metals[m]; if (h.units) rows.push({ name: (m === 'gold' ? 'Gold' : 'Silver') + ' ×' + h.units, cost: Math.round(h.paid), earned: Math.round(h.units * I.price[m] - h.paid), roi: Math.round(((h.units * I.price[m] - h.paid) / h.paid) * 100), metal: true, value: h.units * I.price[m] }); });
     rows.sort(function (a, b) { return b.roi - a.roi; });
     return rows;

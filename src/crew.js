@@ -31,10 +31,71 @@
     { id: 'cannon', name: 'Phillip\u2019s Tortilla Cannon', effect: 'Hand-off 2x faster', price: 40, needs: function () { return Crew.hiredSet.phillip && Sim.stand.tier >= 3; }, needsText: 'Needs Phillip + Serving station' }
   ];
 
-  var Crew = { hiredSet: { jared: true }, extras: {}, EXTRAS: EXTRAS, ROSTER: ROSTER, PERKS: PERKS, SERVING_HAND_T: SERVING_HAND_T, lastDrawn: [], spots: {}, spotKey: '', t: 0, flash: {}, TIERS: TIERS };
+  // Freshman helpers (Pass 7, Aaron: "hire other freshmen to help run the stand"): a repeatable hire,
+  // each one assigned to one stand. Modest by design - each shaves 10% off that stand's order and
+  // hand-off times (two: 19%), well under Ali (40% cooking), Phillip (20%) or Matt (hand-off 0.3 s -> 0.15 s).
+  // Not the Freshman Runner (supply runs from the van), who stays a separate one-off hire.
+  var FRESHMAN = { id: 'freshman', name: 'Freshman', role: 'Stand helper', price: 15, wageCents: 500, capPerStand: 2, orderMul: 0.9, handMul: 0.9 };
+  var Crew = { hiredSet: { jared: true }, extras: {}, freshmen: [], FRESHMAN: FRESHMAN, EXTRAS: EXTRAS, ROSTER: ROSTER, PERKS: PERKS, SERVING_HAND_T: SERVING_HAND_T, lastDrawn: [], spots: {}, spotKey: '', t: 0, flash: {}, TIERS: TIERS };
 
   Crew.hired = function () { return ROSTER.filter(function (r) { return Crew.hiredSet[r.id]; }).map(function (r) { return r.id; }); };
   Crew.tier = function () { return Sim.stand.tier; };
+  // ---- Freshmen ----------------------------------------------------------------
+  Crew.freshAt = function (idx) { return Crew.freshmen.filter(function (f) { return f.st === idx; }).length; };
+  Crew.freshOk = function (st) { return !!(st && st.placed && !st.offsite && Crew.freshAt(st.idx) < FRESHMAN.capPerStand); };
+  Crew.freshCap = function () { return FRESHMAN.capPerStand * Sim.stands.filter(function (st) { return st.placed && !st.offsite; }).length; };
+  Crew.freshWagesCents = function () { return Crew.freshmen.length * FRESHMAN.wageCents; };
+  // Hire one Freshman for a stand (default: the selected one). Same shop rules as any hire.
+  Crew.hireFreshman = function (st) {
+    st = st || Sim.selected();
+    var id = FRESHMAN.id;
+    if (!Crew.freshOk(st) || Sim.stats.money < FRESHMAN.price || blocked(id)) return false;
+    if (!reserveOk(id, FRESHMAN.price)) return false;
+    TF.Ledger.add('hire', -FRESHMAN.price, id);
+    if (TF.Week) TF.Week.bought(id);
+    Crew.freshmen.push({ st: st.idx });
+    Crew.applyMods();
+    if (st.placed) Sim.floaters.push({ x: st.geom.cx, y: st.geom.cy, text: 'Freshman hired!', t: 0 });
+    Sim.events.push({ type: 'toast', text: 'Freshman hired for Stand ' + (st.idx + 1) + ': quicker orders + hand-off there ($' + (FRESHMAN.wageCents / 100) + '/day).' });
+    Crew.refresh();
+    return true;
+  };
+  // Reassign Freshman i to a stand (default: the next on-map stand with room). Free, any time.
+  Crew.moveFreshman = function (i, idx) {
+    var f = Crew.freshmen[i]; if (!f) return false;
+    var cands = Sim.stands.filter(function (st) { return st.idx !== f.st && Crew.freshOk(st); });
+    var to = idx === undefined ? (cands.filter(function (st) { return st.idx > f.st; })[0] || cands[0]) : Sim.stands[idx];
+    if (!to || to.idx === f.st || !Crew.freshOk(to)) return false;
+    f.st = to.idx;
+    Crew.applyMods();
+    Sim.events.push({ type: 'toast', text: 'Freshman ' + (i + 1) + ' now helps at Stand ' + (to.idx + 1) + '.' });
+    Crew.refresh();
+    return true;
+  };
+  // Saved/loaded freshmen: keep only valid entries; a stand that is gone or off the map hands its
+  // helpers back to stand 1 (old saves have none, so they load with an empty list).
+  Crew.setFreshmen = function (list) {
+    Crew.freshmen = (Array.isArray(list) ? list : []).filter(function (f) { return f && Number.isInteger(f.st) && f.st >= 0 && f.st < 6; })
+      .slice(0, FRESHMAN.capPerStand * 6).map(function (f) { return { st: f.st }; });
+    Crew.normalizeFreshmen();
+  };
+  Crew.normalizeFreshmen = function () {
+    Crew.freshmen.forEach(function (f) {
+      var st = Sim.stands[f.st];
+      if (!st || st.offsite || (!st.placed && f.st !== 0)) f.st = 0;
+    });
+    // over the cap at one stand: move the spare to an on-map stand with room, if any
+    Crew.freshmen.forEach(function (f) {
+      if (Crew.freshAt(f.st) <= FRESHMAN.capPerStand) return;
+      var to = Sim.stands.filter(function (st) { return Crew.freshOk(st); })[0];
+      if (to) f.st = to.idx;
+    });
+  };
+  // Freshman i counts at its stand (false = a spare over the cap, waiting for a stand with room)
+  Crew.freshActive = function (i) {
+    var f = Crew.freshmen[i]; if (!f) return false;
+    return Crew.freshmen.slice(0, i).filter(function (g) { return g.st === f.st; }).length < FRESHMAN.capPerStand;
+  };
 
   // ---- Effects --------------------------------------------------------------
   // Station timings per stand. The crew (and the extras) work stand 1; stand 2 is run by its
@@ -61,6 +122,8 @@
     if (ex.cooler2 && t === 0) m.stockMax *= 2;
     m.cannon = !!(ex.cannon && h.phillip && t >= 3);
     if (m.cannon) m.handT *= PERKS.cannon.handMul;
+    var fn = Math.min(FRESHMAN.capPerStand, Crew.freshAt(st.idx));   // spares (e.g. after a level move) don't stack past the cap   // Freshman helpers work only the stand they're assigned to
+    if (fn) { m.orderT *= Math.pow(FRESHMAN.orderMul, fn); m.handT *= Math.pow(FRESHMAN.handMul, fn); }
     if (TF.Empire) TF.Empire.mods(st, m);
     if (TF.Handyman) TF.Handyman.mods(st, m);   // open breakdowns (grill sputter, banner flicker)
   }
@@ -342,6 +405,14 @@
       }
     }
     });
+    // Freshman helpers: behind their stand's counter, the runner's cap-guy look + an apron.
+    var seen = {};
+    Crew.freshmen.forEach(function (fr) {
+      var s3 = Sim.stands[fr.st]; if (!s3 || !s3.placed || s3.offsite || !s3.geom) return;
+      var k = seen[fr.st] = (seen[fr.st] || 0) + 1, g = s3.geom;
+      var a = k === 1 ? -0.55 : 0.55, b = -1.15, x = g.cx + g.np[0] * a + g.n[0] * b, y = g.cy + g.np[1] * a + g.n[1] * b;
+      items.push({ kind: 'crew', id: 'freshman', where: 'in', st: s3, x: x, y: y, k: x + y });
+    });
     if (!st.placed) return;
     computeSpots();
     var ins = stationSpots(st);
@@ -375,6 +446,15 @@
     Crew.lastDrawn.push('cashier');
   }
 
+  function drawFreshman(ctx, it, p, z) {
+    var st = it.st, face = R.toScreen(it.x + st.geom.n[0], it.y + st.geom.n[1]);
+    var g = { variant: 2, facing: face.x < p.x ? 1 : 0, moving: false, anim: 0, hasTaco: false, tall: 0.97,
+      shirt: '#c9a227', skin: '#d9a77e', hair: '#3b2a20', pants: '#2d3a5a', backpack: false, pack: '#222' };
+    var bob = st.window ? Math.abs(Math.sin(Crew.t * 6 + it.x)) * 1 * z : 0, P = TF.ArtPeople;
+    if (!(TF.Art.painted() && P && P.drawGuest(ctx, g, p.x, p.y - bob, z))) R.drawPerson(g, p.x, p.y - bob, z);
+    ctx.fillStyle = 'rgba(244,239,228,0.9)'; ctx.fillRect(p.x - 3.5 * z, p.y - 17 * z - bob, 7 * z, 8 * z);   // apron
+    Crew.lastDrawn.push('freshman');
+  }
   // Matt away from the counter (C4): walking his A* route, or the wrench pose on the job.
   function drawMattOnJob(ctx, p, z, painted) {
     var HM = TF.Handyman, S = HM.S, P = TF.ArtPeople, h = HM.heading || { x: 1, y: 0 };
@@ -391,6 +471,7 @@
     var st = it.st || Sim.stand, P = TF.ArtPeople, painted = TF.Art.painted() && P && P.crew[it.id];
     var p = R.toScreen(it.x, it.y);
     if (it.id === 'cashier') { drawCashier(ctx, it, p, z); return; }
+    if (it.id === 'freshman') { drawFreshman(ctx, it, p, z); return; }
     if (it.where === 'job') { drawMattOnJob(ctx, p, z, painted); return; }
     if (it.where === 'run') {
       var r = Sim.runner;
@@ -465,9 +546,10 @@
   var list = document.getElementById('crewList');
   Crew.buildMenu = function () {
     if (!panel) return;
-    var html = '<div id="p7Cargo" class="soon" hidden></div><div id="p7Leads" class="soon" hidden></div><div id="permitLine" class="soon permit" hidden></div><div id="soonLine" class="soon" hidden></div><details open class="sec" data-section="build"><summary>Build & upgrades <button id="btnSelStand" class="mini" hidden></button></summary>';
+    var html = '<div id="p7Cargo" class="soon" hidden></div><div id="p7Leads" class="soon" hidden></div><div id="permitLine" class="soon permit" hidden></div><div id="soonLine" class="soon" hidden></div><details open class="sec" data-section="build"><summary>Build & upgrades <button id="btnSelStand" class="mini" hidden></button></summary>' +
+      '<div class="standtabs" data-tabs="build" hidden></div><div id="standOwns" class="owns"></div>';
     TIERS.forEach(function (u) {
-      html += '<div class="card up"><div class="info"><b>' + u.tier + '. ' + u.name + '</b><div class="fx">' + (u.blurb ? u.blurb + '<br>' : '') + u.effect + '</div></div><button data-tier="' + u.id + '"></button></div>';
+      html += '<div class="card up"><div class="info"><b>' + u.tier + '. ' + u.name + ' <small class="forst"></small></b><div class="fx">' + (u.blurb ? u.blurb + '<br>' : '') + u.effect + '</div></div><button data-tier="' + u.id + '"></button></div>';
     });
     html += '<div class="card up"><div class="info"><b>Second stand & portfolio</b><div class="fx">' + [2,3,4,5,6].map(function (n) { var c = TF.P7Content && TF.P7Content.items['stand'+n]; return (c ? c.name + ': ' + c.blurb : 'Stand '+n) + ' $' + TF.Economy.standCosts[n-2]; }).join('<br>') + '<br>Grill + cashier; $18/shift plus rent and maintenance.</div></div><button id="btnBuyStand2"></button></div>';
     html += '</details><details open class="sec" data-section="build"><summary>Buildings & extras</summary>';
@@ -478,7 +560,10 @@
     EXTRAS.forEach(function (x) {
       html += '<div class="card up"><div class="info"><b>' + x.name + '</b><div class="fx">' + x.effect + '</div></div><button data-extra="' + x.id + '"></button></div>';
     });
-    html += '</details><details open class="sec" data-section="hire"><summary>Hire crew</summary>';
+    html += '</details><details open class="sec" data-section="hire"><summary>Hire crew</summary><div class="standtabs" data-tabs="hire" hidden></div>';
+    html += '<div class="card" id="freshCard"><canvas class="portrait" data-portrait="runner" width="44" height="64"></canvas>' +
+      '<div class="info"><b>' + FRESHMAN.name + '</b> <small>' + FRESHMAN.role + '</small><div class="fx">Orders + hand-off ' + Math.round((1 - FRESHMAN.orderMul) * 100) + '% faster at their stand · $' + FRESHMAN.price + ' to hire, $' + (FRESHMAN.wageCents / 100) + '/day · up to ' + FRESHMAN.capPerStand + ' per stand</div><div id="freshFor" class="fx"></div></div>' +
+      '<button class="mini info" data-info="freshman" aria-label="About the Freshman">ⓘ</button><button id="btnHireFresh"></button></div><div id="freshList" class="frlist"></div>';
     ROSTER.forEach(function (r) {
       html += '<div class="card"><canvas class="portrait" data-portrait="' + r.id + '" width="44" height="64"></canvas>' +
         '<div class="info"><b>' + r.name + '</b> <small>' + r.role + '</small><div class="fx">' + r.effect + ' · $' + r.price + ' to hire</div></div>' +
@@ -490,6 +575,17 @@
     list.querySelectorAll('[data-hire]').forEach(function (b) { b.addEventListener('click', function () { Crew.hire(b.getAttribute('data-hire')); }); });
     list.querySelectorAll('[data-info]').forEach(function (b) { b.addEventListener('click', function (e) { e.preventDefault(); if (TF.StoryCards) TF.StoryCards.showCharacter(b.getAttribute('data-info')); }); });
     list.querySelectorAll('[data-tier]').forEach(function (b) { b.addEventListener('click', function () { Crew.buyTier(b.getAttribute('data-tier')); }); });
+    document.getElementById('btnHireFresh').addEventListener('click', function () { Crew.hireFreshman(); });
+    tabSig = '';
+    if (!list.__tfDelegated) {   // stand tabs + Freshman "Move" buttons are re-rendered, so listen once on the list
+      list.__tfDelegated = true;
+      list.addEventListener('click', function (e) {
+        var t = e.target.closest && e.target.closest('[data-stand],[data-fmove]'); if (!t) return;
+        e.preventDefault();
+        if (t.hasAttribute('data-stand')) Crew.selectStand(+t.getAttribute('data-stand'));
+        else Crew.moveFreshman(+t.getAttribute('data-fmove'));
+      });
+    }
     document.getElementById('btnBuyStand2').addEventListener('click', function () { Crew.buyStand2(); });
     document.getElementById('btnSelStand').addEventListener('click', function (e) { e.preventDefault(); Sim.sel = (Sim.sel + 1) % Sim.stands.length; Crew.refresh(); });
     list.querySelectorAll('[data-extra]').forEach(function (b) { b.addEventListener('click', function () { Crew.buyExtra(b.getAttribute('data-extra')); }); });
@@ -508,7 +604,7 @@
   // customer sprite), or the flat placeholder figure while the art loads. No new art.
   Crew.paintPortrait = function (cv, id) {
     var c = cv.getContext && cv.getContext('2d'); if (!c) return;
-    var P = TF.ArtPeople, img = P && (id === 'runner' ? (P.cust.capguy && P.cust.capguy.stand) : id === 'west' ? (P.west && P.west.idle) : P.crewPortrait(id));
+    var P = TF.ArtPeople, img = P && (id === 'runner' || id === 'freshman' ? (P.cust.capguy && P.cust.capguy.stand) : id === 'west' ? (P.west && P.west.idle) : P.crewPortrait(id));
     c.clearRect(0, 0, cv.width, cv.height);
     if (img && TF.Art && TF.Art.painted()) {
       var s = Math.min(cv.width / img.width, (cv.height - 2) / img.height);
@@ -530,8 +626,30 @@
     return TIERS.filter(function (u) { return !st.building && u.tier === st.tier + 1; })
       .concat(ROSTER.filter(function (r) { return !Crew.hiredSet[r.id] && Sim.stand.tier >= r.tier; }))
       .concat(EXTRAS.filter(function (x) { return !Crew.extras[x.id] && x.needs() && (x.id !== 'cooler2' || st.tier === 0); }))
+      .concat(Crew.freshOk(st) && Crew.freshmen.length === 0 ? [{ id: FRESHMAN.id, name: FRESHMAN.name, effect: 'Quicker orders + hand-off', price: FRESHMAN.price }] : [])
       .filter(function (x) { return cash >= x.price && !blocked(x.id); })[0] || null;
   };
+  // Stand picker (Build + Hire): one tab per stand; the map tap selects too (main.js).
+  Crew.selectStand = function (idx) { if (!Sim.stands[idx]) return false; Sim.sel = idx; Crew.refresh(); return true; };
+  // What a stand already owns, for the "owns:" line (tiers are per stand; extras/crew work stand 1).
+  Crew.ownsList = function (st) {
+    var out = TIERS.filter(function (u) { return st.tier >= u.tier; }).map(function (u) { return u.name; });
+    if (st.building) out.push(TIER_NAME[(TIERS.filter(function (u) { return u.id === st.building; })[0] || {}).tier] + ' (building)');
+    if (st.idx === 0) EXTRAS.forEach(function (x) { if (Crew.extras[x.id]) out.push(x.name); });
+    return out;
+  };
+  var tabSig = '';
+  function renderTabs() {
+    var sig = Sim.sel + '|' + Sim.stands.map(function (st) { return (st.placed ? 1 : 0) + (st.offsite ? 'r' : '') + Crew.freshAt(st.idx); }).join(',');
+    if (sig === tabSig) return; tabSig = sig;
+    var many = Sim.stands.length > 1;
+    list.querySelectorAll('[data-tabs]').forEach(function (box) {
+      box.hidden = !many;
+      box.innerHTML = many ? Sim.stands.map(function (st) {
+        return '<button class="mini' + (st.idx === Sim.sel ? ' on' : '') + '" data-stand="' + st.idx + '"' + (st.idx === Sim.sel ? ' aria-pressed="true"' : '') + '>Stand ' + (st.idx + 1) + (st.offsite ? ' (remote)' : !st.placed ? ' (unplaced)' : '') + '</button>';
+      }).join('') : '';
+    });
+  }
   var TIER_NAME = ['the start', 'Grill', 'Banner', 'Serving station', 'Canopy', 'Food Truck', 'Neon Menu', 'Billboard'];
   Crew.refresh = function () {
     var btn = document.getElementById('btnCrew');
@@ -546,8 +664,12 @@
     if (TF.Empire) { TF.Empire.refreshLeads(); TF.Empire.refreshCargo(); }
     var st = Sim.selected(), money = Sim.stats.money, sold = Sim.stats.served;
     var sel = document.getElementById('btnSelStand');
-    sel.hidden = Sim.stands.length < 2;
-    sel.textContent = 'Stand ' + (st.idx + 1) + (st.offsite ? ' (auto-operating)' : '') + ' \u25B8';
+    sel.hidden = true;   // replaced by the stand tabs (kept for old layouts)
+    renderTabs();
+    var owns = document.getElementById('standOwns'), ol = Crew.ownsList(st), fa = Crew.freshAt(st.idx);
+    var otxt = (Sim.stands.length > 1 ? 'Stand ' + (st.idx + 1) + (st.offsite ? ' (auto-operating, upgrades on its own map)' : '') + ' owns: ' : 'Owns: ') + (ol.length ? ol.join(', ') : 'nothing yet') + (fa ? ' \u00B7 ' + fa + ' Freshman' + (fa > 1 ? 'en' : '') : '');
+    if (owns.textContent !== otxt) owns.textContent = otxt;
+    list.querySelectorAll('.forst').forEach(function (el) { var t = Sim.stands.length > 1 ? 'for Stand ' + (st.idx + 1) : ''; if (el.textContent !== t) el.textContent = t; });
     // Only actionable cards stay visible; owned ones disappear, locked ones go to the "Coming" line.
     var soon = {}, show = function (b, on, name, why) {
       b.closest('.card').hidden = !on;
@@ -588,6 +710,15 @@
       b.disabled = h || locked || !!hb || money < r.price;
       show(b, true, r.name, false);
     });
+    var fb = document.getElementById('btnHireFresh'), fbl = blocked(FRESHMAN.id), full = st.placed && !st.offsite && !Crew.freshOk(st);
+    fb.textContent = fbl ? fbl : !st.placed || st.offsite ? 'Pick an on-map stand' : full ? 'Stand ' + (st.idx + 1) + ' full (' + FRESHMAN.capPerStand + '/' + FRESHMAN.capPerStand + ')' : label(FRESHMAN.id, 'Hire $' + FRESHMAN.price);
+    fb.disabled = !!fbl || !Crew.freshOk(st) || money < FRESHMAN.price;
+    var ff = document.getElementById('freshFor'), fft = st.placed && !st.offsite ? '<b>Hires for Stand ' + (st.idx + 1) + '</b> (' + Crew.freshAt(st.idx) + '/' + FRESHMAN.capPerStand + ')' + (Sim.stands.length > 1 ? ' \u00B7 pick a stand above' : '') : '';
+    if (ff.innerHTML !== fft) ff.innerHTML = fft;
+    show(fb, !dayLock(fbl), FRESHMAN.name, dayLock(fbl) && fbl);
+    var fl = document.getElementById('freshList'), onMap = Sim.stands.filter(function (x) { return x.placed && !x.offsite; }).length;
+    var fh = Crew.freshmen.map(function (fr, i) { return '<div class="frow">Freshman ' + (i + 1) + ' \u00B7 Stand ' + (fr.st + 1) + (Crew.freshActive(i) ? '' : ' (spare)') + (onMap > 1 ? ' <button class="mini" data-fmove="' + i + '">Move \u25B8</button>' : '') + '</div>'; }).join('');
+    if (fl.innerHTML !== fh) fl.innerHTML = fh;
     var fp = document.getElementById('flipPolicy');   // in Taco Week the coin flip lives in the Invest panel
     if (fp) fp.closest('details').hidden = !!(TF.Week && TF.Week.active());
     var pl = document.getElementById('permitLine'), pt = TF.Week ? TF.Week.permitLine() : '';
