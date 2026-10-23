@@ -34,7 +34,7 @@
       { level: 3, map: 'Flowers Hall / LBJ statue', w: 44, h: 40, peakCrowd: 300, objectCap: 35, rentCents: 250000, kitCents: 210, spoilage: 0.30, patienceS: 20, surge: 1.5, breakdowns: 3, maxActiveFaults: 1, favorMult: 1.6, rainCapCents: 10000, prices: { cheap: 475, fair: 850, bougie: 950 }, marketVMult: 1.4 },
       { level: 4, map: 'Alkek Plaza at night', w: 48, h: 44, peakCrowd: 350, objectCap: 40, rentCents: 375000, kitCents: 240, spoilage: 0.30, patienceS: 16, surge: 1.8, breakdowns: 4, maxActiveFaults: 2, favorMult: 2, rainCapCents: 12000, prices: { cheap: 500, fair: 900, bougie: 1025 }, marketVMult: 1.6 }
     ],
-    wagesCents: { ali: 800, jared: 600, antonio: 600, matt: 800, phillip: 600, aaron: 800 },
+    wagesCents: { ali: 800, jared: 600, antonio: 800, matt: 800, phillip: 600, aaron: 800 },
     rushMult: 1.2,
     rushDelayS: 20,
     hard: { rentMult: 1.25, patienceDeltaS: -2, favorMult: 1.5, noRetryLevel: 4 }

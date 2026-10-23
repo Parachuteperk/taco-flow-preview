@@ -14,10 +14,11 @@
   function aaronTitle() { var c = TF.STORY_COPY && TF.STORY_COPY.characters && TF.STORY_COPY.characters.aaron; return (c && c.title) || 'Chief Handshake Officer'; }
   // Crew perks: the numbers modsFor() applies, also read by the character cards (src/storycards.js).
   var PERKS = { ali: { cookMul: 0.6, grillAdd: 1 }, phillip: { cookMul: 0.8 }, matt: { handT: 0.15 }, cannon: { handMul: 0.5 } };
+  var SERVING_HAND_T = 0.3;   // hand-off with the Serving station (Matt needs it, so his card compares against this)
   var ROSTER = [
     { id: 'jared', name: 'Jared', role: 'Register + cooler', effect: 'Sells + restocks', price: 0, tier: 0, spot: 'in' },
     { id: 'ali', name: 'Ali', role: 'Grill', effect: 'Grill 40% faster', price: 20, tier: 1, spot: 'in' },
-    { id: 'antonio', name: 'Antonio', role: 'Laptop + stream', effect: 'Hype: more students', price: 40, tier: 2, spot: 'out' },
+    { id: 'antonio', name: 'Antonio', role: 'Laptop + stream', effect: 'One hack a day: brings extra students', price: 40, tier: 2, spot: 'out' },
     { id: 'phillip', name: 'Phillip', role: 'Prep', effect: 'Cooking 20% faster', price: 30, tier: 2, spot: 'out' },
     { id: 'matt', name: 'Matt', role: 'Hand-off', effect: 'Fast hand-off, serves drinks quickly and repairs breakdowns', price: 25, tier: 3, spot: 'in' },
     { id: 'aaron', name: 'Aaron', role: aaronTitle(), effect: '+8s nearby patience, bulk orders; $8/day', price: 40, tier: 0, spot: 'out' },
@@ -30,7 +31,7 @@
     { id: 'cannon', name: 'Phillip\u2019s Tortilla Cannon', effect: 'Hand-off 2x faster', price: 40, needs: function () { return Crew.hiredSet.phillip && Sim.stand.tier >= 3; }, needsText: 'Needs Phillip + Serving station' }
   ];
 
-  var Crew = { hiredSet: { jared: true }, extras: {}, EXTRAS: EXTRAS, ROSTER: ROSTER, PERKS: PERKS, lastDrawn: [], spots: {}, spotKey: '', t: 0, flash: {}, TIERS: TIERS };
+  var Crew = { hiredSet: { jared: true }, extras: {}, EXTRAS: EXTRAS, ROSTER: ROSTER, PERKS: PERKS, SERVING_HAND_T: SERVING_HAND_T, lastDrawn: [], spots: {}, spotKey: '', t: 0, flash: {}, TIERS: TIERS };
 
   Crew.hired = function () { return ROSTER.filter(function (r) { return Crew.hiredSet[r.id]; }).map(function (r) { return r.id; }); };
   Crew.tier = function () { return Sim.stand.tier; };
@@ -46,7 +47,7 @@
     m.zoneR = C.ZONE_R; m.buyP = C.BUY_P; m.spawnMul = 1; m.priceAdd = 0; m.serving = false; m.stockMax = C.STOCK_T0;
     if (t >= 1) { m.cookT = 1.2; m.stockMax = C.STOCK_GRILL; }
     if (t >= 2) m.zoneR += 2.5;
-    if (t >= 3) { m.serving = true; m.handT = 0.3; m.stockMax = 60; }
+    if (t >= 3) { m.serving = true; m.handT = SERVING_HAND_T; m.stockMax = 60; }
     if (t >= 5) { m.orderT /= 1.4; m.cookT /= 1.4; m.stockMax = 84; }
     if (t >= 6) m.priceAdd += 1;
     if (t >= 7) m.zoneR *= 1.25;

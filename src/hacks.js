@@ -1,5 +1,5 @@
-// Antonio's hacker ladder (Pass 5 item 6). In Taco Week Antonio is on the crew from Monday: he wants
-// to become a great hacker, and he levels up every day. One hack a day, always player-triggered,
+// Antonio's hacker ladder (Pass 5 item 6). In Taco Week you hire Antonio from the Hire menu (Pass 7:
+// he no longer joins for free on Monday); once hired, each weekday brings a different hack. One hack a day, always player-triggered,
 // and before you commit the card shows expected customers, timing and overload risk. He makes
 // demand, not service: the stand has to handle what he brings. Free Play keeps the old buttons.
 //   Mon L1 Agenda Swap: a room's agenda flips to TACO BREAK, +8 students over 25 s
@@ -12,18 +12,20 @@
   var $ = function (id) { return document.getElementById(id); };
   var H = { used: {}, log: [], run: null, buyMul: 1, outT: 0, premium: null, billboardT: 0 };
   H.LEVELS = [
-    { id: 'agenda', name: 'Agenda Swap', what: 'A room’s agenda flips to “TACO BREAK”.', expect: 8, secs: 25 },
-    { id: 'tacnet', name: 'TACO-NET Wi-Fi', what: 'A fake campus Wi-Fi splash page: +15% buyers near the stand, then 10 s of no Wi-Fi.', expect: 0, secs: 40 },
-    { id: 'earlybell', name: 'Early Bell', what: 'The next bell rings 20 s early. Same crowd, sooner: clear the line first!', expect: 0, secs: 0 },
-    { id: 'raid', name: 'Stream Raid', what: '“CHAT. WE ARE ACTUALLY SELLING TACOS.” +12 viewers in 2 groups; over 30 s of wait and half the 2nd group bails.', expect: 12, secs: 12 },
-    { id: 'golden', name: 'Operation GOLDEN TACO', what: 'Hijacks the campus events screen: 3 waves of +8, and +$1 on every taco until 8 people walk away.', expect: 24, secs: 45 }
+    { id: 'agenda', name: 'Agenda Swap', what: 'A room’s agenda flips to “TACO BREAK”.', expect: 8, secs: 25, gapS: 3 },
+    { id: 'tacnet', name: 'TACO-NET Wi-Fi', what: 'A fake campus Wi-Fi splash page: +15% buyers near the stand, then 10 s of no Wi-Fi.', expect: 0, secs: 40, buyPct: 15, outS: 10 },
+    { id: 'earlybell', name: 'Early Bell', what: 'The next bell rings 20 s early. Same crowd, sooner: clear the line first!', expect: 0, secs: 0, shiftS: 20 },
+    { id: 'raid', name: 'Stream Raid', what: '“CHAT. WE ARE ACTUALLY SELLING TACOS.” +12 viewers in 2 groups; over 30 s of wait and half the 2nd group bails.', expect: 12, secs: 12, bailWaitS: 30 },
+    { id: 'golden', name: 'Operation GOLDEN TACO', what: 'Hijacks the campus events screen: 3 waves of +8, and +$1 on every taco until 8 people walk away.', expect: 24, secs: 45, waves: 3, waveSize: 8, gapS: 20, premium: 1, walkAway: 8 }
   ];
+  var LV = {}; H.LEVELS.forEach(function (L) { LV[L.id] = L; });   // the numbers below (and on Antonio's card) come from here
+  H.hired = function () { return !!(TF.Crew && TF.Crew.hiredSet.antonio); };
   H.week = function () { return !!(TF.Week && TF.Week.active()); };
   H.level = function () { return H.week() ? Math.max(1, Math.min(5, TF.Week.day)) : 1; };
   H.today = function () { return H.LEVELS[H.level() - 1]; };
   H.can = function () {
-    if (!H.week() || TF.Week.phase !== 'open' || H.used[TF.Week.day] || H.run) return false;
-    if (H.today().id === 'earlybell') return nextBellIn() !== null && nextBellIn() > 22;
+    if (!H.week() || !H.hired() || TF.Week.phase !== 'open' || H.used[TF.Week.day] || H.run) return false;
+    if (H.today().id === 'earlybell') return nextBellIn() !== null && nextBellIn() > LV.earlybell.shiftS + 2;
     return true;
   };
   function nextBellIn() { var W = TF.Week; return W.bells && W.bells.length ? W.bells[0] - W.t : null; }
@@ -73,8 +75,8 @@
     Sim.events.push({ type: 'hackpop', title: pop[0], body: pop[1], text: pop[2] + (said ? ' Antonio: \u201C' + said + '\u201D' : '') });
     if (L.id === 'earlybell') {
       var W = TF.Week;
-      W.bells[0] = Math.max(W.t + 6, W.bells[0] - 20);
-      H.run.done = true; H.run.shifted = 20;
+      W.bells[0] = Math.max(W.t + 6, W.bells[0] - LV.earlybell.shiftS);
+      H.run.done = true; H.run.shifted = LV.earlybell.shiftS;
     }
     if (L.id === 'golden') { H.premium = { on: true, lost0: Sim.lostTotal(), earned: 0 }; H.billboardT = 50; }
     return true;
@@ -92,32 +94,33 @@
     if (r && !r.done) {
       r.t += dt;
       if (r.id === 'agenda') {
-        while (r.spawned < 8 && r.t >= r.spawned * 3) spawnFrom(false);
-        if (r.spawned >= 8) r.done = true;
+        while (r.spawned < LV.agenda.expect && r.t >= r.spawned * LV.agenda.gapS) spawnFrom(false);
+        if (r.spawned >= LV.agenda.expect) r.done = true;
       } else if (r.id === 'tacnet') {
-        H.buyMul = r.t < 40 ? 1.15 : 1;
-        if (r.t >= 40) { r.done = true; H.outT = 10; Sim.events.push({ type: 'toast', text: '📵 Wi-Fi outage: “They clicked ACCEPT. That’s marketing.”' }); }
+        H.buyMul = r.t < LV.tacnet.secs ? 1 + LV.tacnet.buyPct / 100 : 1;
+        if (r.t >= LV.tacnet.secs) { r.done = true; H.outT = LV.tacnet.outS; Sim.events.push({ type: 'toast', text: '📵 Wi-Fi outage: “They clicked ACCEPT. That’s marketing.”' }); }
       } else if (r.id === 'raid') {
-        while (r.spawned < 6 && r.t >= r.spawned * 0.4) spawnFrom(true);
+        var half = LV.raid.expect / 2;
+        while (r.spawned < half && r.t >= r.spawned * 0.4) spawnFrom(true);
         if (r.t >= 10 && !r.second) {   // the second group checks the wait first
           r.second = true;
           var wait = Sim.predictedWait(Sim.stand);
           r.wait = Math.round(wait);
-          if (wait > 30) { r.bailed = 3; Sim.lost['line full'] += 3; Sim.events.push({ type: 'toast', text: 'Raid group 2 saw a ' + Math.round(wait) + ' s wait: 3 bailed.' }); }
-          r.second2 = 6 - r.bailed;
+          if (wait > LV.raid.bailWaitS) { r.bailed = Math.floor(half / 2); Sim.lost['line full'] += 3; Sim.events.push({ type: 'toast', text: 'Raid group 2 saw a ' + Math.round(wait) + ' s wait: 3 bailed.' }); }
+          r.second2 = half - r.bailed;
         }
-        if (r.second) { while (r.spawned < 6 + r.second2 && r.t >= 10 + (r.spawned - 6) * 0.4) spawnFrom(true); if (r.spawned >= 6 + r.second2) r.done = true; }
+        if (r.second) { while (r.spawned < half + r.second2 && r.t >= 10 + (r.spawned - half) * 0.4) spawnFrom(true); if (r.spawned >= half + r.second2) r.done = true; }
       } else if (r.id === 'golden') {
-        var wave = Math.floor(r.t / 20);
-        if (wave < 3 && r.waves <= wave) { r.waves = wave + 1; r.waveLeft = (r.waveLeft || 0) + 8; }
+        var G = LV.golden, wave = Math.floor(r.t / G.gapS);
+        if (wave < G.waves && r.waves <= wave) { r.waves = wave + 1; r.waveLeft = (r.waveLeft || 0) + G.waveSize; }
         while (r.waveLeft > 0 && (r.nextSp || 0) <= r.t) { spawnFrom(false); r.waveLeft--; r.nextSp = r.t + 0.5; }
-        if (r.waves >= 3 && !r.waveLeft && r.t > 45) r.done = true;
+        if (r.waves >= G.waves && !r.waveLeft && r.t > G.secs) r.done = true;
       }
     }
     if (r && r.done) { H.last = r; H.run = null; }
     if (H.typingT > 0) H.typingT -= dt;
     var p = H.premium;   // GOLDEN TACO's +$1 lasts the day, unless 8 people walk away
-    if (p && p.on && Sim.lostTotal() - p.lost0 >= 8) {
+    if (p && p.on && Sim.lostTotal() - p.lost0 >= LV.golden.walkAway) {
       p.on = false; p.mocked = true;
       Sim.events.push({ type: 'toast', text: 'Mrs. West: \u201CAn event premium? Darling, they\u2019re LEAVING.\u201D (+$1 premium over)' });
     }
@@ -127,7 +130,7 @@
     var p = H.premium;
     if (!p || !p.on) return 0;
     p.earned++;
-    return 1;
+    return LV.golden.premium;
   };
   // new level's Monday: today's hack is available again and nothing from the old map keeps spawning (C3c)
   H.resetLevel = function () { H.endDay(); H.used = {}; H.typingT = 0; H.outT = 0; H.billboardT = 0; };
@@ -136,6 +139,7 @@
   // ---- The button --------------------------------------------------------------------------
   H.refreshButton = function (btn) {
     if (!H.week()) return false;
+    if (!H.hired()) { btn.hidden = true; return true; }   // not on the crew yet: no hack button
     var L = H.today(), used = H.used[TF.Week.day];
     btn.hidden = !(TF.Week.phase === 'open' || TF.Week.phase === 'close');
     var t = used ? '💻 L' + H.level() + ' done ✔' : '💻 L' + H.level() + ': ' + L.name;
@@ -191,8 +195,8 @@
     ctx.fillStyle = '#555'; ctx.fillRect(p.x - 3 * z, y0 + h + 4 * z, 6 * z, 26 * z);
   };
 
-  // In Taco Week Antonio is part of the story from Monday (no hire needed; no passive hype).
-  if (H.week() && TF.Crew) { TF.Crew.hiredSet.antonio = true; TF.Crew.applyMods(); TF.Crew.spotKey = ''; }
+  // Pass 7 (Aaron's playtest): Antonio used to be put on the crew here for free whenever Taco Week
+  // booted. A new game starts with Jared only; Antonio is hired from the Hire menu like everyone else.
 
   TF.plugins.push(H);
   TF.Hacks = H;

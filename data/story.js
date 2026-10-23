@@ -5,13 +5,13 @@
   'use strict';
 /* L1 source trims (before includes markdown label; after is the displayed text):
 Before: - Morning card: SIFE drops $60 seed money and one grill on the Quad. Matt duct-tapes the wobbly table before the first customer.
-After: SIFE drops $60 and a grill. Matt duct-tapes the table before the first customer.
+After: SIFE drops $60 and a grill. Jared duct-tapes the table before the first customer.
 Before: - Morning card: Ali starts the grill still muttering about the Mavericks. Heat already climbing.
 After: Ali starts the grill, still muttering about the Mavericks. Heat's already climbing.
 Before: - Morning card: Move-in parents and RA Dana's freshman herd flood the Quad. Aaron gets hired mid-rush.
-After: Parents and RA Dana's freshman herd flood the Quad. Aaron gets hired mid-rush.
+After: Parents and RA Dana's freshman herd flood the Quad. Aaron's up for hire mid-rush.
 Before: - Morning card: Ali switches targets to the Cowboys. Antonio quietly renames campus Wi-Fi LOLIS_FREE_TACOS.
-After: Ali rants about the Cowboys. Antonio renames campus Wi-Fi LOLIS_FREE_TACOS.
+After: Antonio's for hire: he'll rename campus Wi-Fi LOLIS_FREE_TACOS. Needs a Banner.
 Before: - End-of-day: TACO looks ready to climb. Phillip tests the tortilla cannon on an empty bench.
 After: TacoCoin lists Monday. Phillip tests his tortilla cannon on an empty bench.
 Before: - End-of-day: "Lovely little patch, isn't it? Next one's pricier." Cash or short—her smile never changes.
@@ -22,7 +22,7 @@ After: "Next one's pricier." Cash or short, her smile never changes.
   var story = {
     "beats": {
       "1": {
-        "morning": "SIFE drops $60 and a grill. Matt duct-tapes the table before the first customer.",
+        "morning": "SIFE drops $60 and a grill. Jared duct-tapes the table before the first customer.",
         "endOfDay": "Jared pitches gold before saying hello. Star asks if tacos are really back.",
         "star": [
           {"text": "TACO: TacoCoin lists Monday. Tacos return to the Quad?", "teaser": true},
@@ -42,7 +42,7 @@ After: "Next one's pricier." Cash or short, her smile never changes.
         "lines": [{"who": "ali", "text": "They traded LUKA. On PURPOSE."}]
       },
       "3": {
-        "morning": "Parents and RA Dana's freshman herd flood the Quad. Aaron gets hired mid-rush.",
+        "morning": "Parents and RA Dana's freshman herd flood the Quad. Aaron's up for hire mid-rush.",
         "endOfDay": "Aaron hands Mrs. West a business card. She tucks it away \"for kindling.\"",
         "star": [
           {"text": "TACO: Unlisted TacoCoin courts move-in parents.", "teaser": true},
@@ -52,7 +52,7 @@ After: "Next one's pricier." Cash or short, her smile never changes.
         "lines": [{"who": "aaron", "text": "Here's my card. Keep it."}]
       },
       "4": {
-        "morning": "Ali rants about the Cowboys. Antonio renames campus Wi-Fi LOLIS_FREE_TACOS.",
+        "morning": "Antonio's for hire: he'll rename campus Wi-Fi LOLIS_FREE_TACOS. Needs a Banner.",
         "endOfDay": "TacoCoin lists Monday. Phillip tests his tortilla cannon on an empty bench.",
         "star": [
           {"text": "TACO: Unlisted TacoCoin likes the free taco Wi-Fi.", "teaser": true},
@@ -577,10 +577,10 @@ After: "Next one's pricier." Cash or short, her smile never changes.
       ]
     },
     "l1Trims": [
-      "SIFE drops $60 and a grill. Matt duct-tapes the table before the first customer.",
+      "SIFE drops $60 and a grill. Jared duct-tapes the table before the first customer.",
       "Ali starts the grill, still muttering about the Mavericks. Heat's already climbing.",
-      "Parents and RA Dana's freshman herd flood the Quad. Aaron gets hired mid-rush.",
-      "Ali rants about the Cowboys. Antonio renames campus Wi-Fi LOLIS_FREE_TACOS.",
+      "Parents and RA Dana's freshman herd flood the Quad. Aaron's up for hire mid-rush.",
+      "Antonio's for hire: he'll rename campus Wi-Fi LOLIS_FREE_TACOS. Needs a Banner.",
       "TacoCoin lists Monday. Phillip tests his tortilla cannon on an empty bench.",
       "\"Next one's pricier.\" Cash or short, her smile never changes."
     ]

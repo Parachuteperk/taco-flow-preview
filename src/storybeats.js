@@ -59,6 +59,11 @@
     host.appendChild(card); btn.focus();
     return { element: card, destroy: function () { card.remove(); } };
   };
+  SB.present = function (who) {
+    var C = typeof TF !== 'undefined' && TF.Crew;
+    if (!who || !C || !C.ROSTER.some(function (r) { return r.id === who; })) return true;
+    return !!C.hiredSet[who];
+  };
   SB.install = function (TF) {
     if (!TF || SB._installed) return SB;
     SB._installed = true;
@@ -86,7 +91,8 @@
       var key = 'open:' + day;
       if (SB.shown[key] || TF.Week.t < 2) return;
       SB.shown[key] = true;
-      var beats = SB.beats(day, 'open');
+      // a crew member only speaks once you've hired them (Pass 7: nobody "just shows up")
+      var beats = SB.beats(day, 'open').filter(function (b) { return SB.present(b.who); });
       if (beats[0] && TF.Sim && TF.Sim.events) {
         TF.Sim.events.push({ type: 'toast', text: (beats[0].who ? beats[0].who + ': ' : '') + beats[0].text });
       }

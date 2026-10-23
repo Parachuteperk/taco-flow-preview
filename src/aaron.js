@@ -8,7 +8,9 @@
   function number(x) { return typeof x === 'number' && isFinite(x) && x >= 0; }
   function point(p) { return p && Number.isFinite(p.x) && Number.isFinite(p.y); }
   // Pure, non-stacking patience allowance; positions are world tiles, time is seconds.
-  var PATIENCE_S = 8, RADIUS = 3;   // Elevator Pitch: +8 s patience for waiting customers within 3 tiles
+  var PATIENCE_S = 8, RADIUS = 3;
+  // Bulk orders: one a day (two from Level 3), 8 tacos for $20-$40 each (read by his character card)
+  var BULK = { tacos: 8, minDollars: 20, maxDollars: 40, perDay: 1, perDayFromL3: 2 };   // Elevator Pitch: +8 s patience for waiting customers within 3 tiles
   function patienceBonus(position, customer, hired) {
     if (!point(position) || !customer || !point(customer.position)) throw new TypeError('Invalid positions');
     var dx = position.x - customer.position.x, dy = position.y - customer.position.y;
@@ -47,12 +49,12 @@
       }
       try {
         // One uniform dollar draw; max of two draws at L2+ stochastically favors bigger orders.
-        var count = level >= 3 ? 2 : 1;
+        var count = level >= 3 ? BULK.perDayFromL3 : BULK.perDay;
         for (var i = 0; i < count; i++) {
           var r = random();
           if (level >= 2) r = Math.max(r, random());
           var order = { id: 'aaron:' + state.day + ':' + (i + 1), day: state.day,
-            tacos: 8, cents: (20 + Math.floor(r * 21)) * 100, status: 'scheduled' };
+            tacos: BULK.tacos, cents: (BULK.minDollars + Math.floor(r * (BULK.maxDollars - BULK.minDollars + 1))) * 100, status: 'scheduled' };
           orders.push(order);
           schedule('bulkOrder', i ? 0.7 : 0.2, { orderId: order.id });
         }
@@ -235,7 +237,7 @@
     return { element: wrap, destroy: function () { wrap.remove(); } };
   }
   return {
-    create: create, patienceBonus: patienceBonus, hireCents: 4000, wageCents: 800, unlockDay: 3, PATIENCE_S: PATIENCE_S, RADIUS_TILES: RADIUS,
+    create: create, patienceBonus: patienceBonus, hireCents: 4000, wageCents: 800, unlockDay: 3, PATIENCE_S: PATIENCE_S, RADIUS_TILES: RADIUS, BULK: BULK,
     idleLine: idleLine, mountHire: mountHire, text: textData
   };
 }));

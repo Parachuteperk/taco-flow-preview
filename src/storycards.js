@@ -34,42 +34,66 @@
   // ---- the real benefit numbers per character ---------------------------------------------------
   function roster(id) { return TF.Crew && TF.Crew.ROSTER.filter(function (r) { return r.id === id; })[0]; }
   function pct(mul) { return Math.round((1 - mul) * 100) + '%'; }
+  // Every number here is read from the code that applies it (Pass 7 playtest fix: no claims the
+  // game doesn't back up, and the hire state matches the crew).
+  var DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+  function hackLine(L, i) {
+    var d = DAYS[i] + ' ' + L.name + ': ';
+    if (L.id === 'agenda') return d + '+' + L.expect + ' students over ' + L.secs + ' s';
+    if (L.id === 'tacnet') return d + '+' + L.buyPct + '% buyers for ' + L.secs + ' s, then ' + L.outS + ' s of no Wi-Fi';
+    if (L.id === 'earlybell') return d + 'the next class bell rings ' + L.shiftS + ' s early';
+    if (L.id === 'raid') return d + '+' + L.expect + ' students in 2 groups (half the 2nd group leaves if the wait is over ' + L.bailWaitS + ' s)';
+    if (L.id === 'golden') return d + L.waves + ' waves of +' + L.waveSize + ' students and +$' + L.premium + ' a taco, until ' + L.walkAway + ' customers walk away';
+    return d + L.what;
+  }
+  // "Day 3" in Level 1, "Day 1 of Level 2" later (fills the copy's "Available from Day {day}")
+  function dayLabel(abs) { var lv = Math.ceil(abs / 5), d = (abs - 1) % 5 + 1; return lv <= 1 ? String(d) : d + ' of Level ' + lv; }
+  SC.unlockDay = function (id) {
+    if (TF.Week && TF.Week.unlockAbsolute) return TF.Week.unlockAbsolute(id);
+    return id === 'aaron' && TF.Aaron && TF.Aaron.unlockDay ? TF.Aaron.unlockDay : 1;
+  };
   SC.benefits = function (id) {
-    var C = TF.C || {}, P = (TF.Crew && TF.Crew.PERKS) || {}, wages = (TF.Economy && TF.Economy.wagesCents) || {};
+    var P = (TF.Crew && TF.Crew.PERKS) || {}, wages = (TF.Economy && TF.Economy.wagesCents) || {};
     var out = [];
     if (id === 'jared') {
       out.push('Runs the register and the cooler, and walks restocks from the van');
       if (TF.Econ && TF.Econ.FLOAT_KITS) out.push('Kit float: fronts ' + TF.Econ.FLOAT_KITS + ' taco kits once per level when you are broke and out of stock');
     } else if (id === 'ali') {
-      out.push('Cooking ' + pct(P.ali.cookMul) + ' faster, +' + P.ali.grillAdd + ' grill slot');
+      out.push('Cook time ' + pct(P.ali.cookMul) + ' shorter, +' + P.ali.grillAdd + ' grill slot');
     } else if (id === 'phillip') {
-      out.push('Cooking ' + pct(P.phillip.cookMul) + ' faster');
-      out.push('Tortilla Cannon extra: hand-off ' + Math.round(1 / P.cannon.handMul) + 'x faster (needs the Serving station)');
+      out.push('Cook time ' + pct(P.phillip.cookMul) + ' shorter (stacks with Ali)');
+      var cannon = TF.Crew && TF.Crew.EXTRAS.filter(function (x) { return x.id === 'cannon'; })[0], serving = TF.Crew && TF.Crew.TIERS[2];
+      if (cannon) out.push('Tortilla Cannon extra ($' + cannon.price + '): hand-off ' + Math.round(1 / P.cannon.handMul) + 'x faster' + (serving ? ' (needs the ' + serving.name + ')' : ''));
     } else if (id === 'matt') {
-      out.push('Hand-off in ' + P.matt.handT + ' s (stand default ' + (C.HAND_T || 0.8) + ' s), serves drinks quickly');
+      var base = TF.Crew && TF.Crew.SERVING_HAND_T;
+      out.push('Hand-off in ' + P.matt.handT + ' s' + (base ? ' (' + base + ' s without him)' : ''));
+      if (TF.Objects && TF.Objects.DRINK) out.push('Drink orders don\u2019t slow the hand-off (+' + TF.Objects.DRINK.slow + ' s each without him)');
       out.push('Repairs breakdowns: grills, banners, coolers, tipped trash cans');
     } else if (id === 'antonio') {
       var hacks = (TF.Hacks && TF.Hacks.LEVELS) || [];
-      out.push('One player-triggered hack a day' + (hacks.length ? ' (' + hacks.length + ' hacks, he levels up daily: ' + hacks.map(function (h) { return h.name; }).join(', ') + ')' : ''));
-      var acc = TF.Exchange && TF.Exchange.ACCURACY && TF.Exchange.ACCURACY.antonio;
-      if (acc) out.push('Exchange tips that are right ' + Math.round(acc * 100) + '% of the time');
+      out.push('Adds the Hack button: one hack a day while the stand is OPEN, you pick the moment');
+      if (hacks.length) out.push('A different hack each weekday:');
+      hacks.forEach(function (L, i) { out.push(hackLine(L, i)); });
     } else if (id === 'aaron') {
-      var A = TF.Aaron || {};
+      var A = TF.Aaron || {}, B = A.BULK;
       out.push('Elevator Pitch: +' + (A.PATIENCE_S || 8) + ' s patience for waiting customers within ' + (A.RADIUS_TILES || 3) + ' tiles');
-      out.push('Lands bulk orders from clubs and professors');
-      if (A.unlockDay) out.push(SC.fill(copy().cards.fromDay || 'Available from Day {day}', { day: A.unlockDay }));
+      if (B) out.push('Bulk orders: ' + B.perDay + ' a day (' + B.perDayFromL3 + ' from Level 3), ' + B.tacos + ' tacos for $' + B.minDollars + '\u2013$' + B.maxDollars + ' each');
     } else if (id === 'runner') {
       out.push('Walks supply runs: restocks the stand from the van');
     }
     var r = roster(id);
     if (r) {
-      var cards = copy().cards || {};
+      var cards = copy().cards || {}, hired = TF.Crew && TF.Crew.hiredSet[id];
       var price = id === 'aaron' && TF.Aaron && TF.Aaron.hireCents ? TF.Aaron.hireCents : r.price * 100;
-      if (!price) out.push(cards.free || 'Already on the crew');
+      if (hired || !price) out.push(cards.free || 'Already on the crew');
       else out.push(SC.fill(cards.hireCost || '{price} to hire', { price: money(price) }));
       var wage = id === 'aaron' && TF.Aaron && TF.Aaron.wageCents ? TF.Aaron.wageCents : wages[id];
       if (wage) out.push(SC.fill(cards.wage || '{wage}/day wage', { wage: money(wage) }));
-      if (r.tier > 0 && TF.Crew && TF.Crew.TIERS[r.tier - 1]) out.push(SC.fill(cards.needsTier || 'Unlocks with the {tier}', { tier: TF.Crew.TIERS[r.tier - 1].name }));
+      if (!hired) {
+        var day = SC.unlockDay(id);
+        if (day > 1) out.push(SC.fill(cards.fromDay || 'Available from Day {day}', { day: dayLabel(day) }));
+        if (r.tier > 0 && TF.Crew && TF.Crew.TIERS[r.tier - 1]) out.push(SC.fill(cards.needsTier || 'Unlocks with the {tier}', { tier: TF.Crew.TIERS[r.tier - 1].name }));
+      }
     }
     return out;
   };
@@ -160,8 +184,8 @@
     var r = roster(id), Sim = TF.Sim; if (!r || !Sim || !Sim.stand) return false;
     if (TF.Crew.hiredSet[id]) return true;   // on the crew = appears
     if (Sim.stand.tier < r.tier) return false;
-    if (id === 'aaron') { var day = TF.Econ && TF.Econ.abs ? TF.Econ.abs(TF.Week.day) : (TF.Week && TF.Week.day); return day >= ((TF.Aaron && TF.Aaron.unlockDay) || 3); }
-    return true;
+    var day = TF.Econ && TF.Econ.abs && TF.Week ? TF.Econ.abs(TF.Week.day) : (TF.Week && TF.Week.day) || 1;
+    return day >= SC.unlockDay(id);   // the Hire menu's day lock (src/week.js UNLOCK)
   };
   SC.showCharacter = function (id, auto) {
     var c = SC.character(id), K = copy().cards || {};
