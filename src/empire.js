@@ -169,7 +169,7 @@
     var o=it.o, k=O.KINDS[o.kind], key='catalog_'+o.kind;
     var im=TF.Art && (TF.Art.img[key] || TF.Art.img[k.art]);
     var p=TF.Render.toScreen(o.x+k.w/2,o.y+k.h/2);
-    if (im) { var sc=TF.C.TW*z*Math.min(k.w,2)/im.width; ctx.save(); ctx.globalAlpha=o.ready?1:0.55;
+    if (im) { var sc=im.dh ? im.dh*z/im.height : TF.C.TW*z*Math.min(k.w,2)/im.width; ctx.save(); ctx.globalAlpha=o.ready?1:0.55;
       ctx.drawImage(im,-im.ax*sc+p.x,-im.ay*sc+p.y,im.width*sc,im.height*sc); ctx.restore(); }
     else TF.Render.diamondFill(o.x,o.y,'#a8743c','#ffd23a');
     TF.Render.pill(k.name,p.x,p.y-24*z,8*z,'rgba(55,25,20,0.9)');

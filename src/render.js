@@ -294,7 +294,7 @@
   var PIECE = {   // target size in screen px at zoom 1 (one world scale for every piece)
     table: { a: -0.35, b: 0.6, w: 60 }, tablecooler: { a: -0.35, b: 0.6, w: 60 }, cooler: { a: -1.0, b: 0.25, w: 24 },
     grill: { a: 0.5, b: 0.55, w: 30 }, banner: { a: -1.15, b: -0.4, h: 64 },
-    counter: { a: 0.75, b: -0.45, w: 46 }, canopy: { w: 140 }, foodTruck: {w:150}, neonMenu:{a:-1.15,b:-0.4,h:64}, billboard:{a:-1.15,b:-0.4,h:86}
+    counter: { a: 0.75, b: -0.45, w: 46 }, canopy: { w: 140 }, foodTruck: {h:74}, neonMenu:{a:-1.15,b:-0.4,h:46}, billboard:{a:-1.15,b:-0.4,h:78}
   };
   R.standPieces = function (sx, sy, rot, tier, away, st) {
     st = st || Sim.stand;
