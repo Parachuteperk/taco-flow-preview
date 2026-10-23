@@ -166,11 +166,23 @@
     TF.Crew.applyMods();
   };
   EC.FLOAT_KITS = 12;   // Jared's kit float: kits fronted once per level when broke and empty (character card reads it)
+  EC.REMOTE_NEW_SHARE = 0.5;
+  EC.remoteEstimate = function (st) {
+    var rows=[];
+    Sim.stands.forEach(function (o) { if (o !== st) (o.recent || []).forEach(function (r) { if (r.gross > 0) rows.push(r); }); });
+    if (!rows.length) return [];
+    var g=rows.reduce(function(a,r){return a+r.gross;},0)/rows.length, c=rows.reduce(function(a,r){return a+r.cost;},0)/rows.length;
+    return [{ gross: Math.round(g * EC.REMOTE_NEW_SHARE), cost: Math.round(c * EC.REMOTE_NEW_SHARE) }];
+  };
   EC.settleRemote = function(day) {
     var gross=0,cost=0;
     Sim.stands.forEach(function(st) {
       if (!st.offsite || st.placed) return;
       var history=st.recent || [], n=history.length;
+      // A stand that never got a real trading day here (bought on the last day, or stuck 'being built'
+      // by the Pass 7 bug) has no or all-zero history and would earn $0 remotely forever. Give it half
+      // of what the other stands average instead (Pass 7: "no one is buying from my 2nd stand").
+      if (!history.some(function (r) { return r.gross > 0; })) { history = EC.remoteEstimate(st); n = history.length; }
       if (!n) return;
       var g=Math.round(history.reduce(function(a,r){return a+r.gross;},0)/n);
       var c=Math.round(history.reduce(function(a,r){return a+r.cost;},0)/n) + Math.round(g * 0.2); // remote manager takes 20% of gross (Pass 7 tune: was 12%)
@@ -225,12 +237,14 @@
     return r.sold ? { dollars: r.cents / 100 } : { reason: r.reason };
   };
   // Restock walk finished (Jared / the runner / the cashier): bring kits from the shared van.
-  EC.refill = function (st) {
+  // share (0-1): the most of the van this refill may take (a stand opening mid-day takes half, so
+  // stand 1's next restock walk isn't left with an empty van)
+  EC.refill = function (st, share) {
     if (!EC.on()) return;
     st = st || Sim.stand;
     if (st.idx === 0) EC.K.refill();
     else {
-      var s = EC.state(), take = Math.min(s.vanKits, Math.max(0, (st.mods.stockMax || 10) - (st.ekits || 0)));
+      var s = EC.state(), van = share ? Math.ceil(s.vanKits * share) : s.vanKits, take = Math.min(van, Math.max(0, (st.mods.stockMax || 10) - (st.ekits || 0)));
       setVan(s.vanKits - take); st.ekits = (st.ekits || 0) + take;
     }
     EC.sync(); return EC.kits(st);

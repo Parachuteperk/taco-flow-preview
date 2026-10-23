@@ -50,7 +50,12 @@
     Sim.events.push({ type: 'handoff' });
   }
   // End of the day: anything still under way is finished on the spot.
-  B.finishAll = function () { B.jobs.forEach(function (j) { if (j.phase !== 'leave') finish(j); }); B.jobs = []; };
+  B.finishAll = function () {
+    B.jobs.forEach(function (j) { if (j.phase !== 'leave') finish(j); }); B.jobs = [];
+    // safety net: a stand flagged as under construction with no build job is simply finished, so it can
+    // never stay closed to buyers (Pass 7: stands bought during OPEN were stuck like this)
+    Sim.stands.forEach(function (st) { if (st.constructing) { st.constructing = false; st.needsBuild = false; } });
+  };
 
   B.step = function (dt) {
     for (var i = B.jobs.length - 1; i >= 0; i--) {

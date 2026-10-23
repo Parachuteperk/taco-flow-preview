@@ -477,6 +477,10 @@
   // What is holding a stand back right now (one label), or null when it flows.
   TF.bottleneckOf = function (st) {
     if (!st || !st.placed) return null;
+    // say why a stand isn't selling instead of failing silently (Pass 7)
+    if (st.constructing) return 'BEING BUILT';
+    if (st.idx > 0 && !st.crew) return 'NEEDS A CASHIER';
+    if (!st.connected) return 'NO QUEUE LINE';
     if (TF.Econ && TF.Econ.on() && TF.Econ.stockStatus(st) === 'restocking') return 'RESTOCKING';
     if (st.trip) return 'RESTOCKING';
     if (TF.Econ && TF.Econ.on() ? TF.Econ.kits(st) <= 0 : st.stock <= 0) return 'NO STOCK';
@@ -1032,7 +1036,14 @@
     st.queue = [];
     st.window = null;
     rebuildLines();
-    if (!wasPlaced) { if (TF.Econ && TF.Econ.on() && TF.Week.phase === 'open') TF.Econ.refill(st); return v; }
+    if (!wasPlaced) {
+      if (TF.Econ && TF.Econ.on() && TF.Week.phase === 'open') TF.Econ.refill(st, 0.5);
+      // Pass 7 fix (Aaron: "no one is buying from my 2nd stand"): a stand bought during OPEN is
+      // placed here for the first time, and this early return skipped the construction start at the
+      // bottom, so it stayed 'constructing' (closed to buyers) for the rest of the run.
+      runAfterPlace();
+      return v;
+    }
 
     for (var k = 0; k < st.pickup.length; k++) st.pickup[k] = null;
     if (st.trip) {
@@ -1074,9 +1085,10 @@
         if (nt && World.isStand(Math.floor(nt.x), Math.floor(nt.y))) { g.path = []; ensureOnWalk(g); }
       }
     });
-    if (Sim.afterPlace) { var ap = Sim.afterPlace; Sim.afterPlace = null; ap(); }
+    runAfterPlace();
     return v;
   };
+  function runAfterPlace() { if (Sim.afterPlace) { var ap = Sim.afterPlace; Sim.afterPlace = null; ap(); } }
 
   Sim.counts = function () {
     var c = { queue: 0, atPickup: 0, leavingWithTaco: 0, alive: Sim.guests.length, enroute: 0 };
