@@ -1,5 +1,5 @@
-// ALL player-facing copy for the new-game intro and the character cards (Pass 7). PLACEHOLDER TEXT:
-// replace the strings here (e.g. with ChatGPT's draft); keep the keys and the {tokens}.
+// ALL player-facing copy for the new-game intro and the character cards (Pass 7). ChatGPT's copy
+// (Oct 23, 2026; Aaron's title pick: Chief Handshake Officer). Edit the strings freely; keep the keys and the {tokens}.
 // Tokens filled by src/storycards.js from the live game data:
 //   {rentL1}..{rentL4}  Friday rent per level from data/economy.js, e.g. "$750"
 //   {levelL1}..{levelL4} level/map names from data/economy.js, e.g. "Bobcat Trail"
@@ -14,36 +14,65 @@
   return {
     "intro": {
       "cards": [
-        { "who": "west", "name": "Mrs. West", "title": "Your landlord", "text": "Lovely little patch, isn't it? I own it. I own most of what you can see from here." },
-        { "who": "west", "name": "Mrs. West", "title": "Your landlord", "text": "Rent is {rentL1}, due Friday. Every Friday. Cash, on time, no excuses." },
-        { "who": "west", "name": "Mrs. West", "title": "Your landlord", "text": "Miss it, and the stand is mine. Folding table, cooler, all of it." },
-        { "who": "west", "name": "Mrs. West", "title": "Your landlord", "text": "Last a month: {weeks} weeks, {weeks} spots. {levelL1}, then {levelL2}, {levelL3} and {levelL4}. Each one pricier. {rentL4} by the end." },
-        { "who": "jared", "name": "Jared", "title": "Register + cooler", "text": "One stand today. Up to {maxStands} by the end of the month. Let's build a taco empire." }
+        { "who": "west", "name": "Mrs. West", "title": "Your landlord", "text": "I'm Mrs. West, sugar. That's my land under your little folding table." },
+        { "who": "west", "name": "Mrs. West", "title": "Your landlord", "text": "Rent's {rentL1}, due Friday. Every Friday, darlin'. I don't accept good vibes." },
+        { "who": "west", "name": "Mrs. West", "title": "Your landlord", "text": "Miss rent and the stand is mine. Even the cooler. Especially the cooler." },
+        { "who": "west", "name": "Mrs. West", "title": "Your landlord", "text": "One month, {weeks} stops: {levelL1} → {levelL2} → {levelL3} → {levelL4}. Rent goes up each week. {rentL4} by the end." },
+        { "who": "jared", "name": "Jared", "title": "Register + cooler", "text": "One folding table today. Up to {maxStands} stands by month's end. I'm saving for a gold-plated cooler." }
       ],
       "next": "Next",
       "start": "Let's sell tacos",
       "skip": "Skip intro"
     },
     "cards": {
-      "heading": "New crew member",
-      "benefitsHeading": "What they do",
+      "heading": "Meet the crew",
+      "benefitsHeading": "What they bring",
       "close": "Got it",
-      "skipAll": "Skip all intros",
+      "skipAll": "Skip crew intros",
       "infoButton": "Info",
-      "hireCost": "{price} to hire",
+      "hireCost": "Hire for {price}",
       "wage": "{wage}/day wage",
       "free": "Already on the crew",
       "needsTier": "Unlocks with the {tier}",
       "fromDay": "Available from Day {day}"
     },
     "characters": {
-      "jared": { "name": "Jared", "title": "Register + cooler", "line": "Drawer's counted, cooler's iced. Point me at the line." },
-      "ali": { "name": "Ali", "title": "Grill master", "line": "They traded LUKA. On PURPOSE. Anyway, the grill's hot." },
-      "phillip": { "name": "Phillip", "title": "Prep + tortilla engineer", "line": "Cannon v2 has better elevation." },
-      "matt": { "name": "Matt", "title": "Hand-off + handyman", "line": "Duct tape fixes most things. Power drill does the rest." },
-      "antonio": { "name": "Antonio", "title": "Hacker + streamer", "line": "Wi-Fi name changed. You're welcome." },
-      "aaron": { "name": "Aaron", "title": "Co-Founder", "line": "Here's my card. Keep it. Bulk orders are a networking strategy." },
-      "runner": { "name": "Freshman Runner", "title": "Supply runs", "line": "The van's how far? Cool. Cool cool cool." }
+      "jared": {
+        "name": "Jared",
+        "title": "Register and Resupply",
+        "line": "The cooler's stocked. My gold is none of your business."
+      },
+      "ali": {
+        "name": "Ali",
+        "title": "Grill and Grudges",
+        "line": "They traded LUKA. I'm putting that rage into the grill."
+      },
+      "phillip": {
+        "name": "Phillip",
+        "title": "Tortilla Ballistics Engineer",
+        "line": "I've solved the tortilla trajectory. Still working on the landing."
+      },
+      "matt": {
+        "name": "Matt",
+        "title": "Hand-Off and Hardware",
+        "line": "Duct tape for the little problems. Drill for the loud ones."
+      },
+      "antonio": {
+        "name": "Antonio",
+        "title": "Hacks and Hype",
+        "line": "I can make this trend. Campus IT can take a number."
+      },
+      "aaron": {
+        "name": "Aaron",
+        "title": "Chief Handshake Officer",
+        "line": "I gave the statue a business card. Still waiting on a callback."
+      },
+      "runner": {
+        "name": "Freshman Runner",
+        "title": "Emergency Supply Intern",
+        "line": "I'm not lost. This is a supply-side detour."
+      }
     }
   };
 }));
+

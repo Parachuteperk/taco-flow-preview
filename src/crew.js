@@ -11,7 +11,7 @@
     { tier: 4, id: 'canopy', name: 'Canopy', effect: 'More passers-by stop', price: 60, unlock: 18 }
   ];
   // Aaron's title comes from the copy file (data/story-copy.js); never President or Manager (Pass 7).
-  function aaronTitle() { var c = TF.STORY_COPY && TF.STORY_COPY.characters && TF.STORY_COPY.characters.aaron; return (c && c.title) || 'Co-Founder'; }
+  function aaronTitle() { var c = TF.STORY_COPY && TF.STORY_COPY.characters && TF.STORY_COPY.characters.aaron; return (c && c.title) || 'Chief Handshake Officer'; }
   // Crew perks: the numbers modsFor() applies, also read by the character cards (src/storycards.js).
   var PERKS = { ali: { cookMul: 0.6, grillAdd: 1 }, phillip: { cookMul: 0.8 }, matt: { handT: 0.15 }, cannon: { handMul: 0.5 } };
   var ROSTER = [
