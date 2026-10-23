@@ -377,8 +377,9 @@
       ['cheap', 'fair', 'bougie'].map(function (t) { return '<button data-menu-tier="' + t + '" aria-pressed="' + (s.tier === t) + '"' + (editable ? '' : ' disabled') + '>' + t + ' ' + money(lv.prices[t] + s.priceAdd) + '</button>'; }).join('') +
       '<p>Too pricey: <b>' + EC.lostToday('too pricey') + '</b> lost sales today. Lower prices attract more budgets.</p>';
     var O = TF.Objects, cooler = O && O.list.some(function (o) { return o.kind === 'drinks' && o.ready; });
-    menuBody.innerHTML += '<p><b>🥤 Agua fresca · ' + money(100 * (O.day.price || O.DRINK.price)) + '</b><br>' +
-      (cooler ? (O.stock ? O.stock.drinks : 0) + ' drinks left · buy stock in Restock.' : 'Build a Drink cooler to sell purchased drinks.') + '</p>' +
+    if (!hasCooler()) menuBody.innerHTML += '<p><b>🥤 Agua fresca</b><br>' + NO_COOLER + '.</p>';
+    else menuBody.innerHTML += '<p><b>🥤 Agua fresca · ' + money(100 * (O.day.price || O.DRINK.price)) + '</b><br>' +
+      (cooler ? (O.stock ? O.stock.drinks : 0) + ' drinks left · buy stock in Restock.' : 'Your Drink cooler is still being built.') + '</p>' +
       [1, 2, 3].map(function (p) { return '<button data-drink-price="' + p + '" aria-pressed="' + ((O.day.price || O.DRINK.price) === p) + '"' + (editable ? '' : ' disabled') + '>' + money(p * 100) + '</button>'; }).join('') +
       '<p>Cheaper drinks get more takers; drinks add pickup time.</p>' + EC.drinkControls();
     var creditNow = TF.Economy.creditCents / 100, creditFee = TF.Economy.creditFeeCents / 100;
@@ -389,8 +390,15 @@
     menuBody.querySelectorAll('[data-menu-tier]').forEach(function (b) { b.onclick = function () { EC.setTier(b.dataset.menuTier); EC.renderMenu(); }; });
     menuBody.querySelectorAll('[data-drink-price]').forEach(function (b) { b.onclick = function () { EC.setDrinkPrice(Number(b.dataset.drinkPrice)); }; });
   };
+  // Drink stock and drink prices need a Drink cooler (TF.Objects.hasCooler; plain list check for stubs).
+  var NO_COOLER = 'Build the Drink Cooler to stock drinks';
+  function hasCooler() {
+    var O = TF.Objects;
+    return !!O && (O.hasCooler ? O.hasCooler() : (O.list || []).some(function (o) { return o.kind === 'drinks'; }));
+  }
   EC.drinkControls = function () {
     var O = TF.Objects, stock = O.stock || { drinks: 0, pending: [] }, rush = TF.Week.phase === 'open';
+    if (!hasCooler()) return '<div class="drink-stock"><small>🥤 ' + NO_COOLER + '.</small></div>';
     var allowed = /^(prep|open|report)$/.test(TF.Week.phase), n = EC.drinkWant || 10;
     var cents = Math.round(n * (O.drinkCost ? O.drinkCost() : O.DRINK.cost || 0.5) * 100 * (rush ? TF.Economy.rushMult : 1));
     return '<div class="drink-stock"><b>🥤 Drink stock: ' + stock.drinks + ' left</b>' +
@@ -413,7 +421,7 @@
     EC.restockSig = null; EC.refresh(); EC.renderMenu(); return r;
   };
   EC.setDrinkPrice = function (price) {
-    if (!/^(prep|open|close)$/.test(TF.Week.phase) || [1, 2, 3].indexOf(price) < 0) return false;
+    if (!hasCooler() || !/^(prep|open|close)$/.test(TF.Week.phase) || [1, 2, 3].indexOf(price) < 0) return false;
     TF.Objects.day.price = price; EC.renderMenu(); return true;
   };
   if (menuBtn) menuBtn.onclick = function () { menu.hidden = !menu.hidden; EC.renderMenu(); };

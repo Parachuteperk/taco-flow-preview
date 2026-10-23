@@ -148,8 +148,15 @@
   O.DRINK = { p: 0.35, price: 2, cost: 0.5, slow: 2 };
   O.drinkCost = function () { return TF.Econ && TF.Econ.on() && TF.Econ.levelNo > 1 ? 1 : O.DRINK.cost; };
   O.stock = { drinks: 0, pending: [] };
+  // Drink stock is only sold to owners of a Drink cooler (placed or still being built).
+  O.hasCooler = function () {
+    function cooler(o) { return o && o.kind === 'drinks'; }
+    return O.list.some(cooler) || !!(TF.Empire && (TF.Empire.cargo || []).some(cooler));   // packed for redeploy still counts
+  };
+  O.NO_COOLER = 'Build the Drink Cooler to stock drinks';
   O.buyDrinks = function (n) {
     var W = TF.Week, phase = W && W.phase, rush = phase === 'open';
+    if (!O.hasCooler()) return { ok: false, reason: O.NO_COOLER };
     var cost = Math.round(n * O.drinkCost() * 100 * (rush ? TF.Economy.rushMult : 1));
     if (!Number.isSafeInteger(n) || n <= 0 || !Number.isSafeInteger(cost)) return { ok: false, reason: 'invalid quantity' };
     if (phase !== 'prep' && phase !== 'report' && !rush) return { ok: false, reason: 'PREP or OPEN only' };
