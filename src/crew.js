@@ -694,7 +694,10 @@
       var xb = blocked(x.id);
       b.textContent = Crew.extras[x.id] ? 'Owned' : xb ? xb : !ok ? x.needsText : label(x.id, 'Buy $' + x.price);
       b.disabled = !!Crew.extras[x.id] || !ok || !!xb || money < x.price;
-      show(b, !Crew.extras[x.id] && ok && !dayLock(xb), x.name, !Crew.extras[x.id] && dayLock(xb) && xb);
+      // crew extras work stand 1 only (and the second cooler only helps the starter table), so they're
+      // listed under Stand 1 - never offered as if they upgraded stand 2+
+      var here = st.idx === 0 && (x.id !== 'cooler2' || st.tier === 0);
+      show(b, here && !Crew.extras[x.id] && ok && !dayLock(xb), x.name, here && !Crew.extras[x.id] && dayLock(xb) && xb);
     });
     list.querySelectorAll('[data-obj]').forEach(function (b) {
       var id = b.getAttribute('data-obj'), k = TF.Objects.KINDS[id], ob = TF.Objects.blockReason(id), bl = blocked(id);
