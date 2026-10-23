@@ -301,25 +301,7 @@
   // ---- Report + ending cards ---------------------------------------------------------------
   var card = $('reportCard');
   function showReport(r) {
-    var lost = Object.keys(r.lost).filter(function (k) { return r.lost[k] > 0; }).map(function (k) { return r.lost[k] + ' ' + k; });
-    var lostN = Object.keys(r.lost).reduce(function (s, k) { return s + Math.max(0, r.lost[k]); }, 0);
-    card.innerHTML =
-      '<h2>Day ' + r.day + ': ' + r.name + '</h2>' +
-      '<div class="big ' + (r.hit ? 'hit' : 'miss') + '">' + r.sold + ' / ' + r.goal + ' tacos ' + (r.hit ? '✔ Goal hit!' : '✘ Missed') + '</div>' +
-      '<div class="row"><span>Cash earned</span><b>$' + r.cash + '</b></div>' +
-      '<div class="row"><span>Customers lost</span><b>' + lostN + '</b></div>' + (lost.length ? '<div class="why">' + lost.join(' · ') + '</div>' : '') +
-      '<div class="row"><span>Biggest bottleneck</span><b>' + (r.neck ? r.neck.name + ' (' + r.neck.secs + 's)' : 'none — smooth day!') + '</b></div>' +
-      (r.standSold ? '<div class="row"><span>Best stand</span><b>Stand ' + (r.standSold.indexOf(Math.max.apply(null,r.standSold))+1) + ' (' + r.standSold.join(' vs ') + ' sold)</b></div>' : '') +
-      (r.econ && TF.Econ.funnelHTML ? TF.Econ.funnelHTML(r.econ) : '') +
-      (r.econ ? '<div class="row"><span>\uD83D\uDDD1 Spoiled at close</span><b>' + r.econ.spoiledKits + ' kits (\u2212$' + (r.econ.spoiledCents / 100).toFixed(2) + ')</b></div>' : '') +
-      (r.econ && r.econ.rent ? '<div class="row"><span>Rent to Mrs. West</span><b>' + (r.econ.rent.paid ? '\u2714 paid' : '\u2718 short') + '</b></div>' : '') +
-      investRows(r.invest) +
-      (TF.Empire ? TF.Empire.reportHTML(r) : '') +
-      '<div class="brief" id="briefing"><b>Briefing:</b> ' + r.suggest.text + '</div>' +
-      (r.obj && (r.obj.drinks || r.obj.upkeep) ? '<div class="row"><span>Drinks / upkeep</span><b>' + r.obj.drinks + ' drinks +$' + r.obj.drinkRev + ' \u00B7 costs -$' + (r.obj.upkeep + r.obj.drinkCost) + '</b></div>' : '') +
-      (r.obj && r.obj.litter ? '<div class="row"><span>Litter on the quad</span><b>' + r.obj.litter + ' wrappers' + (r.obj.litterPct ? ' (\u2212' + r.obj.litterPct + '% draw)' : '') + '</b></div>' : '') +
-      (r.hadBet ? '<div class="row"><span>Jared’s bets</span><b>' + (r.betNet === 0 ? 'no change' : (r.betNet > 0 ? '+$' : '-$') + Math.abs(r.betNet)) + '</b></div>' : '') +
-      '<button id="btnNextDay">' + (r.day < 5 ? 'Next day →' : 'See how the week went →') + '</button>';
+    TF.Report.render(card, r);   // layout + collapsible sections: src/report.js
     card.hidden = false;
     if (TF.Save) TF.Save.write('report');   // auto-save after REPORT: resumes into the next day's PREP, or Friday's verdict (C6)
     $('btnNextDay').addEventListener('click', function () {
@@ -331,17 +313,6 @@
       if (TF.Story && TF.Story.started) TF.Story.playVerdict(function () { if (gen === W.gen) showEnding(); }); else showEnding();
     });
     W.refresh();
-  }
-
-  // The day report's Investments section: ROI per item, best first; metals at today's price.
-  function investRows(rows) {
-    if (!rows || !rows.length) return '';
-    var h = '<div class="inv"><div class="row"><span><b>Investments</b></span><b>earned / cost \u00B7 ROI</b></div>';
-    rows.forEach(function (x, i) {
-      var tag = rows.length > 1 && i === 0 ? ' \u2B50 best' : rows.length > 1 && i === rows.length - 1 ? ' \u2B07 worst' : '';
-      h += '<div class="row small"><span>' + x.name + (x.est ? ' <small>(est.)</small>' : '') + tag + '</span><b>' + (x.earned < 0 ? '-$' : '+$') + Math.abs(x.earned) + ' / $' + x.cost + ' \u00B7 ' + x.roi + '%' + (x.metal ? ' (now $' + x.value + ')' : '') + '</b></div>';
-    });
-    return h + '</div>';
   }
 
   function nextDay() {

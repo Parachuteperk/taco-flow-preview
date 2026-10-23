@@ -57,7 +57,7 @@
     if (W && W.phase === 'report' && !card.hidden && !card.querySelector('.callLineReport')) {
       var r = records[W.day], p = document.createElement('p'); p.className = 'callLineReport brief';
       p.textContent = !r || !r.choice ? 'Aaron: no rush decision today.' : 'Aaron: ' + ({ push: 'Push the Line', premium: 'Premium Service', steady: 'Keep It Steady' })[r.choice] + ' · ' + r.affected + ' orders affected · +$' + r.bonus + ' premium revenue · ' + r.waste.toFixed(2) + ' extra ingredients used' + (r.choice === 'push' ? ' · ' + Math.round(r.seconds) + 's at +20% speed' : r.choice === 'premium' ? ' · −15% speed during premium service' : ' · regular service');
-      card.appendChild(p);
+      (card.querySelector('[data-slot="crew"]') || card).appendChild(p);   // Pass 7: the report's Crew section
     }
   };
   // Called at crew foot points by the renderer; real-time motion stays legible at 4x.

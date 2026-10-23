@@ -107,7 +107,9 @@
       div.setAttribute('data-story-beat', String(day));
       div.style.cssText = 'overflow-wrap:anywhere';
       div.textContent = beats[0].text;
-      if (card.firstChild) card.insertBefore(div, card.firstChild.nextSibling);
+      var slot = card.querySelector('[data-slot="story"]');   // Pass 7: the report's Story & notes section
+      if (slot) slot.appendChild(div);
+      else if (card.firstChild) card.insertBefore(div, card.firstChild.nextSibling);
       else card.appendChild(div);
     }
     var tick = setInterval(function () { showMorning(); showOpenLine(); showReport(); }, 400);
