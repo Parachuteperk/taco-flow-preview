@@ -103,42 +103,6 @@ TF.P7Content = {
     }
   },
   headlines: {
-    GOLD: {
-      up: [
-        "Gold spikes. Jared calls it destiny.",
-        "Jared's gold pitch actually lands.",
-        "Gold up. Coin flip was heads.",
-        "Jared buys more gold. Market agrees.",
-        "Gold rally. Hustlers eat well.",
-        "Gold hits new high. Jared smug."
-      ],
-      down: [
-        "Gold drops. Jared blames the Fed.",
-        "Jared's gold call was wrong again.",
-        "Gold tanks. Coin was tails.",
-        "Jared holds. Market does not.",
-        "Gold slide. Hustle on pause.",
-        "Gold down. Jared still talking."
-      ]
-    },
-    SLVR: {
-      up: [
-        "Silver climbs. Jared doubles down.",
-        "Silver rally. Second-best metal wins.",
-        "Silver up. Jared's backup plan works.",
-        "Silver spikes. Less flash, more cash.",
-        "Silver rises. Jared calls it undervalued.",
-        "Silver high. He bought the dip."
-      ],
-      down: [
-        "Silver dips. Jared still pitching.",
-        "Silver drops. Backup metal fails.",
-        "Silver slides. Jared shrugs.",
-        "Silver down. He calls it a sale.",
-        "Silver tanks. Hustle gets quieter.",
-        "Silver low. Jared moves on."
-      ]
-    },
     WEST: {
       up: [
         "Mrs. West approves. Checks clear.",
@@ -211,24 +175,6 @@ TF.P7Content = {
         "Hack messy. Campus IT annoyed."
       ]
     },
-    MAVS: {
-      up: [
-        "Mavs win. Ali cooks like it.",
-        "Mavs up. Ali's mood feeds the line.",
-        "Mavs rally. Special is on.",
-        "Mavs win. Ali talks less, plates more.",
-        "Mavs hot. Ali's energy spreads.",
-        "Mavs high. Grill is on fire."
-      ],
-      down: [
-        "Mavs lose. Ali is quiet.",
-        "Mavs down. Ali blames the refs.",
-        "Mavs slide. Special is canceled.",
-        "Mavs lose. Ali's rants scare customers.",
-        "Mavs cold. Grill runs slow.",
-        "Mavs low. Ali needs a minute."
-      ]
-    },
     BOBA: {
       up: [
         "Boba demand up. Failed startup left a hole.",
@@ -245,24 +191,6 @@ TF.P7Content = {
         "Boba lag. Students brought their own.",
         "Boba flat. Heat broke.",
         "Boba dips. Line moved on."
-      ]
-    },
-    NAPZ: {
-      up: [
-        "Naps up. Finals week is brutal.",
-        "Students sleep less. Lines longer.",
-        "Naps high. Midterms keep them out.",
-        "Sleep debt grows. Tacos sell.",
-        "Naps spike. Library is packed.",
-        "Finals mode. Stand stays open late."
-      ],
-      down: [
-        "Naps down. Break week is quiet.",
-        "Students sleep in. Lines short.",
-        "Naps low. Campus is empty.",
-        "Sleep recovered. No one is hungry.",
-        "Naps drop. Weekend off.",
-        "Finals over. Stand looks slow."
       ]
     },
     TUBE: {
@@ -301,42 +229,6 @@ TF.P7Content = {
         "Coin red. Next one is the one."
       ]
     },
-    SHADE: {
-      up: [
-        "Shade up. Canopy keeps the line.",
-        "Shade sells. Heat is brutal.",
-        "Canopy works. Students stay.",
-        "Shade high. Rain or sun, it helps.",
-        "Shade boom. Stand looks open.",
-        "Canopy full. Line doesn't move."
-      ],
-      down: [
-        "Shade down. Heat drives them away.",
-        "No canopy. Line thins fast.",
-        "Shade fails. Students leave.",
-        "Shade low. Rain or glare wins.",
-        "Canopy empty. Stand looks closed.",
-        "Shade dips. Weather beats the build."
-      ]
-    },
-    QUAD: {
-      up: [
-        "Quad event. Lines form early.",
-        "New build on the Quad. Traffic up.",
-        "Quad packed. Homecoming week.",
-        "Quad busy. Class change hits.",
-        "Quad high. Something is happening.",
-        "Quad rally. Students are out."
-      ],
-      down: [
-        "Quad quiet. Event moved.",
-        "New build blocks the path.",
-        "Quad empty. Midterms keep them in.",
-        "Quad slow. Class change missed.",
-        "Quad low. Nothing is happening.",
-        "Quad dips. Campus is elsewhere."
-      ]
-    }
   },
   levelEvents: {
     L1: {

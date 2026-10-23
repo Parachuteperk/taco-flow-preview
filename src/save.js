@@ -300,7 +300,7 @@
       ls.setItem(KEY, raw); SV.writes++; SV.lastWrite = { day: d.day, resume: resume }; return true; }
     catch (e) { SV.writeError = e.message; return false; }   // quota / blocked storage: play on without saves
   };
-  SV.clear = function () { var ls = store(); try { if (ls) ls.removeItem(KEY); } catch (e) { /* ignore */ } };
+  SV.clear = function () { var ls = store(); try { if (ls) ls.removeItem(KEY); } catch (e) { /* ignore */ } if (TF.StoryCards) TF.StoryCards.reset(); };
 
   // ---- Resume: restart the saved day at PREP ------------------------------------------------------------
   SV.restore = function (d, importing) {
@@ -393,7 +393,7 @@
   };
   if (card) {
     card.querySelector('#btnResume').addEventListener('click', function () { var d = SV.read(); card.hidden = true; if (d) SV.restore(d); });
-    card.querySelector('#btnNewGame').addEventListener('click', function () { card.hidden = true; SV.clear(); SV.write('prep'); });
+    card.querySelector('#btnNewGame').addEventListener('click', function () { card.hidden = true; SV.clear(); SV.write('prep'); if (TF.StoryCards) TF.StoryCards.maybeIntro(); });
   }
   // ---- export / import (PLAN §2): the same JSON as loli.v6, through the same migration + validation -------
   // The export is the durable save: refreshed in PREP (nothing has happened since it), as-is otherwise. During

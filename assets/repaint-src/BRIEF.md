@@ -114,7 +114,7 @@ Outlines are dark brown or black, never purple.
 - A **teal polo with a small gold name tag**, jeans, white sneakers, slim-average build, a friendly half-smile.
 - **Row 3:** taking payment, handing over change, spatula pose, then specials: **pitching with a gold bar in hand** ("gold and silver, brother") and **flipping a coin**.
 
-### Aaron: SIFE founder / manager (the user)
+### Aaron: SIFE co-founder (the user)
 - Fair skin, **spiky golden-blond hair**, blue eyes, a big smile.
 - A **black over-ear headset with a mic**.
 - A **maroon polo** (`#7A1F1F`) with a small gold paw/leaf print, jeans, brown shoes.

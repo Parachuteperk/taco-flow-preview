@@ -1,5 +1,5 @@
 // The Quad Exchange adapter: full board from data/tickers.js (each on its opensDay;
-// GOLD/COIN/SHADE/QUAD/SLVR day 1). Trading in PREP and REPORT. 2% fee (min $1),
+// COIN day 1, the rest day 6). Trading in PREP and REPORT. 2% fee (min $1),
 // 25% exposure cap, no same-day round-trips. Drivers via MK.signal merged into ctx.
 // Headlines for >=5% moves exposed as MK.headlines(day).
 (function (TF) {

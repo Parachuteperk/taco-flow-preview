@@ -130,39 +130,11 @@
       }
     }
 
-    function maybeHireCard() {
-      if (typeof window !== 'undefined' && window.__autotest) return;
-      if (!(TF.Week && TF.Week.active && TF.Week.active() && TF.Week.phase === 'prep')) return;
-      var a = ensureAaron(); if (!a) return;
-      syncDayPhase();
-      if (TF.Crew && TF.Crew.hiredSet && TF.Crew.hiredSet.aaron) return;
-      if (a.getState().hired) return;
-      if (document.getElementById('aaronHire')) return;
-      var abs = absDay();
-      if (abs < 3) return;
-      var can = a.canHire();
-      if (!can.ok) return;
-      if (hireShownFor === abs) return;
-      hireShownFor = abs;
-      TF.Aaron.mountHire(document.body, {hire: TF.Aaron.hireLive}, {
-        onHired: function (lines) {
-          if (TF.Crew) { TF.Crew.hiredSet.aaron = true; TF.Crew.applyMods && TF.Crew.applyMods(); TF.Crew.spotKey = ''; }
-          (lines || []).forEach(function (l) {
-            if (TF.Sim && TF.Sim.events) TF.Sim.events.push({ type: 'toast', text: (l.who ? l.who + ': ' : '') + l.text });
-          });
-          if (TF.Save && TF.Week.phase === 'prep') TF.Save.write('prep');
-        },
-        onPassed: function (lines) {
-          (lines || []).forEach(function (l) {
-            if (TF.Sim && TF.Sim.events) TF.Sim.events.push({ type: 'toast', text: (l.who ? l.who + ': ' : '') + l.text });
-          });
-        }
-      });
-    }
-
+    // Pass 7 (Aaron: "I dont like the hire aaron pop up"): no automatic hire pop-up. Aaron is hired from
+    // the Hire menu; his character card (src/storycards.js) introduces him like the rest of the crew.
     function onWeekEvent() {
       syncDayPhase();
-      maybeHireCard();
+      if (TF.StoryCards) TF.StoryCards.check();
       var key = (TF.Week && TF.Week.day) + ':' + (TF.Week && TF.Week.phase);
       if (key !== lastPhaseKey) lastPhaseKey = key;
     }

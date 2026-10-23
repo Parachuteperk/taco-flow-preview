@@ -24,7 +24,7 @@
       }
     ],
     "cardTitle": "Aaron - SIFE",
-    "cardBody": "Founder, President, Chief Synergy Officer, and he brought the tacos in the first place.",
+    "cardBody": "Co-Founder, Chief Synergy Officer, and he brought the tacos in the first place.",
     "perkName": "Elevator Pitch",
     "perkDesc": "+8s patience nearby. One bulk order/day.",
     "hireBtn": "Hire $40",

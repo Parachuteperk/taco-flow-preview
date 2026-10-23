@@ -3,24 +3,17 @@
   else { root.TF = root.TF || {}; root.TF.Tickers = factory(); }
 }(typeof window !== 'undefined' ? window : this, function () {
   'use strict';
+  // Pass 7 (Aaron: "too many stocks"): GOLD, SLVR, NAPZ, MAVS, SHADE and QUAD were delisted.
+  // Old saves holding them are refunded at the last price by Exchange.migrate (src/exchange.js).
   return [
-    {sym: 'GOLD', name: "Jared's Mattress Reserve (Gold)", joke: 'The mattress has excellent fundamentals.', startCents: 2000, risePct: 52, v: 0.02, opensDay: 1, catalysts: []},
-    {sym: 'SLVR', name: 'Silver Stackers', joke: 'Jared calls every dip "a shinier entry"', startCents: 600, risePct: 50, v: 0.05, opensDay: 1, catalysts: []},
     {sym: 'WEST', name: 'West Holdings (your landlord)', joke: 'Oil, pearls, opinions and every square foot you stand on', startCents: 3000, risePct: 53, v: 0.03, opensDay: 6, catalysts: []},
     {sym: 'WCO', name: 'West & Co. Pop-Ups', joke: '$29 artisanal tacos, napkins financed separately; her backup tenant', startCents: 1200, risePct: 48, v: 0.07, opensDay: 6, catalysts: []},
     {sym: 'TACO', name: 'TacoCoin', joke: "Antonio's crypto, backed by vibes and a salsa cup", startCents: 300, risePct: 50, v: 0.25, opensDay: 6, catalysts: []},
-    {sym: 'NAPZ', name: 'NapPod Inc.', joke: 'Paid naps in Alkek', startCents: 800, risePct: 45, v: 0.04, opensDay: 6, catalysts: [
-      {type: 'midterms', day: 11, jump: 0.40, text: 'MIDTERMS: NapPod demand wakes up.'},
-      {type: 'finals', day: 18, jump: 0.40, text: 'FINALS: NapPod bookings surge.'}
-    ]},
     {sym: 'TUBE', name: 'Float-the-River Co.', joke: 'San Marcos tubing, now with premium inner tubes', startCents: 1500, risePct: 58, v: 0.07, opensDay: 6, catalysts: [
       {type: 'rain', day: 13, jump: -0.30, text: 'RAIN DAY: Tubers weep.'}
     ]},
-    {sym: 'MAVS', name: 'Mavs Grief ETF', joke: "Ali's emotional support index (they traded LUKA)", startCents: 2500, risePct: 50, v: 0.10, opensDay: 6, catalysts: []},
     {sym: 'HACKR', name: "Antonio's Next Unicorn Fund", joke: 'Pre-revenue, pre-product, pre-Antonio', startCents: 500, risePct: 50, v: 0.08, opensDay: 6, catalysts: []},
     {sym: 'COIN', name: 'Double-or-Nothing Coin Flip Index', joke: "Jared’s favorite: pure 50/50, big swings.", startCents: 1000, risePct: 50, v: 0.50, opensDay: 1, catalysts: []},
-    {sym: 'SHADE', name: 'Picnic Shade Proptech', joke: 'Canopies lift it; rain sinks it.', startCents: 1200, risePct: 50, v: 0.02, opensDay: 1, catalysts: []},
-    {sym: 'QUAD', name: 'San Marcos Quad Real Estate', joke: 'Every permanent build adds a little value.', startCents: 2000, risePct: 50, v: 0.005, opensDay: 1, catalysts: []},
     {sym: 'BOBA', name: 'Boba Bros. (failed boba startup)', joke: 'Pivoting to tapioca NFTs', startCents: 400, risePct: 35, v: 0.06, opensDay: 6, catalysts: []}
   ];
 }));

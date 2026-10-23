@@ -45,7 +45,7 @@
       if (sg.kits && cash() >= sg.kits * EC.level().kitCents) { EC.K.order(sg.kits); EC.autoOrders.push({ day: day, kits: sg.kits }); Sim.events.push({ type: 'toast', text: '📦 Jared ordered ' + sg.kits + ' taco kits for you (' + sg.text + ')' }); }
     }
     // Jared's kit float: automatic once per level when broke and empty.
-    var FLOAT_KITS = 12;
+    var FLOAT_KITS = EC.FLOAT_KITS;
     var s = EC.state();
     if (EC.kitsLeft() === 0 && pendingKits(s) === 0 && cash() < FLOAT_KITS * EC.level().kitCents && EC.finance.floatLevel !== EC.levelNo) {
       // If last night's bills left cash negative, Jared also covers the overdraft so the order clears.
@@ -54,7 +54,7 @@
       EC.K.order(FLOAT_KITS);
       EC.finance.floatDebt = (EC.finance.floatDebt || 0) + cost;
       EC.finance.floatLevel = EC.levelNo;
-      Sim.events.push({type:'toast', text:'🤝 Jared fronted 12 taco kits. Pay him back from sales.'});
+      Sim.events.push({type:'toast', text:'🤝 Jared fronted ' + FLOAT_KITS + ' taco kits. Pay him back from sales.'});
     }
     EC.K.setPhase('open', EC.abs(day));
     // the van's kits fill every stand as you open, one kit at a time round the stands so a new stand 2
@@ -165,6 +165,7 @@
     EC.finance=JSON.parse(JSON.stringify(assets.finance));
     TF.Crew.applyMods();
   };
+  EC.FLOAT_KITS = 12;   // Jared's kit float: kits fronted once per level when broke and empty (character card reads it)
   EC.settleRemote = function(day) {
     var gross=0,cost=0;
     Sim.stands.forEach(function(st) {

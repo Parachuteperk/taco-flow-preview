@@ -63,24 +63,35 @@
     shape(West.create(hooks).getState(), s.west, 'west');
     shape(Stock.create(hooks).getState(), s.stock, 'stock');
     var exchangeShape = Exchange.create({ seed: s.seed }).getState();
-    // Keep legacy full-board campaigns and pass6's three-ticker market intact.
-    // Never recreate a live Exchange: that would lose its portfolio and pre-rolls.
-    var liveMarket = s.exchange && Array.isArray(s.exchange.tickers) && [3, 6].includes(s.exchange.tickers.length);
-    // The live game's full board (Pass 7: all 13 tickers from data/tickers.js) runs on the same
-    // seed ^ 0xE8C4 as the old 3/6-ticker live markets; without this, Friday's verdict threw
-    // 'Invalid Exchange identity/RNG' and the week-end card never appeared.
-    var liveFull = !liveMarket && s.exchange && Array.isArray(s.exchange.tickers) && Number.isSafeInteger(s.seed) &&
-      s.exchange.seed === (s.seed ^ 0xE8C4) && s.exchange.tickers.length === exchangeShape.tickers.length;
-    if (liveFull) { exchangeShape = Exchange.create({ seed: s.seed ^ 0xE8C4 }).getState(); liveMarket = true; }
-    else if (liveMarket) {
-      var liveTickers = exchangeShape.tickers.filter(function (t) {
-        return (s.exchange.tickers.length === 3 ? ['GOLD', 'TACO', 'NAPZ'] : ['GOLD', 'TACO', 'NAPZ', 'COIN', 'SHADE', 'QUAD']).indexOf(t.sym) >= 0;
-      }).map(function (t) { t.opensDay = 1; return t; });
-      exchangeShape = Exchange.create({ seed: s.seed ^ 0xE8C4, tickers: liveTickers }).getState();
+    // Pass 7: GOLD/SLVR/NAPZ/MAVS/SHADE/QUAD were delisted. A saved board that still lists them is
+    // checked within the board's limits, then validated as it will load: Exchange.migrate strips them
+    // (and Market.setState refunds them at the last price). The caller's state is never modified.
+    var raw = s.exchange;
+    if (raw && Array.isArray(raw.tickers) && object(raw.prices) && object(raw.holdings)) raw.tickers.forEach(function (t) {
+      if (!t || Exchange.DELISTED.indexOf(t.sym) < 0) return;
+      if (!whole(raw.prices[t.sym]) || raw.prices[t.sym] < 100 || raw.prices[t.sym] > 50000 ||
+          !whole(raw.holdings[t.sym]) || raw.holdings[t.sym] > 20) throw new Error('Invalid Exchange portfolio');
+    });
+    var mx = raw && Array.isArray(raw.tickers) ? Exchange.migrate(raw).state : raw;
+    var syms = mx && Array.isArray(mx.tickers) ? mx.tickers.map(function (t) { return t && t.sym; }).join(',') : '';
+    var liveSeed = !!mx && Number.isSafeInteger(s.seed) && mx.seed === (s.seed ^ 0xE8C4);
+    // The live game's board (src/market.js) runs on seed ^ 0xE8C4: the full 7-ticker board from
+    // data/tickers.js, or pass6's legacy 3-/6-ticker live boards (GOLD,TACO,NAPZ[,COIN,SHADE,QUAD], all
+    // opening Day 1), which are TACO / TACO,COIN after delisting. Without accepting the live identity,
+    // Friday's verdict threw 'Invalid Exchange identity/RNG' and the end card never appeared.
+    var liveMarket = false;
+    if (liveSeed && mx.tickers.length === exchangeShape.tickers.length) {
+      exchangeShape = Exchange.create({ seed: s.seed ^ 0xE8C4 }).getState(); liveMarket = true;
+    } else if (syms === 'TACO' || syms === 'TACO,COIN') {   // identity is checked below
+      var legacy = exchangeShape.tickers.filter(function (t) { return syms.split(',').indexOf(t.sym) >= 0; })
+        .map(function (t) { t.opensDay = 1; return t; });
+      exchangeShape = Exchange.create({ seed: s.seed ^ 0xE8C4, tickers: legacy }).getState(); liveMarket = true;
+    } else if (!liveSeed && syms === 'WEST,WCO,TACO,TUBE,HACKR,BOBA') {
+      // pass6 campaign board without COIN/SHADE/QUAD
+      exchangeShape = Exchange.create({ seed: s.seed, tickers: exchangeShape.tickers.filter(function (t) { return t.sym !== 'COIN'; }) }).getState();
     }
-    if (s.exchange && s.exchange.tickers.length === 10) exchangeShape = Exchange.create({ seed: s.seed, tickers: exchangeShape.tickers.filter(function (t) { return !['COIN', 'SHADE', 'QUAD'].includes(t.sym); }) }).getState();
-    shape(exchangeShape, s.exchange, 'exchange');
-    var w = s.west, k = s.stock, x = s.exchange;
+    shape(exchangeShape, mx, 'exchange');
+    var w = s.west, k = s.stock, x = mx;
     if (w.mood < 0 || w.mood > 10 || !whole(w.mood) || w.attempts.length !== 4 ||
         !w.attempts.every(whole) || !w.attempts[s.level - 1] || w.rentRecords.length !== 4 ||
         !w.rentRecords.every(function (r) { return ['unpaid', 'firstTry', 'retry'].indexOf(r) >= 0; })) throw new Error('Invalid West campaign');

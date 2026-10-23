@@ -26,6 +26,10 @@
     lbl.textContent = d >= n ? 'Ready!' : 'Loading… ' + d + '/' + n;
   });
   var start = overlay.querySelector('button');
-  start.addEventListener('click', function () { T.active = false; overlay.remove(); if (TF.Audio) TF.Audio.unlock(); });
+  start.addEventListener('click', function () {
+    T.active = false; overlay.remove(); if (TF.Audio) TF.Audio.unlock();
+    // a brand-new run opens with Mrs. West's intro cards (src/storycards.js; skipped on resume/retry)
+    setTimeout(function () { if (TF.StoryCards) TF.StoryCards.maybeIntro(); }, 0);
+  });
   start.focus();
 })(window.TF);

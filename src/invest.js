@@ -21,7 +21,7 @@
     if (!panel || panel.hidden) return;
     var cash = Sim.stats.money, html = '<div class="tip">' + pick(D.invest, 'Daily margin is the real scoreboard.') + '</div>';
     html += '<div class="permit">' + (TF.Week ? TF.Week.permitLine() : '') + '</div>';
-    if (TF.Mkt) html += TF.Mkt.html();   // the Quad Exchange: GOLD / TACO / NAPZ (C5), first in the panel
+    if (TF.Mkt) html += TF.Mkt.html();   // the Quad Exchange: the 7-ticker board (data/tickers.js), first in the panel
     // Jared's metals: prices move every day
     ['gold', 'silver'].forEach(function (m) {
       var h = I.metals[m], p = I.price[m], ch = p - I.lastPrice[m], val = h.units * p;

@@ -8,11 +8,12 @@
   function number(x) { return typeof x === 'number' && isFinite(x) && x >= 0; }
   function point(p) { return p && Number.isFinite(p.x) && Number.isFinite(p.y); }
   // Pure, non-stacking patience allowance; positions are world tiles, time is seconds.
+  var PATIENCE_S = 8, RADIUS = 3;   // Elevator Pitch: +8 s patience for waiting customers within 3 tiles
   function patienceBonus(position, customer, hired) {
     if (!point(position) || !customer || !point(customer.position)) throw new TypeError('Invalid positions');
     var dx = position.x - customer.position.x, dy = position.y - customer.position.y;
     // Allow rounding at fractional-coordinate boundary points (e.g. 1.8, 2.4).
-    return hired && customer.waiting === true && dx * dx + dy * dy <= 9 + Number.EPSILON * 36 ? 8 : 0;
+    return hired && customer.waiting === true && dx * dx + dy * dy <= RADIUS * RADIUS + Number.EPSILON * 36 ? PATIENCE_S : 0;
   }
   // Dedicated seeded stream: next() -> [0,1), getState(), setState(value).
   // All callbacks stay outside the JSON save. Transactions use ledger categories.
@@ -234,7 +235,7 @@
     return { element: wrap, destroy: function () { wrap.remove(); } };
   }
   return {
-    create: create, patienceBonus: patienceBonus, hireCents: 4000, wageCents: 800, unlockDay: 3,
+    create: create, patienceBonus: patienceBonus, hireCents: 4000, wageCents: 800, unlockDay: 3, PATIENCE_S: PATIENCE_S, RADIUS_TILES: RADIUS,
     idleLine: idleLine, mountHire: mountHire, text: textData
   };
 }));

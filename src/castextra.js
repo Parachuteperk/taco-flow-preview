@@ -23,7 +23,7 @@
     gymBro: ['Speed-walks the loop twice', 'Orders double protein; complains if the grill sputters', 'Daily cameo', 'Asks for the macros on a tortilla.'],
     scooterSpeeder: ['Zips across paths fast', '10% chance of knocking a customer out of line', 'Wk2-4', 'Didn’t stop. Yelled “SORRY” in Doppler.'],
     officerRhonda: ['Patrols the food truck pad', 'Tickets an unpermitted food truck $15', 'Wk4', 'Gives a ticket to a grackle. The grackle pays.'],
-    taNoSleep: ['Wanders slowly, stops at random', 'Buys 1 taco + 1 drink; NAPZ +5 Rise % tomorrow', 'Wk3-4', 'I’ve been grading since Tuesday. What day is it?'],
+    taNoSleep: ['Wanders slowly, stops at random', 'Buys 1 taco + 1 drink (energy drink)', 'Wk3-4', 'I’ve been grading since Tuesday. What day is it?'],
     lukas: ['Photographs everything', 'First visit buys one of everything; becomes a regular', 'Wk1 -> Day 19', 'Thinks the grackles are a protected species “because they act like it.”'],
     moveInParents: ['Linger, ask directions', 'Big tippers (+$3) but slow orders', 'Days 1-2', 'Is this a meal plan thing?']
   };

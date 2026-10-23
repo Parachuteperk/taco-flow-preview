@@ -26,8 +26,8 @@ After: "Next one's pricier." Cash or short, her smile never changes.
         "endOfDay": "Jared pitches gold before saying hello. Star asks if tacos are really back.",
         "star": [
           {"text": "TACO: TacoCoin lists Monday. Tacos return to the Quad?", "teaser": true},
-          "Local Gold Bugs Quietly Stacking (GOLD \u2191)",
-          {"text": "NAPZ: Unlisted NapPod startup eyes campus expansion.", "teaser": true}
+          "Coin-Flip Index Opens on the Quad (COIN \u2192)",
+          {"text": "TUBE: Unlisted Float-the-River Co. eyes the San Marcos.", "teaser": true}
         ],
         "lines": [{"who": "jared", "text": "Gold under the mattress never crashes."}]
       },
@@ -36,8 +36,8 @@ After: "Next one's pricier." Cash or short, her smile never changes.
         "endOfDay": "Grill slows while Ali rants. \"They traded LUKA. On PURPOSE.\"",
         "star": [
           {"text": "TACO: Unlisted TacoCoin watches the grill smoke.", "teaser": true},
-          "Mattress Investors Stay Bullish on Bullion (GOLD \u2191)",
-          {"text": "NAPZ: Unlisted NapPod surveys students who prefer real beds.", "teaser": true}
+          "Coin Flippers Swear They Have a System (COIN \u2192)",
+          {"text": "BOBA: Unlisted Boba Bros. hand out free samples.", "teaser": true}
         ],
         "lines": [{"who": "ali", "text": "They traded LUKA. On PURPOSE."}]
       },
@@ -46,8 +46,8 @@ After: "Next one's pricier." Cash or short, her smile never changes.
         "endOfDay": "Aaron hands Mrs. West a business card. She tucks it away \"for kindling.\"",
         "star": [
           {"text": "TACO: Unlisted TacoCoin courts move-in parents.", "teaser": true},
-          "Parents Ask About Meal Plans, Ignore Gold (GOLD \u2192)",
-          {"text": "NAPZ: Unlisted NapPod eyes the freshman herd.", "teaser": true}
+          "Parents Ask About Meal Plans, Ignore the Coin Flip (COIN \u2192)",
+          {"text": "WEST: Unlisted West Holdings counts move-in rent.", "teaser": true}
         ],
         "lines": [{"who": "aaron", "text": "Here's my card. Keep it."}]
       },
@@ -56,8 +56,8 @@ After: "Next one's pricier." Cash or short, her smile never changes.
         "endOfDay": "TacoCoin lists Monday. Phillip tests his tortilla cannon on an empty bench.",
         "star": [
           {"text": "TACO: Unlisted TacoCoin likes the free taco Wi-Fi.", "teaser": true},
-          "Gold Holds Steady While Campus Distracted (GOLD \u2192)",
-          {"text": "NAPZ: Unlisted NapPod waits for Monday trading.", "teaser": true}
+          "Coin Flip Holds Steady While Campus Distracted (COIN \u2192)",
+          {"text": "HACKR: Unlisted Unicorn Fund waits for Monday trading.", "teaser": true}
         ],
         "lines": [{"who": "antonio", "text": "Wi-Fi name changed. You're welcome."}]
       },
@@ -66,8 +66,8 @@ After: "Next one's pricier." Cash or short, her smile never changes.
         "endOfDay": "\"Next one's pricier.\" Cash or short, her smile never changes.",
         "star": [
           {"text": "TACO: TacoCoin lists Monday; vendors face rent today.", "teaser": true},
-          "Investors Watch GOLD as Weekend Hits (GOLD \u2191)",
-          {"text": "NAPZ: NapPod lists Monday; pillows sold separately.", "teaser": true}
+          "Investors Flip COIN as Weekend Hits (COIN \u2192)",
+          {"text": "TUBE: Float-the-River lists Monday; inner tubes sold separately.", "teaser": true}
         ],
         "lines": [{"who": "west", "text": "Lovely little patch, isn't it?"}]
       },
@@ -77,7 +77,7 @@ After: "Next one's pricier." Cash or short, her smile never changes.
         "star": [
           "Homecoming Opens on Bobcat Trail (BOBA \u2191)",
           "Empty Lot Becomes Instant Food Hub (TACO \u2191)",
-          "Gold Quiet While Silver Coils (SLVR \u2191) (GOLD \u2192)"
+          "Tubers Eye a Sunny Homecoming (TUBE \u2191)"
         ],
         "lines": [{"who": "matt", "text": "Rebuilt the whole stand overnight."}]
       },
@@ -87,27 +87,27 @@ After: "Next one's pricier." Cash or short, her smile never changes.
         "star": [
           "Tortilla Cannon Steals Talent Night (TACO \u2191)",
           "Judges Say No, Crowd Says Yes (BOBA \u2191)",
-          "Nap-Pod Interest Cools After Leak Rumors (NAPZ \u2193)"
+          "Unicorn Fund Pitches Cannon Analytics (HACKR \u2191)"
         ],
         "lines": [{"who": "phillip", "text": "Cannon v2 has better elevation."}]
       },
       "8": {
         "morning": "Soap Box Derby. Matt built a cart overnight. Grackles claim the passenger seat.",
-        "endOfDay": "Ali's rant flips into a full \"Texas!\" / \"State!\" chant. MAVS swings hard.",
+        "endOfDay": "Ali's rant flips into a full \"Texas!\" / \"State!\" chant. The grill swings hard.",
         "star": [
-          "Soap Box Derby Cart Goes Viral (MAVS \u2191)",
+          "Soap Box Derby Cart Goes Viral (TACO \u2191)",
           "Grackles Claim Passenger Seat (BOBA \u2191)",
-          "Silver Springs Higher Than Expected (SLVR \u2191)"
+          "River Outfitters Float Higher Than Expected (TUBE \u2191)"
         ],
         "lines": [{"who": "ali", "text": "Still not over Luka. Never will be."}]
       },
       "9": {
         "morning": "Maroonfield inspects. Matt sprints to upright a tipped trash can.",
-        "endOfDay": "Antonio leaks \"fwd: NapPod midterm plans.\" NAPZ twitches. The trail feels watched.",
+        "endOfDay": "Antonio leaks \"fwd: NapPod midterm plans.\" HACKR twitches. The trail feels watched.",
         "star": [
           "President Walks the Trail at Dawn (WCO \u2192)",
-          "Leaked Email Rocks Nap-Pod Plans (NAPZ \u2193)",
-          "Gold Holds While Campus Distracted (GOLD \u2192)"
+          "Leaked Email Rattles Antonio's Fund (HACKR \u2193)",
+          "Coin Flip Holds While Campus Distracted (COIN \u2192)"
         ],
         "lines": [{"who": "antonio", "text": "Leaked the NapPod midterm plans."}]
       },
@@ -117,20 +117,20 @@ After: "Next one's pricier." Cash or short, her smile never changes.
         "star": [
           "Spirit Parade Freezes Bobcat Trail (BOBA \u2191)",
           "Designer Pop-Up Debuts at $29 (WCO \u2191)",
-          "Victory Star Watch Begins at Sundown (MAVS \u2191)"
+          "Victory Star Watch Begins at Sundown (TACO \u2191)"
         ],
         "lines": [{"who": "west", "text": "Lovely little trail stand, isn't it?"}]
       },
       "11": {
         "morning": "Flowers Hall midterms. Aaron rubs LBJ's hand for the Angel Round.",
         "endOfDay": "NapPod booths wake up. Aaron calls luck a networking strategy.",
-        "star": ["Midterms Wake NapPod Demand (NAPZ +40%)"],
+        "star": ["Midterm Crammers Fuel TacoCoin Chatter (TACO \u2191)"],
         "lines": [{"who": "aaron", "text": "Even the statue gets a business card."}]
       },
       "12": {
         "morning": "Stand 2 opens. Jared says silver is a coiled spring. Again.",
         "endOfDay": "Kevin flyers for SIFE. Jared's spring is still coiling.",
-        "star": ["Second Stand Opens by Flowers Hall (SLVR)"],
+        "star": ["Second Stand Opens by Flowers Hall (WCO \u2192)"],
         "lines": [{"who": "jared", "text": "Fifty-five percent is practically a feeling."}]
       },
       "13": {
@@ -166,7 +166,7 @@ After: "Next one's pricier." Cash or short, her smile never changes.
       "18": {
         "morning": "Finals at 2 a.m. Alkek crammers have fifteen seconds of patience.",
         "endOfDay": "NapPod bookings surge. The TA asks what year it is.",
-        "star": ["Finals Fill NapPod Booths (NAPZ +40%)"],
+        "star": ["Finals Crammers Live on Boba (BOBA \u2191)"],
         "lines": [{"who": "ali", "text": "At least the grill got some sleep."}]
       },
       "19": {
@@ -198,7 +198,7 @@ After: "Next one's pricier." Cash or short, her smile never changes.
           "Gold under the mattress never crashes.",
           "Silver's cheap today. You should buy.",
           "Paper money is just colorful IOUs.",
-          "GOLD is up. Mattress is happy.",
+          "Gold is up. Mattress is happy.",
           "Real wealth doesn't need a Venmo.",
           "You want tacos or actual money?",
           "Inflation eats everything but gold.",
@@ -209,7 +209,7 @@ After: "Next one's pricier." Cash or short, her smile never changes.
           "LOLIS_FREE_TACOS has better signal.",
           "Campus IT still uses default passwords.",
           "I can make the register print anything.",
-          "NapPod lists Monday. Bring a pillow.",
+          "TacoCoin lists Monday. Bring a wallet.",
           "Free tacos start with free bandwidth.",
           "Their firewall is made of hopes.",
           "Day 4 special: password is tacos."
@@ -268,8 +268,8 @@ After: "Next one's pricier." Cash or short, her smile never changes.
         ],
         "Jared (Gold / Silver)": [
           "Silver is a coiled spring right now.",
-          "GOLD still sleeps under the mattress.",
-          "SLVR looks ready to bounce.",
+          "Gold still sleeps under the mattress.",
+          "Silver looks ready to bounce.",
           "Paper money hates Homecoming weekends.",
           "Buy the dip before the parade starts.",
           "Real metal ignores the Victory Star.",
@@ -283,7 +283,7 @@ After: "Next one's pricier." Cash or short, her smile never changes.
           "BOBA influencer IP is public now.",
           "Wi-Fi name stays LOLIS_FREE_TACOS.",
           "I can make the DJ pad play anything.",
-          "NAPZ board is reading the same leak.",
+          "HACKR board is reading the same leak.",
           "Day 9 special: chaos is free."
         ],
         "Phillip (Tortilla Cannon)": [

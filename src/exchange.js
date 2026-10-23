@@ -56,15 +56,6 @@
     function price(cents) { return clamp(Math.round(cents), 100, 50000); }
     function finalClose(sym, r) {
       var cents = r.failedHack ? state.prices[sym] : Math.round(state.prices[sym] * (1 + (r.dir === 'up' ? r.v : -r.v)));
-      if (sym === 'SHADE') {
-        var shade = Math.max(0, (state.ctx.shadeBuilds || 0) - (state.buildCounts ? state.buildCounts.shade : 0));
-        if (state.ctx.rain) cents = Math.round(r.fromCents * 0.90);
-        else if (shade) cents = Math.round(r.fromCents * (1.02 + shade * 0.08));
-      }
-      if (sym === 'QUAD') {
-        var builds = Math.max(0, (state.ctx.permanentBuilds || 0) - (state.buildCounts ? state.buildCounts.permanent : 0));
-        cents = Math.round(r.fromCents * (1.005 + builds * 0.01));
-      }
       state.catalysts.forEach(function (e) {
         if (e.sym === sym && sym !== 'COIN' && e.jump) cents = e.public ? cents + Math.round(r.fromCents * e.jump / 2) : Math.round(cents * (1 + e.jump));
       });
@@ -94,22 +85,15 @@
         });
       });
       (state.scheduledCatalysts || []).filter(function (c) { return c.day === day; }).forEach(function (c) { add(c.sym, c.type, c.shift, c.jump); });
-      if (state.goldBoostDay === day) add('GOLD', 'flight-to-gold', 70 - (ticker('GOLD') || {}).risePct);
       if (day % 5 === 0 && ctx.rentPaidToday) add('WEST', 'rent', 10);
       if (ctx.trashOverflowOnVisit) add('WEST', 'trash', -10);
       if (ctx.failedRentWeek) add('WCO', 'failed-rent', 0, 0.25);
       if (ctx.paidRentEarly) add('WCO', 'early-rent', 0, -0.20);
       if (ctx.hackDay) add('TACO', 'hack', 80 - (ticker('TACO') || {}).risePct);
       if (ctx.sunny && day % 5 === 0) add('TUBE', 'sunny', 70 - (ticker('TUBE') || {}).risePct);
-      if (ctx.rantDay) add('MAVS', 'rant', ctx.rantDir === 'down' ? -30 : 30);
       for (var n = 0; n < (ctx.antonioLevelUps || 0); n++) add('HACKR', 'level-up', 0, 0.20);
       if (day === state.viralDay) add('BOBA', 'viral', 0, 2);
       // ticker drivers (small probability nudges; ignored if signal absent)
-      if (ctx.rain) add('SHADE', 'rain', -15);
-      else if (ctx.hot || ctx.sunny) add('SHADE', 'hot', 6);
-      if (ctx.shadeBuilds) add('SHADE', 'canopy', Math.min(12, (ctx.shadeBuilds || 0) * 2));
-      var qb = ctx.permanentBuilds || ctx.builds || 0;
-      if (qb) add('QUAD', 'builds', Math.min(18, qb));
       if (typeof ctx.drinkSales === 'number') {
         var prev = state.lastDrinkSales || 0;
         var diff = ctx.drinkSales - prev;
@@ -122,7 +106,7 @@
         if (!listed(t)) return;
         var shifts = state.catalysts.filter(function (e) { return e.sym === t.sym; }).map(function (e) { return e.shift || 0; });
         var p = t.sym === 'COIN' ? 50 : clampP(t.risePct, shifts);
-        state.preRolls[t.sym] = {p: p, dir: (['COIN', 'SHADE', 'QUAD'].indexOf(t.sym) >= 0 ? hash(state.seed, day, t.sym, 'daily') : rng.next()) < p / 100 ? 'up' : 'down', v: t.v,
+        state.preRolls[t.sym] = {p: p, dir: (t.sym === 'COIN' ? hash(state.seed, day, t.sym, 'daily') : rng.next()) < p / 100 ? 'up' : 'down', v: t.v,
           fromCents: state.prices[t.sym], failedHack: false};
       });
       var rolls = state.preRolls;
@@ -130,8 +114,6 @@
         rolls.TACO.failedHack = rng.next() < 0.05;
         if (rolls.TACO.failedHack) { rolls.TACO.dir = 'down'; add('TACO', 'failed-hack', 0, -0.40); }
       }
-      if (ctx.jaredPitchDay && rolls.SLVR && rolls.GOLD) { rolls.SLVR.dir = rolls.GOLD.dir; rolls.SLVR.v *= 2; }
-      if (ctx.rantDay && rolls.MAVS) rolls.MAVS.v *= 2;
       state.catalysts.forEach(function (e) {
         if (e.public && e.jump && rolls[e.sym]) state.prices[e.sym] = price(rolls[e.sym].fromCents * (1 + e.jump / 2));
       });
@@ -217,10 +199,6 @@
       if (state.phase === 'close' && day === state.day) return copy(state.lastClose);
       if (state.phase !== 'prep' || day !== state.day) throw new Error('No PREP for this day');
       if (ctx) state.ctx = Object.assign({}, state.ctx, copy(ctx));
-      ['SHADE', 'QUAD'].forEach(function (sym) {
-        var r = state.preRolls[sym];
-        if (r) { r.finalCents = finalClose(sym, r); r.outcome = outcome(r.fromCents, r.finalCents); }
-      });
       var moves = [], headlines = [];
       tickers.forEach(function (t) {
         var r = state.preRolls[t.sym];
@@ -238,7 +216,6 @@
             headlines.push({sym: t.sym, pct: Math.round(pct * 1000) / 10, text: arr[idx]});
           }
         }
-        if (t.sym !== 'GOLD' && toC <= fromC * 0.85) state.goldBoostDay = day + 1;
       });
       state.buildCounts = { shade: state.ctx.shadeBuilds || 0, permanent: state.ctx.permanentBuilds || 0 };
       state.phase = 'close';
@@ -269,18 +246,36 @@
     headlines: function (d) { return (state.lastClose && state.lastClose.day === d && state.lastClose.headlines) || []; },
     scorecard: function () { return {week: copy(state.scores.weeks[Math.ceil(state.day / 5)] || emptyScores()), month: copy(state.scores.month)}; },
     getState: function () { state.rngState = rng.getState(); return copy(state); },
-    setState: function (s) { state = copy(s); state.scheduledCatalysts = state.scheduledCatalysts || []; state.boughtToday = state.boughtToday || {}; state.lastDrinkSales = state.lastDrinkSales || 0; tickers = state.tickers;
-      defaultTickers.filter(function (t) { return ticker('GOLD') && ticker('TACO') && ticker('NAPZ') && ['COIN', 'SHADE', 'QUAD'].indexOf(t.sym) >= 0; }).forEach(function (t) {
-        if (ticker(t.sym)) return;
-        tickers.push(copy(t)); state.prices[t.sym] = t.startCents; state.holdings[t.sym] = 0;
-        if (state.day >= t.opensDay && state.phase === 'prep') {
-          var r = state.preRolls[t.sym] = { p: 50, dir: hash(state.seed, state.day, t.sym, 'migration') < 0.5 ? 'up' : 'down', v: t.v, fromCents: t.startCents, failedHack: false };
-          r.finalCents = finalClose(t.sym, r); r.outcome = outcome(r.fromCents, r.finalCents);
-          state.openPrices = state.openPrices || {}; state.openPrices[t.sym] = t.startCents;
-        }
-        if (state.lastClose && state.day >= t.opensDay) state.lastClose.moves.push({ sym: t.sym, dir: 'flat', fromCents: t.startCents, toCents: t.startCents });
-      });
+    setState: function (s) {
+      var m = migrate(s);
+      state = m.state; state.scheduledCatalysts = state.scheduledCatalysts || []; state.boughtToday = state.boughtToday || {}; state.lastDrinkSales = state.lastDrinkSales || 0; tickers = state.tickers;
+      // Delisted shares go back to cash at their last price (no fee). The ledger is always restored
+      // before the market, so a save or Monday checkpoint that still holds them pays out exactly once.
+      m.refunds.forEach(function (r) { post('trade', r.cents, 'DELISTED ' + r.sym + ' x' + r.shares + ' @' + r.price + ' refund'); });
       rng.setState(state.rngState); }};
   }
-  return {create: create, clampP: clampP, hash: hash};
+  // Pass 7 (Aaron: "too many stocks"): these tickers left the board. migrate() strips them from a saved
+  // Exchange state (a copy) and lists the refunds owed at each one's last price. Holdings or prices
+  // outside the board's own limits (whole 1-20 shares, $1-$500) are dropped without a refund.
+  var DELISTED = ['GOLD', 'SLVR', 'NAPZ', 'MAVS', 'SHADE', 'QUAD'];
+  function migrate(s) {
+    var state = copy(s), refunds = [];
+    var gone = function (sym) { return DELISTED.indexOf(sym) >= 0; };
+    if (!state || !Array.isArray(state.tickers) || !state.tickers.some(function (t) { return t && gone(t.sym); })) return {state: state, refunds: refunds};
+    function strip(map) { if (map && typeof map === 'object') DELISTED.forEach(function (sym) { delete map[sym]; }); }
+    state.tickers.forEach(function (t) {
+      if (!t || !gone(t.sym)) return;
+      var n = state.holdings ? state.holdings[t.sym] : 0, px = state.prices ? state.prices[t.sym] : 0;
+      if (Number.isInteger(n) && n > 0 && n <= 20 && Number.isInteger(px) && px >= 100 && px <= 50000) refunds.push({sym: t.sym, shares: n, price: px, cents: n * px});
+    });
+    state.tickers = state.tickers.filter(function (t) { return !t || !gone(t.sym); });
+    [state.prices, state.holdings, state.preRolls, state.openPrices, state.boughtToday].forEach(strip);
+    var keep = function (e) { return !e || !gone(e.sym); };
+    ['catalysts', 'scheduledCatalysts', 'hintLog'].forEach(function (k) { if (Array.isArray(state[k])) state[k] = state[k].filter(keep); });
+    if (state.publicCatalysts) Object.keys(state.publicCatalysts).forEach(function (k) { if (gone(k.split(':')[0])) delete state.publicCatalysts[k]; });
+    if (state.lastClose) ['moves', 'headlines'].forEach(function (k) { if (Array.isArray(state.lastClose[k])) state.lastClose[k] = state.lastClose[k].filter(keep); });
+    state.goldBoostDay = 0;
+    return {state: state, refunds: refunds};
+  }
+  return {create: create, clampP: clampP, hash: hash, migrate: migrate, DELISTED: DELISTED, ACCURACY: copy(accuracy)};
 }));

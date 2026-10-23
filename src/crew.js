@@ -10,13 +10,17 @@
     { tier: 3, id: 'serving', name: 'Serving station', effect: 'Pickup spot, faster hand-off, 60-kit storage', price: 45, unlock: 12 },
     { tier: 4, id: 'canopy', name: 'Canopy', effect: 'More passers-by stop', price: 60, unlock: 18 }
   ];
+  // Aaron's title comes from the copy file (data/story-copy.js); never President or Manager (Pass 7).
+  function aaronTitle() { var c = TF.STORY_COPY && TF.STORY_COPY.characters && TF.STORY_COPY.characters.aaron; return (c && c.title) || 'Co-Founder'; }
+  // Crew perks: the numbers modsFor() applies, also read by the character cards (src/storycards.js).
+  var PERKS = { ali: { cookMul: 0.6, grillAdd: 1 }, phillip: { cookMul: 0.8 }, matt: { handT: 0.15 }, cannon: { handMul: 0.5 } };
   var ROSTER = [
     { id: 'jared', name: 'Jared', role: 'Register + cooler', effect: 'Sells + restocks', price: 0, tier: 0, spot: 'in' },
     { id: 'ali', name: 'Ali', role: 'Grill', effect: 'Grill 40% faster', price: 20, tier: 1, spot: 'in' },
     { id: 'antonio', name: 'Antonio', role: 'Laptop + stream', effect: 'Hype: more students', price: 40, tier: 2, spot: 'out' },
     { id: 'phillip', name: 'Phillip', role: 'Prep', effect: 'Cooking 20% faster', price: 30, tier: 2, spot: 'out' },
     { id: 'matt', name: 'Matt', role: 'Hand-off', effect: 'Fast hand-off, serves drinks quickly and repairs breakdowns', price: 25, tier: 3, spot: 'in' },
-    { id: 'aaron', name: 'Aaron', role: 'SIFE', effect: '+8s nearby patience, bulk orders; $8/day', price: 40, tier: 0, spot: 'out' },
+    { id: 'aaron', name: 'Aaron', role: aaronTitle(), effect: '+8s nearby patience, bulk orders; $8/day', price: 40, tier: 0, spot: 'out' },
     { id: 'runner', name: 'Freshman Runner', role: 'Supply runs', effect: 'Restocks from the van', price: 50, tier: 0, spot: 'none' }
   ];
 
@@ -26,7 +30,7 @@
     { id: 'cannon', name: 'Phillip\u2019s Tortilla Cannon', effect: 'Hand-off 2x faster', price: 40, needs: function () { return Crew.hiredSet.phillip && Sim.stand.tier >= 3; }, needsText: 'Needs Phillip + Serving station' }
   ];
 
-  var Crew = { hiredSet: { jared: true }, extras: {}, EXTRAS: EXTRAS, ROSTER: ROSTER, lastDrawn: [], spots: {}, spotKey: '', t: 0, flash: {}, TIERS: TIERS };
+  var Crew = { hiredSet: { jared: true }, extras: {}, EXTRAS: EXTRAS, ROSTER: ROSTER, PERKS: PERKS, lastDrawn: [], spots: {}, spotKey: '', t: 0, flash: {}, TIERS: TIERS };
 
   Crew.hired = function () { return ROSTER.filter(function (r) { return Crew.hiredSet[r.id]; }).map(function (r) { return r.id; }); };
   Crew.tier = function () { return Sim.stand.tier; };
@@ -47,15 +51,15 @@
     if (t >= 6) m.priceAdd += 1;
     if (t >= 7) m.zoneR *= 1.25;
     if (t >= 4) m.buyP = Math.min(0.95, m.buyP + 0.1);
-    if (h.ali) { m.cookT *= 0.6; m.grill += 1; }
-    if (h.phillip) m.cookT *= 0.8;
+    if (h.ali) { m.cookT *= PERKS.ali.cookMul; m.grill += PERKS.ali.grillAdd; }
+    if (h.phillip) m.cookT *= PERKS.phillip.cookMul;
     // Matt's fast hand-off only while he's at the counter (C4: off fixing a breakdown, Jared covers at x0.8)
-    if (h.matt) m.handT = TF.Handyman && TF.Handyman.away() ? TF.Handyman.coverHandT(m.handT) : 0.15;
+    if (h.matt) m.handT = TF.Handyman && TF.Handyman.away() ? TF.Handyman.coverHandT(m.handT) : PERKS.matt.handT;
     // In Taco Week Antonio makes demand only through his hacks (TF.Hacks), not as a passive boost.
     if (h.antonio && !(TF.Week && TF.Week.active())) { m.zoneR += 2; m.buyP = Math.min(0.95, m.buyP + 0.1); m.spawnMul *= 1.3; }
     if (ex.cooler2 && t === 0) m.stockMax *= 2;
     m.cannon = !!(ex.cannon && h.phillip && t >= 3);
-    if (m.cannon) m.handT *= 0.5;
+    if (m.cannon) m.handT *= PERKS.cannon.handMul;
     if (TF.Empire) TF.Empire.mods(st, m);
     if (TF.Handyman) TF.Handyman.mods(st, m);   // open breakdowns (grill sputter, banner flicker)
   }
@@ -477,12 +481,13 @@
     ROSTER.forEach(function (r) {
       html += '<div class="card"><canvas class="portrait" data-portrait="' + r.id + '" width="44" height="64"></canvas>' +
         '<div class="info"><b>' + r.name + '</b> <small>' + r.role + '</small><div class="fx">' + r.effect + ' · $' + r.price + ' to hire</div></div>' +
-        '<button data-hire="' + r.id + '"></button></div>';
+        '<button class="mini info" data-info="' + r.id + '" aria-label="About ' + r.name + '">\u24D8</button><button data-hire="' + r.id + '"></button></div>';
     });
     html += '</details><details class="sec"><summary>Jared\u2019s coin flip</summary><div class="card up"><div class="info"><div class="fx">Double-or-nothing on a quarter of the take.</div></div>' +
       '<select id="flipPolicy" aria-label="Coin flip policy"><option value="always">Always flip</option><option value="ask">Ask me</option><option value="never">Never</option></select></div></details>';
     list.innerHTML = html;
     list.querySelectorAll('[data-hire]').forEach(function (b) { b.addEventListener('click', function () { Crew.hire(b.getAttribute('data-hire')); }); });
+    list.querySelectorAll('[data-info]').forEach(function (b) { b.addEventListener('click', function (e) { e.preventDefault(); if (TF.StoryCards) TF.StoryCards.showCharacter(b.getAttribute('data-info')); }); });
     list.querySelectorAll('[data-tier]').forEach(function (b) { b.addEventListener('click', function () { Crew.buyTier(b.getAttribute('data-tier')); }); });
     document.getElementById('btnBuyStand2').addEventListener('click', function () { Crew.buyStand2(); });
     document.getElementById('btnSelStand').addEventListener('click', function (e) { e.preventDefault(); Sim.sel = (Sim.sel + 1) % Sim.stands.length; Crew.refresh(); });
@@ -496,20 +501,26 @@
   };
   Crew.drawPortraits = function () {
     if (!list) return;
-    list.querySelectorAll('[data-portrait]').forEach(function (cv) {
-      var id = cv.getAttribute('data-portrait'), c = cv.getContext('2d'), img = TF.ArtPeople && (id === 'runner' ? (TF.ArtPeople.cust.capguy && TF.ArtPeople.cust.capguy.stand) : TF.ArtPeople.crewPortrait(id));
-      c.clearRect(0, 0, cv.width, cv.height);
-      if (img && TF.Art.painted()) {
-        var s = Math.min(cv.width / img.width, (cv.height - 2) / img.height);
-        c.drawImage(img, (cv.width - img.width * s) / 2, cv.height - img.height * s - 1, img.width * s, img.height * s);
-      } else {
-        var l = LOOK[id];
-        c.fillStyle = l.shirt; c.fillRect(14, 28, 16, 22);
-        c.fillStyle = l.skin; c.beginPath(); c.arc(22, 20, 8, 0, Math.PI * 2); c.fill();
-        c.fillStyle = l.hair; c.fillRect(14, 10, 16, 5);
-        c.fillStyle = l.pants; c.fillRect(15, 50, 14, 12);
-      }
-    });
+    list.querySelectorAll('[data-portrait]').forEach(function (cv) { Crew.paintPortrait(cv, cv.getAttribute('data-portrait')); });
+  };
+  // One portrait onto a canvas from the existing art (crew sheets, Mrs. West's idle frame, the runner's
+  // customer sprite), or the flat placeholder figure while the art loads. No new art.
+  Crew.paintPortrait = function (cv, id) {
+    var c = cv.getContext && cv.getContext('2d'); if (!c) return;
+    var P = TF.ArtPeople, img = P && (id === 'runner' ? (P.cust.capguy && P.cust.capguy.stand) : id === 'west' ? (P.west && P.west.idle) : P.crewPortrait(id));
+    c.clearRect(0, 0, cv.width, cv.height);
+    if (img && TF.Art && TF.Art.painted()) {
+      var s = Math.min(cv.width / img.width, (cv.height - 2) / img.height);
+      c.drawImage(img, (cv.width - img.width * s) / 2, cv.height - img.height * s - 1, img.width * s, img.height * s);
+    } else {
+      var l = LOOK[id] || LOOK.jared, k = cv.width / 44;
+      c.save(); c.scale(k, cv.height / 64);
+      c.fillStyle = l.shirt; c.fillRect(14, 28, 16, 22);
+      c.fillStyle = l.skin; c.beginPath(); c.arc(22, 20, 8, 0, Math.PI * 2); c.fill();
+      c.fillStyle = l.hair; c.fillRect(14, 10, 16, 5);
+      c.fillStyle = l.pants; c.fillRect(15, 50, 14, 12);
+      c.restore();
+    }
   };
   // Pure affordability query: no RNG, ledger changes or purchase side effects.
   Crew.affordable = function () {

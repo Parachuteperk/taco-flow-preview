@@ -54,27 +54,22 @@
       { id: 'riverEpilogue' }]
   ];
   var unlocks = {
-    1: ['grill', 'banner', 'serving', 'drinks', 'trashCans', 'GOLD', 'SLVR', 'coinFlip'],
+    1: ['grill', 'banner', 'serving', 'drinks', 'trashCans', 'coinFlip'],
     3: ['hireAaron'], 6: ['fullBoard', 'picnicShade', 'merchTable', 'cornhole'],
     11: ['salsaBar', 'stringLights', 'spikeball'], 12: ['stand2'],
     16: ['foodTruck', 'tier6', 'tier7']
   };
   var notes = {
-    1: [['GOLD', 'Jared pitches gold before saying hello.'], ['SLVR', 'GOLD and SLVR open today.']],
-    2: [['MAVS', 'Rant-day teaser; trading opens Day 6.']],
+    1: [['COIN', 'COIN opens today: a pure 50/50 coin flip.']],
     4: [['TACO', 'Hack-day rise chance is 80%; trading opens Day 6.']],
     5: [['WEST', 'Rent paid today adds 10 Rise %.']],
     6: [['BOBA', 'Star rumors a viral influencer; the viral day stays seeded.']],
-    8: [['MAVS', 'Rant-day move uses double volatility.']],
-    9: [['NAPZ', 'Antonio leaks a 90% hint.']],
+    9: [['HACKR', 'Antonio leaks a 90% hint.']],
     10: [['WCO', 'Drops if you pay rent early.'], ['TUBE', 'Sunny Friday boosts Rise %.']],
-    11: [['NAPZ', 'Midterms demand wakes up.']],
-    12: [['SLVR', 'Jared calls it a coiled spring, 55% hint accuracy.']],
     13: [['TUBE', 'Rain leaves the tubers weeping.']],
     14: [['HACKR', '+20% per ladder level; Dean fine roll.']],
     15: [['BOBA', 'Viral rumor if not yet viral; do not override the seeded viral day.']],
     16: [['WCO', 'Pop-Up parks across the plaza and pumps its pitch.']],
-    18: [['NAPZ', 'Finals bookings surge.']],
     19: [['TACO', 'Hack-day pump.'], ['HACKR', '+20% per ladder level; read-only Star preview.']],
     20: [['WEST', 'Portfolio cash-out is shown at the Gala.']]
   };
@@ -115,7 +110,6 @@
     var rant = events[n - 1].filter(function (e) { return e.id === 'aliRant'; })[0];
     var hack = events[n - 1].some(function (e) { return e.id === 'antonioHack'; });
     var catalysts = [];
-    if (n === 11 || n === 18) catalysts.push({ sym: 'NAPZ', type: n === 11 ? 'midterms' : 'finals', day: n, jump: 0.40 });
     if (n === 13) catalysts.push({ sym: 'TUBE', type: 'rain', day: n, jump: -0.30 });
     var beatIds = ['day' + n + '.morning', 'day' + n + '.open.0', 'day' + n + '.report'];
     if (wd === 5) beatIds = beatIds.concat(['day' + n + '.weekend.headline', 'day' + n + '.weekend.west']);
@@ -135,8 +129,8 @@
           (f.id !== 'presidentPass' || (level === 2 && n <= 9) || (level === 4 && n <= 17));
       }).map(function (f) { return f.id; }), priceMult: ramp ? ramp.favorMult : mults[level - 1] },
       cast: { guaranteed: guaranteed, pool: pool, max: 3 },
-      exchange: { opens: n === 1 ? ['GOLD', 'SLVR', 'COIN', 'SHADE', 'QUAD'] : n === 6 ?
-        ['WEST', 'WCO', 'TACO', 'NAPZ', 'TUBE', 'MAVS', 'HACKR', 'BOBA'] : [],
+      exchange: { opens: n === 1 ? ['COIN'] : n === 6 ?
+        ['WEST', 'WCO', 'TACO', 'TUBE', 'HACKR', 'BOBA'] : [],
         catalysts: catalysts, hackDay: hack, rantDay: !!rant, rantDir: rant ? rant.dir : null,
         tieIns: (notes[n] || []).map(function (p) { return { sym: p[0], note: p[1] }; }) },
       unlocks: unlocks[n] || [], beats: beatIds

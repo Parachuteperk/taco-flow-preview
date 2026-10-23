@@ -6,16 +6,6 @@ window.TF.STAR_L1 = {
    "sym": "TACO",
    "text": "Tacos Return to Quad? Students Hope So",
    "dir": "up"
-  },
-  {
-   "sym": "GOLD",
-   "text": "Local Gold Bugs Quietly Stacking",
-   "dir": "up"
-  },
-  {
-   "sym": "NAPZ",
-   "text": "Nap-Pod Startup Eyes Campus Expansion",
-   "dir": "up"
   }
  ],
  "2": [
@@ -23,16 +13,6 @@ window.TF.STAR_L1 = {
    "sym": "TACO",
    "text": "Grill Smoke Rises as Mavs Fans Mourn",
    "dir": "flat"
-  },
-  {
-   "sym": "GOLD",
-   "text": "Mattress Investors Stay Bullish on Bullion",
-   "dir": "up"
-  },
-  {
-   "sym": "NAPZ",
-   "text": "Students Still Prefer Real Beds Over Pods",
-   "dir": "down"
   }
  ],
  "3": [
@@ -40,16 +20,6 @@ window.TF.STAR_L1 = {
    "sym": "TACO",
    "text": "Move-In Chaos Boosts Quad Food Sales",
    "dir": "up"
-  },
-  {
-   "sym": "GOLD",
-   "text": "Parents Ask About Meal Plans, Ignore Gold",
-   "dir": "flat"
-  },
-  {
-   "sym": "NAPZ",
-   "text": "Freshman Herd Overwhelms Nap Stations",
-   "dir": "down"
   }
  ],
  "4": [
@@ -57,32 +27,12 @@ window.TF.STAR_L1 = {
    "sym": "TACO",
    "text": "Free Wi-Fi Named After Tacos Draws Crowds",
    "dir": "up"
-  },
-  {
-   "sym": "GOLD",
-   "text": "Gold Holds Steady While Campus Distracted",
-   "dir": "flat"
-  },
-  {
-   "sym": "NAPZ",
-   "text": "Hacked Network Makes Nap-Pods Look Slow",
-   "dir": "down"
   }
  ],
  "5": [
   {
    "sym": "TACO",
    "text": "Rent Day Arrives for Quad Vendors",
-   "dir": "flat"
-  },
-  {
-   "sym": "GOLD",
-   "text": "Investors Watch GOLD as Weekend Hits",
-   "dir": "up"
-  },
-  {
-   "sym": "NAPZ",
-   "text": "Nap-Pod Company Quiet Ahead of Earnings",
    "dir": "flat"
   }
  ]
