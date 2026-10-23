@@ -16,12 +16,18 @@
   // What unlocks on which day (PLAN section C). Anything not listed is available from Day 1.
   var UNLOCK = {
     // grill, banner and serving station are open from Day 1 (cash + the build permit are the limits)
-    ali: 2, matt: 2, cooler2: 2, runner: 2, drinks: 2, picnic: 2,
+    ali: 1, matt: 2, cooler2: 1, runner: 1, drinks: 1, picnic: 2,
     antonio: 3, phillip: 3, trash: 3,
     cannon: 4, aiali: 4, stand2: 3,
     canopy: 5, aaron: 3
   };
-  var MAJOR = { grill: 1, banner: 1, serving: 1, canopy: 1, picnic: 1 };
+  // Catalog days are campaign-absolute; the UI converts them to local weekdays.
+  Object.assign(UNLOCK, { drinks: 1, trash: 1, sandwichBoard: 1, merchTable: 3,
+    bikeRack: 6, chargeBench: 6, flyerKiosk: 6, cornhole: 6,
+    salsaBar: 11, stringLights: 11, spikeball: 11, cateringContract: 11,
+    foodTruck: 16, neonMenu: 16, billboard: 16, deliveryBike: 16,
+    stand3: 8, stand4: 12, stand5: 16, stand6: 19 });
+  var MAJOR = { grill: 1, banner: 1, serving: 1, canopy: 1, picnic: 1, cornhole: 1, foodTruck: 1, neonMenu: 1, billboard: 1 };
   // Old Main class bells (item 7): seconds into OPEN. Each rings after a 5 s countdown and sends
   // a wave of students out; a Banner makes the wave bigger, Antonio's hype timed into it bigger still.
   var BELLS = (TF.World && TF.World.level && TF.World.level.spawn.bells) || [[90], [60, 135], [55, 130], [70, 140], [45, 120]];   // from the level file
@@ -54,7 +60,9 @@
 
   // ---- Shop rules ------------------------------------------------------------------
   W.dayOne = function () { return W.active() && lvl() === 1 && W.day === 1; };
-  W.unlockDay = function (id) { if (id === 'stand2' && lvl() > 1) return 1; if (lvl() === 1 && /^(ali|cooler2|runner|drinks)$/.test(id)) return 1; return id === 'aaron' && lvl() > 1 ? 1 : UNLOCK[id] || 1; };
+  W.UNLOCK = UNLOCK;
+  W.unlockAbsolute = function (id) { return UNLOCK[id] || 1; };
+  W.unlockDay = function (id) { return Math.max(1, (UNLOCK[id] || 1) - (lvl() - 1) * 5); };
   W.isMajor = function (id) { return !!MAJOR[id]; };
   // null if allowed, otherwise a short reason for the button.
   // Build permits (Pass 5 item 2): one major build a day, in PREP or during OPEN (unused permits
@@ -64,7 +72,7 @@
   W.shopBlock = function (id) {
     if (!W.active()) return null;
     if (W.phase !== 'prep' && W.phase !== 'open') return 'Shop closed';
-    if (W.day < W.unlockDay(id)) return 'Day ' + W.unlockDay(id);
+    if (W.day < W.unlockDay(id)) { var a = W.unlockAbsolute(id); return Math.ceil(a/5) === lvl() ? 'Day ' + ((a-1)%5+1) : 'L' + Math.ceil(a / 5) + ' Day ' + ((a - 1) % 5 + 1); }
     if (W.phase === 'open' && W.isMajor(id) && W.t > OPEN_T - W.LATE) return 'Too late to build';
     if (W.isMajor(id) && W.majorUsed && !W.dayOne()) return 'Permit used';
     if (W.phase === 'open' && !W.isMajor(id) && W.openMinorUsed && !W.dayOne()) return 'OPEN buy used';
@@ -116,8 +124,9 @@
     if (!W.active() || W.phase !== 'prep' || !(TF.Onboard ? TF.Onboard.allConnected() : Sim.stand.connected)) return false;
     W.phase = 'open'; W.t = 0; W.eventsToday = 0; W.necks = {};
     var lvBells = TF.World.level && TF.World.level.spawn && TF.World.level.spawn.bells;   // read now: a level load can change them
-    W.bells = ((lvBells || BELLS)[W.day - 1] || []).slice(); W.bell = null; W.bellsRung = 0;
+    W.bells = (lvl() === 2 ? [35, 85, 135] : ((lvBells || BELLS)[W.day - 1] || [])).slice(); W.bell = null; W.bellsRung = 0;
     W.today = snap();
+    if (TF.Empire) TF.Empire.startDay();
     if (TF.Bets) TF.Bets.dayStart = Sim.t;
     Sim.closing = false;
     if (TF.Econ) TF.Econ.openDay(W.day);   // kits / prices / rent (Pass 6 C3)
@@ -156,6 +165,7 @@
       W.t += dt;
       tickNecks(dt);
       stepBell(dt);
+      if (TF.Empire) TF.Empire.step(dt);
       if (W.t >= OPEN_T) startClose();
     } else if (W.phase === 'close') {
       W.overtime += dt;
@@ -180,7 +190,7 @@
       b.warn -= dt;
       if (b.warn <= 0) {
         var banner = Sim.stands.some(function (st) { return st.placed && st.tier >= 2; });
-        b.left = TF.Econ && TF.Econ.on() ? 0 : Math.round(BELL_WAVE * (banner ? 1.5 : 1));
+        b.left = TF.Econ && TF.Econ.on() ? (lvl() === 2 ? 10 : 0) : Math.round(BELL_WAVE * (banner ? 1.5 : 1));
         W.bellsRung++; Sim.demandMul = 1.6;
         Sim.events.push({ type: 'toast', text: '\uD83D\uDD14 RING! ' + b.left + ' students pour out of Old Main' + (banner ? ' (your banner pulls extra)' : '') });
         Sim.events.push({ type: 'hack' });   // reuse the hack-wave sound
@@ -304,6 +314,7 @@
       (r.econ ? '<div class="row"><span>\uD83D\uDDD1 Spoiled at close</span><b>' + r.econ.spoiledKits + ' kits (\u2212$' + (r.econ.spoiledCents / 100).toFixed(2) + ')</b></div>' : '') +
       (r.econ && r.econ.rent ? '<div class="row"><span>Rent to Mrs. West</span><b>' + (r.econ.rent.paid ? '\u2714 paid' : '\u2718 short') + '</b></div>' : '') +
       investRows(r.invest) +
+      (TF.Empire ? TF.Empire.reportHTML(r) : '') +
       '<div class="brief" id="briefing"><b>Briefing:</b> ' + r.suggest.text + '</div>' +
       (r.obj && (r.obj.drinks || r.obj.upkeep) ? '<div class="row"><span>Drinks / upkeep</span><b>' + r.obj.drinks + ' drinks +$' + r.obj.drinkRev + ' \u00B7 costs -$' + (r.obj.upkeep + r.obj.drinkCost) + '</b></div>' : '') +
       (r.obj && r.obj.litter ? '<div class="row"><span>Litter on the quad</span><b>' + r.obj.litter + ' wrappers' + (r.obj.litterPct ? ' (\u2212' + r.obj.litterPct + '% draw)' : '') + '</b></div>' : '') +

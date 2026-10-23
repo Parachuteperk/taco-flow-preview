@@ -43,6 +43,9 @@
     if (t >= 1) { m.cookT = 2.4; m.stockMax = C.STOCK_GRILL; }
     if (t >= 2) m.zoneR += 2.5;
     if (t >= 3) { m.serving = true; m.handT = 0.6; m.stockMax = 60; }
+    if (t >= 5) { m.orderT /= 1.4; m.cookT /= 1.4; m.stockMax = 84; }
+    if (t >= 6) m.priceAdd += 1;
+    if (t >= 7) m.zoneR *= 1.25;
     if (t >= 4) m.buyP = Math.min(0.95, m.buyP + 0.1);
     if (h.ali) { m.cookT *= 0.6; m.grill += 1; }
     if (h.phillip) m.cookT *= 0.8;
@@ -53,6 +56,7 @@
     if (ex.cooler2 && t === 0) m.stockMax *= 2;
     m.cannon = !!(ex.cannon && h.phillip && t >= 3);
     if (m.cannon) m.handT *= 0.5;
+    if (TF.Empire) TF.Empire.mods(st, m);
     if (TF.Handyman) TF.Handyman.mods(st, m);   // open breakdowns (grill sputter, banner flicker)
   }
 
@@ -61,15 +65,16 @@
   Crew.STAND2_PRICE = 120;
   Crew.standPrice = function () { return (TF.Economy ? TF.Economy.standCosts : [120,350,750,1500,2500])[Sim.stands.length-1]; };
   Crew.buyStand2 = function () {
-    var price = Crew.standPrice();
-    if (Sim.stands.length >= Sim.MAX_STANDS || Sim.stats.money < price || blocked('stand2') || !Sim.stand.placed) return false;
-    if (!reserveOk('stand2', price)) return false;
-    TF.Ledger.add('build', -price, 'stand2');
-    if (TF.Week) TF.Week.bought('stand2');
+    var price = Crew.standPrice(), id = 'stand' + (Sim.stands.length + 1);
+    if (Sim.stands.length >= Sim.MAX_STANDS || Sim.stats.money < price || blocked(id) || !Sim.stand.placed) return false;
+    if (!reserveOk(id, price)) return false;
+    TF.Ledger.add('build', -price, id);
+    if (TF.Week) TF.Week.bought(id);
     var st = Sim.addStand();
+    if (TF.P7Content) Sim.events.push({ type: 'toast', text: TF.P7Content.items[id].buyLine });
     st.tier = 1; // Expansion package includes a grill; further tiers remain paid upgrades.
     st.crew = 'cashier-' + (st.idx + 1); // Dedicated assignment, paid each shift; never shares another stand's operator.
-    if (TF.Invest) TF.Invest.noteBuy('stand2', price, st);
+    if (TF.Invest) TF.Invest.noteBuy(id, price, st);
     st.needsBuild = !!(TF.Build && TF.Build.live());   // built (12 s) once it's placed
     Sim.sel = st.idx;
     Crew.applyMods();
@@ -101,9 +106,10 @@
     return TF.Objects.begin(id);
   };
   Crew.buyObject = function (id, price) {
-    if (blocked(id) || Sim.stats.money < price) return false;
+    if (blocked(id) || Sim.stats.money < price || TF.Objects.blockReason(id)) return false;
     TF.Ledger.add('build', -price, id);
     if (TF.Week) TF.Week.bought(id);
+    if (TF.P7Content && TF.P7Content.items[id]) Sim.events.push({ type: 'toast', text: TF.P7Content.items[id].buyLine });
     Crew.preConfirmed = null;
     Crew.refresh();
     return true;
@@ -148,6 +154,7 @@
     if (!u || st.tier !== u.tier - 1 || st.building || Sim.stats.money < u.price || blocked(id)) return false;
     if (!reserveOk(id, u.price)) return false;
     TF.Ledger.add('upgrade', -u.price, u.id);
+    if (TF.P7Content && TF.P7Content.items[id]) Sim.events.push({type:'toast',text:TF.P7Content.items[id].buyLine});
     if (TF.Week) TF.Week.bought(id);
     if (TF.Invest) TF.Invest.noteBuy(u.id, u.price, st);
     st.building = u.id;
@@ -453,15 +460,15 @@
   var list = document.getElementById('crewList');
   Crew.buildMenu = function () {
     if (!panel) return;
-    var html = '<div id="permitLine" class="soon permit" hidden></div><div id="soonLine" class="soon" hidden></div><details open class="sec" data-section="build"><summary>Build & upgrades <button id="btnSelStand" class="mini" hidden></button></summary>';
+    var html = '<div id="p7Cargo" class="soon" hidden></div><div id="p7Leads" class="soon" hidden></div><div id="permitLine" class="soon permit" hidden></div><div id="soonLine" class="soon" hidden></div><details open class="sec" data-section="build"><summary>Build & upgrades <button id="btnSelStand" class="mini" hidden></button></summary>';
     TIERS.forEach(function (u) {
-      html += '<div class="card up"><div class="info"><b>' + u.tier + '. ' + u.name + '</b><div class="fx">' + u.effect + '</div></div><button data-tier="' + u.id + '"></button></div>';
+      html += '<div class="card up"><div class="info"><b>' + u.tier + '. ' + u.name + '</b><div class="fx">' + (u.blurb ? u.blurb + '<br>' : '') + u.effect + '</div></div><button data-tier="' + u.id + '"></button></div>';
     });
-    html += '<div class="card up"><div class="info"><b>Second stand</b><div class="fx">Grill + assigned cashier. Up to 6 stands. $18/shift each plus site rent and maintenance.</div></div><button id="btnBuyStand2"></button></div>';
+    html += '<div class="card up"><div class="info"><b>Second stand & portfolio</b><div class="fx">' + [2,3,4,5,6].map(function (n) { var c = TF.P7Content && TF.P7Content.items['stand'+n]; return (c ? c.name + ': ' + c.blurb : 'Stand '+n) + ' $' + TF.Economy.standCosts[n-2]; }).join('<br>') + '<br>Grill + cashier; $18/shift plus rent and maintenance.</div></div><button id="btnBuyStand2"></button></div>';
     html += '</details><details open class="sec" data-section="build"><summary>Buildings & extras</summary>';
     if (TF.Objects) Object.keys(TF.Objects.KINDS).forEach(function (id) {
       var k = TF.Objects.KINDS[id];
-      html += '<div class="card up"><div class="info"><b>' + k.name + '</b><div class="fx">' + k.effect + ' \u00B7 $' + k.upkeep + '/day</div></div><button data-obj="' + id + '"></button></div>';
+      html += '<div class="card up"><div class="info"><b>' + k.name + '</b><div class="fx">' + (k.blurb ? k.blurb + '<br>' : '') + k.effect + ' \u00B7 $' + k.upkeep + '/day</div></div><button data-obj="' + id + '"></button></div>';
     });
     EXTRAS.forEach(function (x) {
       html += '<div class="card up"><div class="info"><b>' + x.name + '</b><div class="fx">' + x.effect + '</div></div><button data-extra="' + x.id + '"></button></div>';
@@ -513,7 +520,7 @@
       .concat(EXTRAS.filter(function (x) { return !Crew.extras[x.id] && x.needs() && (x.id !== 'cooler2' || st.tier === 0); }))
       .filter(function (x) { return cash >= x.price && !blocked(x.id); })[0] || null;
   };
-  var TIER_NAME = ['the start', 'Grill', 'Banner', 'Serving station', 'Canopy'];
+  var TIER_NAME = ['the start', 'Grill', 'Banner', 'Serving station', 'Canopy', 'Food Truck', 'Neon Menu', 'Billboard'];
   Crew.refresh = function () {
     var btn = document.getElementById('btnCrew');
     var offer = Crew.affordable();
@@ -524,17 +531,18 @@
       btn.title = offer ? offer.name + ': ' + offer.effect : 'Stand upgrades and helpers';
     }
     if (!list || panel.hidden) return;
+    if (TF.Empire) { TF.Empire.refreshLeads(); TF.Empire.refreshCargo(); }
     var st = Sim.selected(), money = Sim.stats.money, sold = Sim.stats.served;
     var sel = document.getElementById('btnSelStand');
     sel.hidden = Sim.stands.length < 2;
-    sel.textContent = 'Stand ' + (st.idx + 1) + ' \u25B8';
+    sel.textContent = 'Stand ' + (st.idx + 1) + (st.offsite ? ' (auto-operating)' : '') + ' \u25B8';
     // Only actionable cards stay visible; owned ones disappear, locked ones go to the "Coming" line.
     var soon = {}, show = function (b, on, name, why) {
       b.closest('.card').hidden = !on;
       if (!on && why) (soon[why] = soon[why] || []).push(name);
     };
-    var b2 = document.getElementById('btnBuyStand2'), blk2 = blocked('stand2');
-    b2.textContent = Sim.stands.length >= Sim.MAX_STANDS ? 'Six stands owned' : blk2 ? blk2 : label('stand2', 'Stand ' + (Sim.stands.length+1) + ' $' + Crew.standPrice());
+    var b2 = document.getElementById('btnBuyStand2'), blk2 = blocked('stand' + (Sim.stands.length + 1));
+    b2.textContent = Sim.stands.length >= Sim.MAX_STANDS ? 'Six stands owned' : blk2 ? blk2 : label('stand' + (Sim.stands.length+1), 'Stand ' + (Sim.stands.length+1) + ' $' + Crew.standPrice());
     b2.disabled = Sim.stands.length >= Sim.MAX_STANDS || !!blk2 || money < Crew.standPrice() || !Sim.stand.placed;
     show(b2, Sim.stands.length < Sim.MAX_STANDS && !dayLock(blk2), 'Second stand', Sim.stands.length < Sim.MAX_STANDS && blk2);
     list.querySelectorAll('[data-tier]').forEach(function (b) {
@@ -577,7 +585,7 @@
     var parts = keys.map(function (k) { return dayLock(k) ? k + ': ' + soon[k].join(', ') : soon[k].join(', ') + ' (' + k + ')'; });
     line.textContent = keys.length ? 'Coming: ' + parts.slice(0, 2).join(' \u00B7 ') + (parts.length > 2 ? ' +' + (parts.length - 2) + ' more' : '') : '';
   };
-  function dayLock(why) { return !!why && /^Day /.test(why); }
+  function dayLock(why) { return !!why && /^(Day |L[1-4] Day )/.test(why); }
   Crew.open = function (on, section) {
     if (!panel) return;
     Crew.section = section || 'hire';

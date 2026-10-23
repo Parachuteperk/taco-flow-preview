@@ -126,13 +126,13 @@
   };
   function nameOf(id) {
     var C = TF.Crew, t = C.TIERS.filter(function (u) { return u.id === id; })[0];
-    if (t) return t.name; if (id === 'stand2') return 'Second stand';
+    if (t) return t.name; if (/^stand[2-6]$/.test(id)) return TF.P7Content ? TF.P7Content.items[id].name : 'Stand '+id.slice(-1);
     return TF.Objects && TF.Objects.KINDS[id] ? TF.Objects.KINDS[id].name : id;
   }
   I.earned = function (o) {
     var O = TF.Objects, up = O && O.KINDS[o.id] ? O.KINDS[o.id].upkeep * Math.max(0, (TF.Week.day - o.day)) : 0;
     if (TIER_SHARE[o.id] !== undefined) return ((o.st.rev || 0) - o.rev0) * TIER_SHARE[o.id];
-    if (o.id === 'stand2') return o.st ? (o.st.rev || 0) - o.rev0 : 0;
+    if (/^stand[2-6]$/.test(o.id)) return o.st ? (o.st.rev || 0) - o.rev0 : 0;
     if (o.id === 'drinks') return O.totals.drinkRev - O.totals.drinkCost - up;
     if (o.id === 'picnic') return O.shadeStats.kept * TACO - up;
     if (o.id === 'trash') return O.litterStats.binned * 0.25 - up;

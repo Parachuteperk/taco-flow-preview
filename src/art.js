@@ -62,6 +62,7 @@
   };
   var QUAD_TILE_W = 254;   // one world tile = 254 sheet px
 
+  var CATALOG_PROPS = {"catalog_sandwichBoard":{"sheet":"L2_props_v1","x":504,"y":237,"w":232,"h":193,"ax":177.0,"ay":193,"tiles":0.91},"catalog_merchTable":{"sheet":"L1_props_v1","x":273,"y":534,"w":227,"h":186,"ax":146.42,"ay":186,"tiles":0.89},"catalog_bikeRack":{"sheet":"L1_props_v1","x":489,"y":302,"w":236,"h":173,"ax":127.08,"ay":173,"tiles":0.93},"catalog_chargeBench":{"sheet":"L4_props_v1","x":301,"y":459,"w":180,"h":155,"ax":124.33,"ay":155,"tiles":0.71},"catalog_flyerKiosk":{"sheet":"L2_props_v1","x":504,"y":237,"w":232,"h":193,"ax":177.0,"ay":193,"tiles":0.91},"catalog_cornhole":{"sheet":"L1_props_v1","x":273,"y":534,"w":227,"h":186,"ax":146.42,"ay":186,"tiles":0.89},"catalog_salsaBar":{"sheet":"L1_props_v1","x":273,"y":534,"w":227,"h":186,"ax":146.42,"ay":186,"tiles":0.89},"catalog_stringLights":{"sheet":"L4_props_v1","x":4,"y":4,"w":148,"h":206,"ax":26.12,"ay":206.0,"tiles":0.58},"catalog_spikeball":{"sheet":"L1_props_v1","x":273,"y":534,"w":227,"h":186,"ax":146.42,"ay":186,"tiles":0.89},"catalog_cateringContract":{"sheet":"L1_props_v1","x":273,"y":534,"w":227,"h":186,"ax":146.42,"ay":186,"tiles":0.89},"catalog_deliveryBike":{"sheet":"L1_props_v1","x":489,"y":302,"w":236,"h":173,"ax":127.08,"ay":173,"tiles":0.93},"foodTruck":{"sheet":"L2_props_v1","x":4,"y":237,"w":261,"h":190,"ax":187.64,"ay":190,"tiles":1.03},"neonMenu":{"sheet":"L4_props_v1","x":4,"y":4,"w":148,"h":206,"ax":26.12,"ay":206.0,"tiles":0.58},"billboard":{"sheet":"L2_props_v1","x":504,"y":237,"w":232,"h":193,"ax":177.0,"ay":193,"tiles":0.91}};
   var Art = { ready: false, failed: false, mode: 'placeholder', img: {}, avg: {}, tileSrcW: 246, whole: WHOLE, sheets: {} };
 
   function mag(d, i) { return Math.min(d[i], d[i + 2]) - d[i + 1]; }
@@ -155,6 +156,7 @@
             var im = Art.sheets[WHOLE[k].sheet];
             if (im) Art.img[k] = slice(im, { x: 0, y: 0, w: im.width, h: im.height }, false);
           });
+          Object.keys(CATALOG_PROPS).forEach(function(k) { var c=CATALOG_PROPS[k], sh=Art.sheets[c.sheet]; if(sh) Art.img[k]=slice(sh,c,false); });
           if (TF.ArtPeople) TF.ArtPeople.load(Art);
           Art.ready = !!(Art.img.grass || Art.img.tablecooler);
           if (Art.ready) Art.mode = 'painted';

@@ -337,7 +337,7 @@
       newUnlocks: unlocks, cast: cast,
       goal: 'Pay Friday rent' + (n === 4 ? ' and reach the Day 20 Gala.' : ' to reach Level ' + (n + 1) + '.'),
       carried: ['Cash and ledger', 'Crew roster and levels', 'Exchange holdings', 'Campaign flags', 'Owned stands, tiers and reputation'],
-      reset: 'New map: redeploy owned stands. Buildings, stock, weekly favors and timers reset.',
+      reset: 'Move the flagship; other owned stands auto-operate. Equipment carries; kits reset.',
       startLabel: 'START' };
     return data;
   }

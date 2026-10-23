@@ -433,6 +433,7 @@
     if (TF.Supply) TF.Supply.trip = null;
   };
   World.onLoad.push(function () { Sim.resetForLevel(); });
+  Sim.returnToQueue = function (g) { return goToQueue(g, g.st); };
   Sim.pathTo = pathTo;
 
   // Taco Week closing: people still walking over turn back; at the end of overtime anyone still
@@ -549,6 +550,7 @@
         var econ = TF.Econ && TF.Econ.on(), fair = econ ? TF.Econ.level().prices.fair / 100 : Sim.menuPrice(st);
         var base = econ ? TF.Economy.interest({ distance: Math.hypot(g.x-st.geom.cx,g.y-st.geom.cy), radius: st.mods.zoneR, banner: st.tier >= 2, canopy: st.tier >= 4, reputation: st.reputation, event: (Sim.demandMul || 1) }) : st.mods.buyP * weekDemand();
         var draw = Sim.rand(), willing;
+        base *= (TF.Empire ? TF.Empire.interest(st) : 1);
         base *= (TF.Objects ? TF.Objects.litterMul(st) : 1) * (TF.Hacks ? TF.Hacks.buyMul : 1);
         willing = econ ? base * TF.Economy.elasticity(Sim.menuPrice(st) / fair) : base;
         if (econ && draw < Math.max(base, willing)) st.funnel.interested++;
@@ -674,6 +676,8 @@
     g.paidAt = Sim.t;
     var drink = TF.Objects ? TF.Objects.onPay(g, st) : 0;   // + a $2 agua fresca
     if (drink) { TF.Ledger.add('drinks', drink, 'agua fresca'); if (TF.Week) TF.Week.earn(drink); var wp = Sim.windowPos(st); Sim.floaters.push({ x: wp.x + 0.3, y: wp.y - 0.4, text: '+$' + drink + ' \uD83E\uDD64', t: 0 }); }
+    var catalog = TF.Empire ? TF.Empire.onPay(g, st) : 0;
+    price += catalog; extra += catalog;
     var prem = TF.Hacks ? TF.Hacks.onPay() : 0;   // GOLDEN TACO +$1 event premium
     if (prem) { price += prem; extra += prem; }
     if (!econ) TF.Ledger.add('sales', price, 'taco');
@@ -788,8 +792,15 @@
           if (g.timer <= 0) {
             if (g.atWindow) { var wi = st.queue.indexOf(g); if (wi >= 0) st.queue.splice(wi, 1); if (st.window === g) st.window = null; g.atWindow = false; }
             else { st.pickup[g.spot] = null; g.spot = -1; }
-            if (!(TF.Objects && TF.Objects.trySeat(g))) startLeave(g);   // or sit and eat in the shade
+            if (!(TF.Empire && TF.Empire.linger(g)) && !(TF.Objects && TF.Objects.trySeat(g))) startLeave(g);   // or sit and eat in the shade
           }
+        }
+        break;
+      case 'LINGER':
+        g.moving = false; g.lingerT -= dt;
+        if (g.lingerT <= 0) {
+          if (TF.Empire && TF.Empire.returnCustomer(g)) break;
+          startLeave(g);
         }
         break;
       case 'TO_SEAT':
@@ -961,7 +972,7 @@
     var crowd = C.CROWD[Sim.crowd];
     if (Sim.spawnT <= 0) {
       var week = TF.Week && TF.Week.active() && TF.Economy;
-      Sim.spawnT += week ? 180 / TF.Economy.walkers(TF.Econ.abs(TF.Week.day)) : rnd(C.SPAWN_MIN, C.SPAWN_MAX) / (Sim.mods.spawnMul * crowd.mul * (Sim.rushT > 0 ? 2 : 1) * (Sim.demandMul || 1) * (TF.CastExtra ? TF.CastExtra.demandMul : 1));
+      Sim.spawnT += week ? 180 / (TF.Economy.walkers(TF.Econ.abs(TF.Week.day)) * (TF.Empire ? TF.Empire.arrivals() : 1)) : rnd(C.SPAWN_MIN, C.SPAWN_MAX) / (Sim.mods.spawnMul * crowd.mul * (Sim.rushT > 0 ? 2 : 1) * (Sim.demandMul || 1) * (TF.CastExtra ? TF.CastExtra.demandMul : 1));
       if ((!week || TF.Week.phase === 'open') && Sim.guests.length < (week ? TF.Econ.level().peakCrowd : crowd.max)) spawn();
     }
     if (TF.Events) TF.Events.step(dt);
@@ -1011,6 +1022,7 @@
         TF.Build.start({ st: st, id: 'stand2', name: 'Stand ' + (st.idx+1), apply: function () { st.constructing = false; }, at: { x: st.geom.cx, y: st.geom.cy + 0.6 } });
       };
     }
+    st.offsite = false;
     st.placed = true; st.sx = sx; st.sy = sy; st.rot = rot;
     st.geom = World.standGeom(sx, sy, rot);
     syncWorld();

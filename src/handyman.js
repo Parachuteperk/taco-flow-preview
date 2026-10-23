@@ -80,6 +80,8 @@
     if (st.tier >= 2) out.push({ targetId: 'banner', breakdown: 'banner' });
     (TF.Objects ? TF.Objects.list : []).forEach(function (o, i) {
       if (!o.ready) return;
+      if (o.kind === 'cornhole') out.push({ targetId: 'obj:' + i, breakdown: 'cornhole' });
+      if (o.kind === 'stringLights') out.push({ targetId: 'obj:' + i, breakdown: 'lights' });
       if (o.kind === 'trash') out.push({ targetId: 'obj:' + i, breakdown: 'trash' });
       if (o.kind === 'drinks') out.push({ targetId: 'obj:' + i, breakdown: 'cooler' });
     });

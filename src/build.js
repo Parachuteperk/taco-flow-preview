@@ -5,7 +5,7 @@
 (function (TF) {
   var Sim = TF.Sim, World = TF.World, R = TF.Render;
   var B = { jobs: [], started: 0, finished: 0, log: [] };
-  B.SECS = { grill: 8, banner: 6, serving: 10, canopy: 12, stand2: 12, picnic: 9, drinks: 7, trash: 6 };
+  B.SECS = { grill: 8, banner: 6, serving: 10, canopy: 12, stand2: 12, picnic: 9, drinks: 7, trash: 6, cornhole: 12, foodTruck: 25, neonMenu: 8, billboard: 12 };
 
   // Construction only happens on an open Taco Week day; everything else builds instantly.
   B.live = function () { return !!(TF.Week && TF.Week.active() && (TF.Week.phase === 'open' || TF.Week.phase === 'close')); };

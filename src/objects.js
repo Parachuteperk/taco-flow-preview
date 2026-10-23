@@ -32,7 +32,7 @@
     return best && best.st;
   }
   O.mask = new Uint8Array(World.W * World.H);
-  World.onLoad.push(function () { O.mask = new Uint8Array(World.W * World.H); O.list = []; });   // a new level: new ground
+  World.onLoad.push(function () { O.mask = new Uint8Array(World.W * World.H); O.list = []; if (TF.Empire) { TF.Empire.cargo = []; TF.Empire.cargoVersion = null; TF.Empire.leadsKey = null; TF.Empire.event = null; } });   // a new level: new ground
   World.isObject = function (x, y) { return x >= 0 && y >= 0 && x < World.W && y < World.H && O.mask[y * World.W + x] === 1; };
   var prevBlocked = World.blockedForStand;
   World.blockedForStand = function (x, y) { return (prevBlocked && prevBlocked(x, y)) || World.isObject(x, y); };
@@ -132,7 +132,7 @@
     O.placing = null;
     TF.ui.setMode('idle');
     if (st && st.placed) R.centerOn(st.geom.cx, st.geom.cy + 0.5);   // back to the stand
-    var done = function () { o.ready = true; };
+    var done = function () { o.ready = true; if (TF.Crew) TF.Crew.applyMods(); };
     if (TF.Build) TF.Build.start({ st: st, id: p.kind, name: k.name, apply: done, at: { x: x + k.w / 2, y: y + k.h / 2 } }); else done();
     return true;
   };
@@ -182,13 +182,24 @@
 
   // End of day: charge building upkeep; drink supplies were paid for at purchase.
   O.endDay = function () {
+    var day = TF.Econ ? TF.Econ.abs(TF.Week.day) : TF.Week.day;
+    if (O.totals.closedDay === day) return O.totals.closedReport;
     var up = 0;
     O.list.forEach(function (o) { up += O.KINDS[o.kind].upkeep; });
     var cost = 0; // supplies are posted when purchased, never charged twice
+    Sim.stands.forEach(function(st) { if(st.placed) up += (st.tier>=5?8:0)+(st.tier>=6?2:0)+(st.tier>=7?5:0); });
+    var contract = O.of('cateringContract');
+    if (contract && TF.Week.day===5) {
+      TF.postTransaction({cat:'contract',cents:24000,ref:'Weekly catering bulk order'});
+      TF.postTransaction({cat:'supplies',cents:-8000,ref:'Catering wholesale fulfillment'});
+      TF.Week.earn(240);
+    }
     if (up) TF.Ledger.add('upkeep', -up, 'buildings');
     O.totals.upkeep += up;
     var r = { drinks: O.day.drinks, drinkRev: O.day.drinkRev, upkeep: up, drinkCost: cost, litter: O.litter.length, litterPct: Math.round((1 - Math.min.apply(null, Sim.stands.map(function (st) { return st.litterMul || 1; }))) * 100) };
+    O.totals.lastDrinkSales = O.day.drinks;
     O.day = { drinks: 0, drinkRev: 0, price: O.day.price || O.DRINK.price };
+    O.totals.closedDay = day; O.totals.closedReport = r;
     return r;
   };
 

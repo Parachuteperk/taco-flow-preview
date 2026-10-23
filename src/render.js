@@ -294,7 +294,7 @@
   var PIECE = {   // target size in screen px at zoom 1 (one world scale for every piece)
     table: { a: -0.35, b: 0.6, w: 60 }, tablecooler: { a: -0.35, b: 0.6, w: 60 }, cooler: { a: -1.0, b: 0.25, w: 24 },
     grill: { a: 0.5, b: 0.55, w: 30 }, banner: { a: -1.15, b: -0.4, h: 64 },
-    counter: { a: 0.75, b: -0.45, w: 46 }, canopy: { w: 140 }
+    counter: { a: 0.75, b: -0.45, w: 46 }, canopy: { w: 140 }, foodTruck: {w:150}, neonMenu:{a:-1.15,b:-0.4,h:64}, billboard:{a:-1.15,b:-0.4,h:86}
   };
   R.standPieces = function (sx, sy, rot, tier, away, st) {
     st = st || Sim.stand;
@@ -309,7 +309,10 @@
     if (tier >= 2) at('banner', g.n[1] !== 0);
     if (tier >= 3) at('counter', g.np[1] !== 0);
     // The canopy is drawn behind everything at the stand so the crew under it stay visible.
-    if (tier >= 4) out.unshift({ kind: 'piece', piece: 'canopy', x: sx + 2, y: sy + 2, k: sx + sy + 0.2, geom: g, st: st });
+    if (tier >= 6) at('neonMenu',false);
+    if (tier >= 7) at('billboard',false);
+    if (tier >= 5) out.unshift({kind:'piece',piece:'foodTruck',x:sx+2,y:sy+2,k:sx+sy+0.2,geom:g,st:st});
+    if (tier === 4) out.unshift({ kind: 'piece', piece: 'canopy', x: sx + 2, y: sy + 2, k: sx + sy + 0.2, geom: g, st: st });
     return out;
   };
 
@@ -703,9 +706,16 @@
       // Location tint (item 7): the draw zone shows how much foot traffic this spot gets.
       var LOC = { GOOD: 'rgba(40,200,80,A)', OKAY: 'rgba(240,200,40,A)', SLOW: 'rgba(240,120,40,A)' };
       R.drawZone(gg.cx, gg.cy, Sim.selected().mods.zoneR, 0.5, ghost.loc ? LOC[ghost.loc.grade] : col);
+      // Simple translucent diamonds expose the same paved traffic used by location grading.
+      var heatR=Sim.selected().mods.zoneR;
+      for(var hy=Math.floor(gg.cy-heatR);hy<=gg.cy+heatR;hy++) for(var hx=Math.floor(gg.cx-heatR);hx<=gg.cx+heatR;hx++) {
+        var hd=Math.hypot(hx+0.5-gg.cx,hy+0.5-gg.cy);
+        if(hd<=heatR && World.isWalkway(hx,hy)) R.diamondFill(hx,hy,'rgba(255,190,45,'+(0.15+0.3*(1-hd/heatR)).toFixed(2)+')');
+      }
       if (ghost.loc) {
         var lp = R.toScreen(gg.cx, gg.cy, 70);
         var lmsg = ghost.loc.grade + (ghost.loc.grade === 'GOOD' ? ' spot: busy footpaths' : ghost.loc.grade === 'OKAY' ? ' spot: some foot traffic' : ' spot: quiet corner'), lbg = LOC[ghost.loc.grade].replace('A', '0.92');
+        if (TF.Empire && TF.Econ.levelNo===3) { var site=TF.Empire.site({geom:gg}); lmsg += site.prime ? ' · prime $12/day' : ' · remote $3/day · slope/access risk'; }
         late.push(function () { pill(lmsg, lp.x, lp.y, 11 * z, lbg); });
         R.lastLocGrade = ghost.loc.grade;
       }

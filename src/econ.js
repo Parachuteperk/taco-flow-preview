@@ -66,6 +66,8 @@
       var sp2 = Math.round((st.ekits || 0) * EC.level().spoilage);
       st.ekits = Math.max(0,(st.ekits || 0) - sp2); out.spoiledKits += sp2; out.spoiledCents += sp2 * EC.level().kitCents; out.kept += st.ekits;
     });
+    if (TF.Empire) out.passive = EC.settleRemote(day);
+    out.drinkSales = TF.Objects ? TF.Objects.totals.lastDrinkSales || 0 : 0;
     if (TF.Mkt) out.market = TF.Mkt.closeDay();   // the Exchange's pre-rolled closes land (C5)
     if (((day - 1) % 5) + 1 === 5) out.rent = EC.rent = EC.M.fridayReport(EC.abs(day));
     var stands = Sim.stands.filter(function (st) { return st.placed; }), n = stands.length;
@@ -74,21 +76,31 @@
     ['payroll','rent','maintenance'].forEach(function (key) {
       if (costs[key]) TF.postTransaction({ day: EC.abs(day), phase: 'report', cat: key === 'payroll' ? 'wages' : key === 'rent' ? 'siteRent' : 'maintenance', cents: -costs[key], ref: n + ' stands' });
     });
+    if (TF.Empire && EC.levelNo === 3) {
+      var site = stands.reduce(function(n,st) { return n + (TF.Empire.site(st).prime ? 1200 : 300); },0);
+      TF.postTransaction({cat:'siteRent',cents:-site,ref:'Hillside access premium'}); costs.rent += site;
+    }
     out.costs = costs;
     var rows = TF.Ledger.rows ? TF.Ledger.rows.filter(function (r) { return r.day === EC.abs(day); }) : [];
     out.payrollCents = -rows.reduce(function (a,r) { return a + (r.cat === 'wages' ? r.cents : 0); },0);
-    out.revenueCents = rows.reduce(function (a,r) { return a + (/^(sales|drinks|premium)$/.test(r.cat) ? r.cents : 0); },0);
+    out.revenueCents = rows.reduce(function (a,r) { return a + (/^(sales|drinks|premium|portfolio|contract)$/.test(r.cat) ? r.cents : 0); },0);
     // Cash profit excludes capital, investments and financing. Spoilage is already paid in supplies.
-    out.profitCents = rows.reduce(function (a,r) { return a + (/^(sales|drinks|premium|supplies|wages|upkeep|siteRent|maintenance|rent|creditFee)$/.test(r.cat) ? r.cents : 0); },0);
+    out.profitCents = rows.reduce(function (a,r) { return a + (/^(sales|drinks|premium|portfolio|contract|portfolioExpense|supplies|wages|upkeep|siteRent|maintenance|rent|creditFee)$/.test(r.cat) ? r.cents : 0); },0);
     var supplies = -rows.reduce(function (a,r) { return a + (r.cat === 'supplies' ? r.cents : 0); },0);
     var sold = stands.reduce(function (a,st) { return a + (st.sold || 0)-(st.daySold || 0); },0);
-    var fixed = out.revenueCents - supplies - out.profitCents;
+    var activeProfit = out.profitCents - (out.passive ? out.passive.netCents : 0);
+    var fixed = out.revenueCents - (out.passive ? out.passive.grossCents : 0) - supplies - activeProfit;
     out.stands = stands.map(function (st) {
       var rev = Math.round(((st.rev || 0) - (st.dayRev || 0))*100);
       return { idx: st.idx, funnel: JSON.parse(JSON.stringify(st.funnel)), reputation: st.reputation,
         revenueCents: rev, profitCents: rev - Math.round(supplies * (sold ? ((st.sold || 0)-(st.daySold || 0))/sold : 1/Math.max(1,n))) - Math.round(fixed/Math.max(1,n)) };
     });
-    if (n) out.stands[n-1].profitCents += out.profitCents - out.stands.reduce(function (a,st) { return a+st.profitCents; },0);
+    if (n) out.stands[n-1].profitCents += activeProfit - out.stands.reduce(function (a,st) { return a+st.profitCents; },0);
+    out.stands.forEach(function (r) {
+      var st=Sim.stands[r.idx]; st.recent=st.recent || [];
+      st.recent.push({gross:r.revenueCents,cost:Math.max(0,r.revenueCents-r.profitCents)});
+      if (st.recent.length>3) st.recent.shift();
+    });
     if (EC.finance.debt) {
       var repay = Math.min(EC.finance.debt, Math.max(0, cash()-4000), Math.round(out.revenueCents * 0.2));
       if (repay) { TF.postTransaction({cat:'loan', cents:-repay, ref:'Emergency credit repayment'}); EC.finance.debt -= repay; }
@@ -97,24 +109,57 @@
     EC.sync();
     return out;
   };
+  // The flagship moves. Secondary stands keep their original location and one daily settlement.
   EC.assets = function () {
-    return { stands: Sim.stands.map(function (st) { return { tier: st.tier, reputation: st.reputation, crew: st.crew }; }), extras: JSON.parse(JSON.stringify(TF.Crew.extras)), finance: JSON.parse(JSON.stringify(EC.finance)) };
+    return { level:EC.levelNo, stands:Sim.stands.map(function(st) {
+      return {tier:st.tier,reputation:st.reputation,crew:st.crew,offsite:!!st.offsite,
+        recent:JSON.parse(JSON.stringify(st.recent || [])),remoteObjects:JSON.parse(JSON.stringify(st.remoteObjects || []))};
+    }), objects:(TF.Objects ? TF.Objects.list.map(function(o) {return {kind:o.kind,st:o.st.idx};}) : []).concat(TF.Empire ? TF.Empire.cargo : []),
+      extras:JSON.parse(JSON.stringify(TF.Crew.extras)),finance:JSON.parse(JSON.stringify(EC.finance)) };
   };
   EC.restoreAssets = function (assets) {
     if (!assets) return;
-    assets.stands.forEach(function (s,i) {
+    var advance=assets.level && assets.level<EC.levelNo;
+    assets.stands.forEach(function(s,i) {
       var st=Sim.stands[i] || Sim.addStand();
       st.tier=s.tier; st.reputation=s.reputation; st.crew=s.crew;
+      st.offsite=advance ? i>0 : !!s.offsite;
+      st.recent=JSON.parse(JSON.stringify(s.recent || []));
+      st.remoteObjects=JSON.parse(JSON.stringify(s.remoteObjects || []));
     });
+    if (TF.Empire) {
+      TF.Empire.cargo=[];
+      (assets.objects || []).forEach(function(o) {
+        var st=Sim.stands[o.st];
+        if (advance && st && st.offsite) st.remoteObjects.push({kind:o.kind});
+        else TF.Empire.cargo.push(JSON.parse(JSON.stringify(o)));
+      });
+    }
     TF.Crew.extras=JSON.parse(JSON.stringify(assets.extras));
     EC.finance=JSON.parse(JSON.stringify(assets.finance));
     TF.Crew.applyMods();
+  };
+  EC.settleRemote = function(day) {
+    var gross=0,cost=0;
+    Sim.stands.forEach(function(st) {
+      if (!st.offsite || st.placed) return;
+      var history=st.recent || [], n=history.length;
+      if (!n) return;
+      var g=Math.round(history.reduce(function(a,r){return a+r.gross;},0)/n);
+      var c=Math.round(history.reduce(function(a,r){return a+r.cost;},0)/n) + Math.round(g * 0.12); // remote manager takes 12% of gross
+      TF.postTransaction({day:EC.abs(day),phase:'report',cat:'portfolio',cents:g,ref:'Stand '+(st.idx+1)+' remote gross'});
+      TF.postTransaction({day:EC.abs(day),phase:'report',cat:'portfolioExpense',cents:-c,ref:'Stand '+(st.idx+1)+' remote expenses'});
+      gross+=g;cost+=c;
+    });
+    if (TF.Week) TF.Week.earn((gross-cost)/100);
+    return {grossCents:gross,costCents:cost,netCents:gross-cost};
   };
   EC.emergencyCredit = function () {
     if (!EC.on() || EC.finance.creditUsed || !/^(prep|open|report)$/.test(TF.Week.phase)) return false;
     EC.finance.creditUsed = true; EC.finance.debt = TF.Economy.creditCents;
     TF.postTransaction({cat:'loan', cents:TF.Economy.creditCents, ref:'One emergency credit'});
     TF.postTransaction({cat:'creditFee', cents:-TF.Economy.creditFeeCents, ref:'Emergency credit fee'});
+    if (TF.P7Content) Sim.events.push({type:'toast',text:TF.P7Content.items.emergencyLoan.buyLine});
     if (TF.Save && /^(prep|report)$/.test(TF.Week.phase)) TF.Save.write(TF.Week.phase);
     return true;
   };
@@ -126,7 +171,7 @@
         'Lost: ' + (lost || '0') + '<br>Profit $' + (st.profitCents/100).toFixed(2) + '</div>';
     }).join('') + '<small>Supplies split by sales; shared costs split equally.</small><div class="row"><span>Operating cash profit</span><b>$' + (out.profitCents/100).toFixed(2) + '</b></div>';
   };
-  EC.nextDay = function (day) { if (EC.on()) { EC.K.setPhase('prep', EC.abs(day)); EC.sync(); if (TF.Mkt) TF.Mkt.openDay(); } };
+  EC.nextDay = function (day) { if (EC.on()) { EC.K.setPhase('prep', EC.abs(day)); EC.sync(); if (TF.Empire) TF.Empire.marketSignals(); if (TF.Mkt) TF.Mkt.openDay(); } };
   // Week days are level-local (1-5); West and Stock count campaign days (L2 Monday = day 6) (C3c).
   EC.levelNo = 1;
   EC.abs = function (day) { return (EC.levelNo - 1) * 5 + day; };
@@ -188,7 +233,8 @@
     if (!EC.K) return;
     EC.levelNo = level || 1;
     EC.K.setLevel(EC.levelNo); EC.M.startLevel(EC.levelNo); EC.rent = null;
-    if (TF.Mkt) TF.Mkt.resetLevel();
+    if (TF.Empire) TF.Empire.marketSignals();
+    if (TF.Mkt && !(TF.Campaign && TF.Campaign.busy) && !(TF.Save && TF.Save.restoring)) TF.Mkt.resetLevel();
     Sim.stands.forEach(function (st) { st.ekits = 0; st.wasteAcc = 0; });
     EC.sync();
   };
@@ -314,7 +360,7 @@
       (cooler ? (O.stock ? O.stock.drinks : 0) + ' drinks left · buy stock in Restock.' : 'Build a Drink cooler to sell purchased drinks.') + '</p>' +
       [1, 2, 3].map(function (p) { return '<button data-drink-price="' + p + '" aria-pressed="' + ((O.day.price || O.DRINK.price) === p) + '"' + (editable ? '' : ' disabled') + '>' + money(p * 100) + '</button>'; }).join('') +
       '<p>Cheaper drinks get more takers; drinks add pickup time.</p>' + EC.drinkControls();
-    menuBody.innerHTML += '<p>Emergency credit: $100 now; $40 fee; repay 20% of sales above a $40 reserve.</p><button id="btnEmergencyCredit"' + (EC.finance.creditUsed ? ' disabled' : '') + '>Emergency credit' + (EC.finance.creditUsed ? ' used · debt $' + (EC.finance.debt/100).toFixed(2) : '') + '</button>';
+    menuBody.innerHTML += '<p>' + (TF.P7Content ? TF.P7Content.items.emergencyLoan.blurb : '') + '</p><p>Emergency credit: $100 now; $40 fee; repay 20% of sales above a $40 reserve.</p><button id="btnEmergencyCredit"' + (EC.finance.creditUsed ? ' disabled' : '') + '>' + (TF.P7Content ? TF.P7Content.items.emergencyLoan.name : 'Emergency credit') + (EC.finance.creditUsed ? ' used · debt $' + (EC.finance.debt/100).toFixed(2) : '') + '</button>';
     if ($('btnEmergencyCredit')) $('btnEmergencyCredit').onclick = function () { EC.emergencyCredit(); EC.renderMenu(); };
     EC.bindDrinks();
     menuBody.querySelectorAll('[data-menu-tier]').forEach(function (b) { b.onclick = function () { EC.setTier(b.dataset.menuTier); EC.renderMenu(); }; });
@@ -423,4 +469,5 @@
   TF.plugins.push(EC);
   TF.Econ = EC;
   EC.init();
+  if (TF.Mkt && !TF.Mkt.X && EC.K) { if (TF.Empire) TF.Empire.marketSignals(); TF.Mkt.create(); }
 })(window.TF);

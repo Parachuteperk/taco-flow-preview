@@ -25,7 +25,7 @@
   return {
     walkers: walkers, interest: interest, elasticity: elasticity, shiftCosts: costs,
     standCosts: [120,350,750,1500,2500],
-    creditCents: 10000, creditFeeCents: 4000,
+    creditCents: 20000, creditFeeCents: 4000,
     levels: [
       { level: 1, map: 'The Quad', w: 36, h: 36, peakCrowd: 150, objectCap: 25, rentCents: 6000, kitCents: 175, spoilage: 0.30, patienceS: 28, surge: 1, breakdowns: 2, maxActiveFaults: 1, favorMult: 1, rainCapCents: 6000, prices: { cheap: 400, fair: 600, bougie: 800 }, marketVMult: 1 },
       { level: 2, map: 'Bobcat Trail', w: 40, h: 40, peakCrowd: 250, objectCap: 30, rentCents: 12000, kitCents: 190, spoilage: 0.30, patienceS: 24, surge: 2, breakdowns: 2, maxActiveFaults: 1, favorMult: 1.3, rainCapCents: 8000, prices: { cheap: 425, fair: 750, bougie: 1000 }, marketVMult: 1.2 },

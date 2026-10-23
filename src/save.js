@@ -30,7 +30,7 @@
   function apply(obj, snap) { if (obj && snap) Object.keys(snap).forEach(function (k) { obj[k] = snap[k]; }); }
 
   var SIM_KEYS = ['t', 'nextId', 'spawnT', 'thoughts', 'cookRate', 'serviceSlow', 'priceBoostT', 'crowd', 'rushT', 'nextRush', 'capExtra', 'waits', 'lost', 'demandMul', 'closing'];
-  var STAND_KEYS = ['placed', 'sx', 'sy', 'rot', 'tier', 'restocks', 'rev', 'sold', 'served', 'ekits', 'wasteAcc', 'litterMul', 'needRestock', 'reputation', 'crew', 'funnel'];
+  var STAND_KEYS = ['placed', 'sx', 'sy', 'rot', 'tier', 'restocks', 'rev', 'sold', 'served', 'ekits', 'wasteAcc', 'litterMul', 'needRestock', 'reputation', 'crew', 'funnel', 'offsite', 'recent', 'remoteObjects'];
 
   // Keep recent receipts; archive older rows by day/phase/category and customer kind.
   // Cash, seed, daily totals and Gala splits stay exact, including inside Monday checkpoints.
@@ -82,6 +82,7 @@
       crew: { hired: TF.Crew.hired(), extras: copy(TF.Crew.extras) },
       sim: sim, stats: stats,
       flags: {
+        cargo: TF.Empire ? copy(TF.Empire.cargo) : [],
         objects: O ? { stock: O.stock, day: O.day, totals: O.totals, litterStats: O.litterStats, shadeStats: O.shadeStats, litter: O.litter } : null,   // overnight litter stays (it cuts demand)
         invest: I ? plain(I, ['owned', 'sig', 'rng']) : null,
         owned: I ? I.owned.map(function (o) { return { id: o.id, cost: o.cost, st: o.st ? o.st.idx : null, rev0: o.rev0, obj: o.obj && O ? O.list.indexOf(o.obj) : -1, day: o.day, name: o.name }; }) : [],
@@ -186,11 +187,19 @@
     var finance = d.econ && d.econ.finance;
     if (finance && (typeof finance.creditUsed !== 'boolean' || !int(finance.debt) || finance.debt < 0 || finance.debt > (TF.Economy ? TF.Economy.creditCents : 10000) || (!finance.creditUsed && finance.debt))) return 'emergency credit';
     var assets = d.flags.businessAssets;
-    if (assets && (!Array.isArray(assets.stands) || !assets.stands.length || assets.stands.length > 6 || !assets.stands.every(function (s) { return s && int(s.tier) && s.tier >= 0 && s.tier <= 4 && Number.isFinite(s.reputation) && s.reputation >= 0 && s.reputation <= 100 && (s.crew === null || typeof s.crew === 'string'); }) || !assets.extras || typeof assets.extras !== 'object' || Array.isArray(assets.extras) || !assets.finance || typeof assets.finance.creditUsed !== 'boolean' || !int(assets.finance.debt) || assets.finance.debt < 0 || assets.finance.debt > (TF.Economy ? TF.Economy.creditCents : 10000))) return 'business assets';
+    if (assets && (!Array.isArray(assets.stands) || !assets.stands.length || assets.stands.length > 6 || !assets.stands.every(function (s) { return s && int(s.tier) && s.tier >= 0 && s.tier <= 7 && Number.isFinite(s.reputation) && s.reputation >= 0 && s.reputation <= 100 && (s.crew === null || typeof s.crew === 'string'); }) || !assets.extras || typeof assets.extras !== 'object' || Array.isArray(assets.extras) || !assets.finance || typeof assets.finance.creditUsed !== 'boolean' || !int(assets.finance.debt) || assets.finance.debt < 0 || assets.finance.debt > (TF.Economy ? TF.Economy.creditCents : 10000))) return 'business assets';
+    function historyOK(st) {
+      return (st.offsite === undefined || typeof st.offsite === 'boolean') &&
+        (st.recent === undefined || (Array.isArray(st.recent) && st.recent.length <= 3 && st.recent.every(function(r) { return r && int(r.gross) && r.gross >= 0 && int(r.cost) && r.cost >= 0; }))) &&
+        (st.remoteObjects === undefined || (Array.isArray(st.remoteObjects) && st.remoteObjects.length <= 128 && st.remoteObjects.every(function(o) { return o && TF.Objects.KINDS[o.kind]; })));
+    }
+    if (assets && !assets.stands.every(historyOK)) return 'business history';
     var b = d.buildings;
     if (!b || !Array.isArray(b.stands) || !b.stands.length || b.stands.length > 6 || !Array.isArray(b.objects)) return 'buildings';
+    if (d.flags.cargo !== undefined && (!Array.isArray(d.flags.cargo) || d.flags.cargo.length > 128 || !d.flags.cargo.every(function(o) { return o && TF.Objects.KINDS[o.kind] && int(o.st) && !!b.stands[o.st]; }))) return 'packed equipment';
     for (var i = 0; i < b.stands.length; i++) {
       var st = b.stands[i];
+      if (st && (!historyOK(st) || (st.offsite && (st.placed || i === 0)))) return 'stand operation';
       if (st && st.reputation !== undefined && (!Number.isFinite(st.reputation) || st.reputation < 0 || st.reputation > 100)) return 'stand reputation';
       if (st && st.crew !== undefined && st.crew !== null && typeof st.crew !== 'string') return 'stand crew';
       if (st && st.funnel && (!['walkers','interested','queued','served'].every(function (k) { return int(st.funnel[k]) && st.funnel[k] >= 0; }) || !st.funnel.lost || !Object.keys(st.funnel.lost).every(function (k) { return int(st.funnel.lost[k]) && st.funnel.lost[k] >= 0; }))) return 'stand funnel';
@@ -305,6 +314,7 @@
       TF.LEVELS[d.level.id] = TF.LEVELS[d.level.id] || d.level.data;
       TF.Rng.seed = d.seed;
       World.loadLevel(TF.LEVELS[d.level.id]);
+      if (TF.Empire) TF.Empire.cargo = copy(d.flags.cargo || []);
       Sim.sel = 0;
       // stands, lines and tiers on the map
       Sim.guests = []; Sim.floaters = []; Sim.flyers = [];
