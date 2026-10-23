@@ -44,6 +44,18 @@
       var sg = EC.K.suggestOrder({ yesterdaySold: null });
       if (sg.kits && cash() >= sg.kits * EC.level().kitCents) { EC.K.order(sg.kits); EC.autoOrders.push({ day: day, kits: sg.kits }); Sim.events.push({ type: 'toast', text: '📦 Jared ordered ' + sg.kits + ' taco kits for you (' + sg.text + ')' }); }
     }
+    // Jared's kit float: automatic once per level when broke and empty.
+    var FLOAT_KITS = 12;
+    var s = EC.state();
+    if (EC.kitsLeft() === 0 && pendingKits(s) === 0 && cash() < FLOAT_KITS * EC.level().kitCents && EC.finance.floatLevel !== EC.levelNo) {
+      // If last night's bills left cash negative, Jared also covers the overdraft so the order clears.
+      var cost = FLOAT_KITS * EC.level().kitCents + Math.max(0, -cash());
+      TF.postTransaction({cat:'loan', cents: cost, ref:"Jared's kit float"});
+      EC.K.order(FLOAT_KITS);
+      EC.finance.floatDebt = (EC.finance.floatDebt || 0) + cost;
+      EC.finance.floatLevel = EC.levelNo;
+      Sim.events.push({type:'toast', text:'🤝 Jared fronted 12 taco kits. Pay him back from sales.'});
+    }
     EC.K.setPhase('open', EC.abs(day));
     // the van's kits fill every stand as you open, one kit at a time round the stands so a new stand 2
     // isn't left empty behind stand 1's 40-kit grill (C3c / C4: phone Day 4 stand 2 sold 0, NO STOCK 200 s)
@@ -101,9 +113,18 @@
       st.recent.push({gross:r.revenueCents,cost:Math.max(0,r.revenueCents-r.profitCents)});
       if (st.recent.length>3) st.recent.shift();
     });
+    var emergencyRepaid = 0;
     if (EC.finance.debt) {
       var repay = Math.min(EC.finance.debt, Math.max(0, cash()-4000), Math.round(out.revenueCents * 0.2));
-      if (repay) { TF.postTransaction({cat:'loan', cents:-repay, ref:'Emergency credit repayment'}); EC.finance.debt -= repay; }
+      if (repay) { TF.postTransaction({cat:'loan', cents:-repay, ref:'Emergency credit repayment'}); EC.finance.debt -= repay; emergencyRepaid = repay; }
+    }
+    if ((EC.finance.floatDebt || 0) > 0) {
+      var maxRepay = Math.round(out.revenueCents * 0.2) - emergencyRepaid;
+      var floatRepay = Math.min(EC.finance.floatDebt, Math.max(0, cash()-4000), Math.max(0, maxRepay));
+      if (floatRepay > 0) {
+        TF.postTransaction({cat:'loan', cents:-floatRepay, ref:"Jared's float repayment"});
+        EC.finance.floatDebt -= floatRepay;
+      }
     }
     EC.last = out; EC.spoil.push(out);
     EC.sync();
@@ -360,7 +381,9 @@
       (cooler ? (O.stock ? O.stock.drinks : 0) + ' drinks left · buy stock in Restock.' : 'Build a Drink cooler to sell purchased drinks.') + '</p>' +
       [1, 2, 3].map(function (p) { return '<button data-drink-price="' + p + '" aria-pressed="' + ((O.day.price || O.DRINK.price) === p) + '"' + (editable ? '' : ' disabled') + '>' + money(p * 100) + '</button>'; }).join('') +
       '<p>Cheaper drinks get more takers; drinks add pickup time.</p>' + EC.drinkControls();
-    menuBody.innerHTML += '<p>' + (TF.P7Content ? TF.P7Content.items.emergencyLoan.blurb : '') + '</p><p>Emergency credit: $100 now; $40 fee; repay 20% of sales above a $40 reserve.</p><button id="btnEmergencyCredit"' + (EC.finance.creditUsed ? ' disabled' : '') + '>' + (TF.P7Content ? TF.P7Content.items.emergencyLoan.name : 'Emergency credit') + (EC.finance.creditUsed ? ' used · debt $' + (EC.finance.debt/100).toFixed(2) : '') + '</button>';
+    var creditNow = TF.Economy.creditCents / 100, creditFee = TF.Economy.creditFeeCents / 100;
+    var floatLine = (EC.finance.floatDebt || 0) > 0 ? ' Owe Jared $' + ((EC.finance.floatDebt || 0)/100).toFixed(2) + '.' : '';
+    menuBody.innerHTML += '<p>' + (TF.P7Content ? TF.P7Content.items.emergencyLoan.blurb : '') + '</p><p>Emergency credit: $' + creditNow + ' now; $' + creditFee + ' fee; repay 20% of sales above a $40 reserve.' + floatLine + '</p><button id="btnEmergencyCredit"' + (EC.finance.creditUsed ? ' disabled' : '') + '>' + (TF.P7Content ? TF.P7Content.items.emergencyLoan.name : 'Emergency credit') + (EC.finance.creditUsed ? ' used · debt $' + (EC.finance.debt/100).toFixed(2) : '') + '</button>';
     if ($('btnEmergencyCredit')) $('btnEmergencyCredit').onclick = function () { EC.emergencyCredit(); EC.renderMenu(); };
     EC.bindDrinks();
     menuBody.querySelectorAll('[data-menu-tier]').forEach(function (b) { b.onclick = function () { EC.setTier(b.dataset.menuTier); EC.renderMenu(); }; });
@@ -422,18 +445,23 @@
     restock.hidden = !/^(prep|open|close|report)$/.test(W.phase) || EC.restockSkipped === key;
     var ds = TF.Objects.stock || { drinks: 0, pending: [] };
     if (W.phase === 'open' && o.kitsLeft > 3 && !(TF.Objects.list.some(function (o) { return o.kind === 'drinks'; }) && ds.drinks <= 3)) restock.hidden = true;
-    var sig = [key, o.kitsLeft, o.want, o.suggested, cash(), ds.drinks, ds.pending.map(function (p) { return Math.ceil(p.etaS); }).join(',')].join('|');
+    var sig = [key, o.kitsLeft, o.want, o.suggested, cash(), ds.drinks, ds.pending.map(function (p) { return Math.ceil(p.etaS); }).join(','), EC.finance.creditUsed].join('|');
     if (!restock.hidden && sig !== EC.restockSig) {
       EC.restockSig = sig;
+      var loanBtn = '';
+      if (!EC.finance.creditUsed && /^(prep|report)$/.test(W.phase) && cash() < 10 * o.unit) {
+        loanBtn = '<button id="restockLoan">Emergency loan +$' + (TF.Economy.creditCents/100) + ' ($' + (TF.Economy.creditFeeCents/100) + ' fee)</button>';
+      }
       restock.innerHTML = '<b>' + (W.phase === 'open' ? 'RUSH restock (+20%)' : W.phase === 'prep' ? 'Restock before OPEN' : W.day === 5 ? 'Restock at the next location' : 'Restock for tomorrow') + '</b> · ' + o.kitsLeft + ' kits left' +
         '<small>Suggested: ' + o.suggested + ' kits (' + money(o.suggested * o.unit) + '). ' + (W.day === 5 && W.phase !== 'prep' ? 'Kits reset at the next location. Restock in its PREP.' : W.phase === 'close' ? 'Buy after closing; leftovers spoil first.' : 'Adjust to your budget; or skip.') + '</small>' +
         '<div class="restock-actions"><button id="restockMinus" aria-label="Fewer kits">−</button><b>' + o.want + ' kits</b><button id="restockPlus" aria-label="More kits">+</button>' +
-        '<button id="restockBuy"' + (o.canBuy ? '' : ' disabled') + '>Buy ' + money(o.cost) + '</button><button id="restockSkip">Skip</button></div>' + EC.drinkControls();
+        '<button id="restockBuy"' + (o.canBuy ? '' : ' disabled') + '>Buy ' + money(o.cost) + '</button><button id="restockSkip">Skip</button></div>' + EC.drinkControls() + loanBtn;
       EC.bindDrinks();
       $('restockMinus').onclick = function () { EC.restockWant = Math.max(0, o.want - 5); EC.refresh(); };
       $('restockPlus').onclick = function () { EC.restockWant = Math.min(200, o.want + 5); EC.refresh(); };
       $('restockBuy').onclick = EC.buyRestock;
       $('restockSkip').onclick = function () { EC.restockSkipped = key; restock.hidden = true; };
+      if ($('restockLoan')) $('restockLoan').onclick = function () { EC.emergencyCredit(); EC.restockSig = null; EC.refresh(); };
     }
     var ms = [key, EC.K.price(), TF.Objects.day.price, TF.Objects.day.drinks, ds.drinks, ds.pending.map(function (p) { return Math.ceil(p.etaS); }).join(','), o.kitsLeft, EC.lostToday('too pricey'), TF.Objects.list.map(function (o) { return o.ready; }).join(',')].join('|');
     if (EC.menuSig !== ms) { EC.menuSig = ms; EC.renderMenu(); }
