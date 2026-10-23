@@ -374,7 +374,11 @@
     W.won = win; W.rentPaid = rentPaid;
     var camp = !!(TF.Campaign && TF.Campaign.on()), lvlNo = TF.Econ && TF.Econ.levelNo ? TF.Econ.levelNo : 1;
     var end = $('endCard'), Sy = TF.Story, profit = Sy ? Sy.profit() : 0, bet = Sy && Sy.started && !econ ? profit >= Sy.target : null;
-    var decision = camp ? TF.Campaign.endWeek() : null;
+    // A campaign error here used to throw before the card was shown: the week ended on a blank screen.
+    // Now the card always appears; if the month controller fails, the player gets a clear note + a way on.
+    var decision = null, campErr = null;
+    if (camp) { try { decision = TF.Campaign.endWeek(); } catch (e) { campErr = e; decision = null; if (typeof console !== 'undefined') console.error('[week] Campaign.endWeek failed', e); } }
+    W.campaignError = campErr ? String(campErr && campErr.message || campErr) : null;
     var finale = decision && decision.action === 'complete' ? decision : null;
     if (finale) { var sums = TF.Ledger.split(); finale.score = TF.Econ.M.galaScore({ operatingProfitCents: sums.operating, tradingNetCents: sums.trading }); }
     W.betWon = bet;   // the Pass 5 profit term sheet; with the economy on, rent decides the week instead (C3b)
@@ -400,7 +404,8 @@
       '<div class="row"><span>Tacos sold</span><b>' + total + '</b></div>' +
       '<div class="row"><span>Cash earned</span><b>$' + cash + '</b></div>' +
       '<div class="row"><span>Score</span><b>' + (total * 10 + cash + hits * 100) + '</b></div>' +
-      (decision && decision.action === 'gameOver' ? '<p>Campaign over. No retry is available.</p><div class="btns"><button id="btnPlayAgain">Start over</button></div>'
+      (campErr ? '<p class="why">Something went wrong saving the week, so the next level can\u2019t load from here. Retry the week from Monday or start a fresh run.</p><div class="btns"><button id="btnRetryWeek">\uD83D\uDD01 Retry the week (Monday)</button><button id="btnPlayAgain">Start over</button><button id="btnFreePlay">Free play</button></div>'
+        : decision && decision.action === 'gameOver' ? '<p>Campaign over. No retry is available.</p><div class="btns"><button id="btnPlayAgain">Start over</button></div>'
         : econ && !rentPaid ? '<div class="btns"><button id="btnRetryWeek">\uD83D\uDD01 Retry the week (Monday)</button><button id="btnPlayAgain">Start over</button></div>'
         : econ && rentPaid && camp && lvlNo < 4 ? '<div class="btns"><button id="btnNextLevel">\u25B6 Level ' + (lvlNo + 1) + ': ' + ((TF.LEVELS['L' + (lvlNo + 1)] || {}).name || '') + '</button><button id="btnFreePlay">Free play</button></div>'
         : econ && rentPaid && camp ? '<div class="btns"><button id="btnPlayAgain">\uD83C\uDF89 Month complete! Play again</button><button id="btnFreePlay">Free play</button></div>'
@@ -408,9 +413,14 @@
     end.hidden = false;
     // the month (6B B2): next level through its start card / an in-place Monday retry; the old reload retry if the
     // campaign controller can't take it
-    if ($('btnNextLevel')) $('btnNextLevel').addEventListener('click', function () { end.hidden = true; TF.Campaign.advance().catch(function () { end.hidden = false; }); });
+    // a failed transition (sync throw or rejection) brings the card back instead of leaving a blank screen
+    function back(e) { end.hidden = false; if (typeof console !== 'undefined') console.error('[week] level transition failed', e); }
+    if ($('btnNextLevel')) $('btnNextLevel').addEventListener('click', function () {
+      end.hidden = true;
+      try { TF.Campaign.advance().catch(back); } catch (e) { back(e); }
+    });
     if ($('btnRetryWeek')) $('btnRetryWeek').addEventListener('click', function () {
-      if (camp && TF.Campaign.monday) { end.hidden = true; TF.Campaign.retry().catch(function () { end.hidden = false; }); }
+      if (camp && !campErr && TF.Campaign.monday) { end.hidden = true; try { TF.Campaign.retry().catch(back); } catch (e) { back(e); } }
       else TF.Checkpoint.retry();
     });
     if (finale && camp && TF.Campaign.runFinale) {

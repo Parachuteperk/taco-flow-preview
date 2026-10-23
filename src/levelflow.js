@@ -66,7 +66,13 @@
     // Keep legacy full-board campaigns and pass6's three-ticker market intact.
     // Never recreate a live Exchange: that would lose its portfolio and pre-rolls.
     var liveMarket = s.exchange && Array.isArray(s.exchange.tickers) && [3, 6].includes(s.exchange.tickers.length);
-    if (liveMarket) {
+    // The live game's full board (Pass 7: all 13 tickers from data/tickers.js) runs on the same
+    // seed ^ 0xE8C4 as the old 3/6-ticker live markets; without this, Friday's verdict threw
+    // 'Invalid Exchange identity/RNG' and the week-end card never appeared.
+    var liveFull = !liveMarket && s.exchange && Array.isArray(s.exchange.tickers) && Number.isSafeInteger(s.seed) &&
+      s.exchange.seed === (s.seed ^ 0xE8C4) && s.exchange.tickers.length === exchangeShape.tickers.length;
+    if (liveFull) { exchangeShape = Exchange.create({ seed: s.seed ^ 0xE8C4 }).getState(); liveMarket = true; }
+    else if (liveMarket) {
       var liveTickers = exchangeShape.tickers.filter(function (t) {
         return (s.exchange.tickers.length === 3 ? ['GOLD', 'TACO', 'NAPZ'] : ['GOLD', 'TACO', 'NAPZ', 'COIN', 'SHADE', 'QUAD']).indexOf(t.sym) >= 0;
       }).map(function (t) { t.opensDay = 1; return t; });
