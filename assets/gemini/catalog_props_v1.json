@@ -1,0 +1,162 @@
+{
+  "catalog_cornhole": {
+    "sheet": "catalog_props_v1",
+    "x": 4,
+    "y": 4,
+    "w": 581,
+    "h": 219,
+    "ax": 290.5,
+    "ay": 219,
+    "src": "catalog-sheet1.png"
+  },
+  "catalog_spikeball": {
+    "sheet": "catalog_props_v1",
+    "x": 593,
+    "y": 4,
+    "w": 280,
+    "h": 209,
+    "ax": 140.0,
+    "ay": 209,
+    "src": "catalog-sheet1.png"
+  },
+  "catalog_salsaBar": {
+    "sheet": "catalog_props_v1",
+    "x": 881,
+    "y": 4,
+    "w": 268,
+    "h": 300,
+    "ax": 133.92,
+    "ay": 300.0,
+    "src": "catalog-sheet1.png"
+  },
+  "catalog_flyerKiosk": {
+    "sheet": "catalog_props_v1",
+    "x": 1157,
+    "y": 4,
+    "w": 139,
+    "h": 300,
+    "ax": 69.56,
+    "ay": 300.0,
+    "src": "catalog-sheet1.png"
+  },
+  "catalog_cateringContract": {
+    "sheet": "catalog_props_v1",
+    "x": 4,
+    "y": 312,
+    "w": 363,
+    "h": 300,
+    "ax": 181.6,
+    "ay": 300.0,
+    "src": "catalog-sheet2.png"
+  },
+  "catalog_deliveryBike": {
+    "sheet": "catalog_props_v1",
+    "x": 375,
+    "y": 312,
+    "w": 255,
+    "h": 300,
+    "ax": 127.61,
+    "ay": 300.0,
+    "src": "catalog-sheet2.png"
+  },
+  "neonMenu": {
+    "sheet": "catalog_props_v1",
+    "x": 638,
+    "y": 312,
+    "w": 168,
+    "h": 300,
+    "ax": 83.91,
+    "ay": 300.0,
+    "src": "catalog-sheet2.png"
+  },
+  "billboard": {
+    "sheet": "catalog_props_v1",
+    "x": 814,
+    "y": 312,
+    "w": 213,
+    "h": 300,
+    "ax": 106.53,
+    "ay": 300.0,
+    "src": "catalog-sheet2.png"
+  },
+  "catalog_sandwichBoard": {
+    "sheet": "catalog_props_v1",
+    "x": 4,
+    "y": 620,
+    "w": 228,
+    "h": 300,
+    "ax": 113.97,
+    "ay": 300.0,
+    "src": "catalog-sheet3.png"
+  },
+  "catalog_merchTable": {
+    "sheet": "catalog_props_v1",
+    "x": 240,
+    "y": 620,
+    "w": 380,
+    "h": 300,
+    "ax": 189.95,
+    "ay": 300.0,
+    "src": "catalog-sheet3.png"
+  },
+  "catalog_chargeBench": {
+    "sheet": "catalog_props_v1",
+    "x": 628,
+    "y": 620,
+    "w": 318,
+    "h": 300,
+    "ax": 158.88,
+    "ay": 300.0,
+    "src": "catalog-sheet3.png"
+  },
+  "foodTruck": {
+    "sheet": "catalog_props_v1",
+    "x": 954,
+    "y": 620,
+    "w": 359,
+    "h": 300,
+    "ax": 179.61,
+    "ay": 300.0,
+    "src": "catalog-sheet3.png"
+  },
+  "catalog_stringLights": {
+    "sheet": "catalog_props_v1",
+    "x": 4,
+    "y": 928,
+    "w": 272,
+    "h": 300,
+    "ax": 135.88,
+    "ay": 300.0,
+    "src": "catalog-sheet4.png"
+  },
+  "booth_tier1": {
+    "sheet": "catalog_props_v1",
+    "x": 284,
+    "y": 928,
+    "w": 181,
+    "h": 300,
+    "ax": 90.64,
+    "ay": 300.0,
+    "src": "catalog-sheet4.png"
+  },
+  "booth_tier2": {
+    "sheet": "catalog_props_v1",
+    "x": 473,
+    "y": 928,
+    "w": 247,
+    "h": 300,
+    "ax": 123.64,
+    "ay": 300.0,
+    "src": "catalog-sheet4.png"
+  },
+  "booth_tier3": {
+    "sheet": "catalog_props_v1",
+    "x": 728,
+    "y": 928,
+    "w": 302,
+    "h": 300,
+    "ax": 151.22,
+    "ay": 300.0,
+    "src": "catalog-sheet4.png"
+  }
+}

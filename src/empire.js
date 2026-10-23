@@ -162,7 +162,7 @@
     (TF.Mkt ? TF.Mkt.headlines(absolute()) : []).forEach(function(line) { h+='<div class="why"><b>'+line.sym+' '+(line.pct>=0?'+':'')+line.pct+'%</b> '+line.text+'</div>'; });
     return h;
   };
-  // Existing art only: catalog props use the audited sheets; tiers use existing stand pieces.
+  // Catalog props use the Gemini catalog sheet (src/art.js CATALOG_PROPS); tiers 5-7 use the same sheet as stand pieces.
   var draw=O.draw;
   O.draw=function(ctx,it,z) {
     if (!it.o || !defs[it.o.kind]) return draw(ctx,it,z);
