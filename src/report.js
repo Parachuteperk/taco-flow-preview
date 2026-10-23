@@ -33,12 +33,14 @@
     var h = row('Customers lost', lostN) + (lost.length ? why(lost.map(function (k) { return r.lost[k] + ' ' + k; }).join(' \u00B7 ')) : '') +
       row('Biggest bottleneck', r.neck ? r.neck.name + ' (' + r.neck.secs + 's)' : 'none \u2014 smooth day!');
     if (r.standSold) h += row('Best stand', 'Stand ' + (r.standSold.indexOf(Math.max.apply(null, r.standSold)) + 1) + ' (' + r.standSold.join(' vs ') + ' sold)');
-    if (o && o.drinks) h += row('Drinks sold', o.drinks + ' \u00B7 +$' + o.drinkRev);
+    if (o && o.drinks) h += row('Drinks sold', o.drinks + (o.drinkOnly ? ' (' + o.drinkOnly + ' drink-only)' : '') + ' \u00B7 +$' + o.drinkRev);
+    (r.catalog || []).forEach(function (c) { h += row(c.name, c.n + ' ' + c.unit + ' \u00B7 +$' + (Math.round(c.dollars * 100) / 100)); });
     (e && e.stands || []).forEach(function (st) {
       var f = st.funnel || { lost: {} }, fl = Object.keys(f.lost || {}).map(function (k) { return f.lost[k] + ' ' + k; }).join(' \u00B7 ');
       h += why('<b>Stand ' + (st.idx + 1) + ' \u00B7 rep ' + Math.round(st.reputation) + '/100</b><br>' + f.walkers + ' walkers \u2192 ' + f.interested + ' interested \u2192 ' + f.queued + ' queued \u2192 ' + f.served + ' served<br>Lost: ' + (fl || '0') + '<br>Profit ' + d(st.profitCents));
     });
-    S.push({ id: 'sales', title: 'Sales & customers', summary: r.sold + ' sold \u00B7 ' + lostN + ' lost', html: h });
+    var side = (r.catalog || []).reduce(function (n, c) { return n + c.dollars; }, 0) + (o && o.drinkRev || 0);
+    S.push({ id: 'sales', title: 'Sales & customers', summary: r.sold + ' sold \u00B7 ' + lostN + ' lost' + (side ? ' \u00B7 side items +$' + Math.round(side) : ''), html: h });
     // Costs & bills
     var costC = 0; h = '';
     if (e) {

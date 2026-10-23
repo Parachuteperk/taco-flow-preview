@@ -143,9 +143,13 @@
   }
 
   // ---- Drinks ----------------------------------------------------------------------------
-  // Called when a student pays: 35% add a $2 drink while purchased stock lasts. A drink adds ~2 s to the
-  // hand-off unless someone mans the pickup (Matt).
-  O.DRINK = { p: 0.35, price: 2, cost: 0.5, slow: 2 };
+  // Called when a student pays: at the default $2 about half add a drink while purchased stock lasts
+  // (Pass 7 drink tune: was 35% at L1 with a 2 s hand-off drag that cost more tacos than the drinks made).
+  // Price-sensitive: $1 ~85%, $2 50%, $3 ~27%. The cooler is self-serve, so a drink adds only 0.3 s at
+  // pickup. Drink-only buyers: someone who skips the taco (line full / too pricey) can still grab one,
+  // and on hot days a few passers-by stop just for a drink.
+  O.DRINK = { p: 0.5, price: 2, cost: 0.5, slow: 0.3, elastic: 1.5, cap: 0.85, onlyP: 0.15, hotP: 0.04 };
+  O.drinkP = function (price) { return Math.min(O.DRINK.cap, O.DRINK.p * Math.pow(O.DRINK.price / Math.max(0.5, price || O.DRINK.price), O.DRINK.elastic)); };
   O.drinkCost = function () { return TF.Econ && TF.Econ.on() && TF.Econ.levelNo > 1 ? 1 : O.DRINK.cost; };
   O.stock = { drinks: 0, pending: [] };
   // Drink stock is only sold to owners of a Drink cooler (placed or still being built).
@@ -177,12 +181,36 @@
     });
   };
   O.rng = TF.Rng.objects;   // its own stream: buying a cooler doesn't reshuffle the crowd
-  O.onPay = function (g, st) {
+  function coolerUp(st) {
     var c = O.of('drinks', st);
-    if (!c || O.stock.drinks <= 0 || (TF.Handyman && TF.Handyman.fault('cooler')) || O.rng() >= (TF.Econ && TF.Econ.on() && TF.Econ.levelNo > 1 ? 1.95 : O.DRINK.p * O.DRINK.price) / (O.day.price || O.DRINK.price)) return 0;   // a jammed cooler sells nothing (C4)
-    g.drink = true;
-    var price = O.day.price || O.DRINK.price;
+    return !!c && O.stock.drinks > 0 && !(TF.Handyman && TF.Handyman.fault('cooler'));   // a jammed cooler sells nothing (C4)
+  }
+  function tallyDrink(price, only) {
     O.stock.drinks--; O.day.drinks++; O.day.drinkRev += price; O.totals.drinks++; O.totals.drinkRev += price;
+    if (only) { O.day.drinkOnly = (O.day.drinkOnly || 0) + 1; O.totals.drinkOnly = (O.totals.drinkOnly || 0) + 1; }
+  }
+  O.onPay = function (g, st) {
+    if (!coolerUp(st)) return 0;
+    var price = O.day.price || O.DRINK.price;
+    if (O.rng() >= O.drinkP(price)) return 0;
+    g.drink = true;
+    tallyDrink(price, false);
+    return price;
+  };
+  // A drink without a taco (no queue, no kit): posted here. why: 'line full' | 'too pricey' | 'hot'.
+  O.drinkOnly = function (g, st, why) {
+    if (!st || g.drinkOnly || !coolerUp(st) || (TF.Week && TF.Week.phase !== 'open')) return 0;
+    var hot = TF.Empire && TF.Empire.forecast ? !!TF.Empire.forecast().hot : false;
+    var p = why === 'hot' ? (hot ? O.DRINK.hotP : 0) : O.DRINK.onlyP * (hot ? 1.3 : 1);
+    if (!p || O.rng() >= p * O.drinkP(O.day.price || O.DRINK.price) / O.DRINK.p) return 0;
+    var price = O.day.price || O.DRINK.price;
+    g.drinkOnly = true;
+    tallyDrink(price, true);
+    TF.Ledger.add('drinks', price, 'agua fresca (drink only)');
+    if (TF.Week && TF.Week.earn) TF.Week.earn(price);
+    st.rev = (st.rev || 0) + price;
+    var w = Sim.windowPos ? Sim.windowPos(st) : null;
+    if (w) Sim.floaters.push({ x: w.x + 0.3, y: w.y - 0.4, text: '+$' + price + ' \uD83E\uDD64', t: 0 });
     return price;
   };
   O.handExtra = function (g, st) { return g.drink && !(TF.Crew && TF.Crew.hiredSet.matt && st.idx === 0) ? O.DRINK.slow : 0; };
@@ -200,12 +228,13 @@
       TF.postTransaction({cat:'contract',cents:24000,ref:'Weekly catering bulk order'});
       TF.postTransaction({cat:'supplies',cents:-8000,ref:'Catering wholesale fulfillment'});
       TF.Week.earn(240);
+      if (TF.Empire && TF.Empire.tally) TF.Empire.tally('cateringContract', 160);   // net of the $80 wholesale
     }
     if (up) TF.Ledger.add('upkeep', -up, 'buildings');
     O.totals.upkeep += up;
-    var r = { drinks: O.day.drinks, drinkRev: O.day.drinkRev, upkeep: up, drinkCost: cost, litter: O.litter.length, litterPct: Math.round((1 - Math.min.apply(null, Sim.stands.map(function (st) { return st.litterMul || 1; }))) * 100) };
+    var r = { drinks: O.day.drinks, drinkOnly: O.day.drinkOnly || 0, drinkRev: O.day.drinkRev, upkeep: up, drinkCost: cost, litter: O.litter.length, litterPct: Math.round((1 - Math.min.apply(null, Sim.stands.map(function (st) { return st.litterMul || 1; }))) * 100) };
     O.totals.lastDrinkSales = O.day.drinks;
-    O.day = { drinks: 0, drinkRev: 0, price: O.day.price || O.DRINK.price };
+    O.day = { drinks: 0, drinkOnly: 0, drinkRev: 0, price: O.day.price || O.DRINK.price };
     O.totals.closedDay = day; O.totals.closedReport = r;
     return r;
   };

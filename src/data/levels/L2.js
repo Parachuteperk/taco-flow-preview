@@ -437,7 +437,7 @@ window.TF.LEVELS.L2 = {
     ]
   },
   "demand": 0.5,
-  "rent": 120,
+  "rent": 1500,
   "kit": 1.9,
   "spoilage": 0.3,
   "patience": 24,

@@ -75,7 +75,7 @@ window.TF.LEVELS.L1 = {
   spawn: { crowdMax: 150, bells: [[90], [60, 135], [55, 130], [70, 140], [45, 120]] },
   // demand: share of passing students who want a taco (tuned with week-run on this map)
   demand: 0.5,
-  rent: 60, kit: 1.75, spoilage: 0.3, patience: 28,
+  rent: 750, kit: 1.75, spoilage: 0.3, patience: 28,
   prices: { cheap: 4, fair: 6, bougie: 8 },
   matt: { faultsPerDay: 2, maxActive: 1 }
 };

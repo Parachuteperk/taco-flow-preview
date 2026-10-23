@@ -29,10 +29,10 @@
     standCosts: [120,350,750,1500,2500],
     creditCents: 20000, creditFeeCents: 4000,
     levels: [
-      { level: 1, map: 'The Quad', w: 36, h: 36, peakCrowd: 150, objectCap: 25, rentCents: 6000, kitCents: 175, spoilage: 0.30, patienceS: 28, surge: 1, breakdowns: 2, maxActiveFaults: 1, favorMult: 1, rainCapCents: 6000, prices: { cheap: 400, fair: 600, bougie: 800 }, marketVMult: 1 },
-      { level: 2, map: 'Bobcat Trail', w: 40, h: 40, peakCrowd: 250, objectCap: 30, rentCents: 12000, kitCents: 190, spoilage: 0.30, patienceS: 24, surge: 2, breakdowns: 2, maxActiveFaults: 1, favorMult: 1.3, rainCapCents: 8000, prices: { cheap: 425, fair: 750, bougie: 1000 }, marketVMult: 1.2 },
-      { level: 3, map: 'Flowers Hall / LBJ statue', w: 44, h: 40, peakCrowd: 300, objectCap: 35, rentCents: 20000, kitCents: 210, spoilage: 0.30, patienceS: 20, surge: 1.5, breakdowns: 3, maxActiveFaults: 1, favorMult: 1.6, rainCapCents: 10000, prices: { cheap: 475, fair: 850, bougie: 950 }, marketVMult: 1.4 },
-      { level: 4, map: 'Alkek Plaza at night', w: 48, h: 44, peakCrowd: 350, objectCap: 40, rentCents: 30000, kitCents: 240, spoilage: 0.30, patienceS: 16, surge: 1.8, breakdowns: 4, maxActiveFaults: 2, favorMult: 2, rainCapCents: 12000, prices: { cheap: 500, fair: 900, bougie: 1025 }, marketVMult: 1.6 }
+      { level: 1, map: 'The Quad', w: 36, h: 36, peakCrowd: 150, objectCap: 25, rentCents: 75000, kitCents: 175, spoilage: 0.30, patienceS: 28, surge: 1, breakdowns: 2, maxActiveFaults: 1, favorMult: 1, rainCapCents: 6000, prices: { cheap: 400, fair: 600, bougie: 800 }, marketVMult: 1 },
+      { level: 2, map: 'Bobcat Trail', w: 40, h: 40, peakCrowd: 250, objectCap: 30, rentCents: 150000, kitCents: 190, spoilage: 0.30, patienceS: 24, surge: 2, breakdowns: 2, maxActiveFaults: 1, favorMult: 1.3, rainCapCents: 8000, prices: { cheap: 425, fair: 750, bougie: 1000 }, marketVMult: 1.2 },
+      { level: 3, map: 'Flowers Hall / LBJ statue', w: 44, h: 40, peakCrowd: 300, objectCap: 35, rentCents: 250000, kitCents: 210, spoilage: 0.30, patienceS: 20, surge: 1.5, breakdowns: 3, maxActiveFaults: 1, favorMult: 1.6, rainCapCents: 10000, prices: { cheap: 475, fair: 850, bougie: 950 }, marketVMult: 1.4 },
+      { level: 4, map: 'Alkek Plaza at night', w: 48, h: 44, peakCrowd: 350, objectCap: 40, rentCents: 375000, kitCents: 240, spoilage: 0.30, patienceS: 16, surge: 1.8, breakdowns: 4, maxActiveFaults: 2, favorMult: 2, rainCapCents: 12000, prices: { cheap: 500, fair: 900, bougie: 1025 }, marketVMult: 1.6 }
     ],
     wagesCents: { ali: 800, jared: 600, antonio: 600, matt: 800, phillip: 600, aaron: 800 },
     rushMult: 1.2,

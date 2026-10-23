@@ -62,7 +62,7 @@ After: "Next one's pricier." Cash or short, her smile never changes.
         "lines": [{"who": "antonio", "text": "Wi-Fi name changed. You're welcome."}]
       },
       "5": {
-        "morning": "Rent day. $180 due. Mrs. West arrives in person under the live oaks.",
+        "morning": "Rent day. {rentL1} due. Mrs. West arrives in person under the live oaks.",
         "endOfDay": "\"Next one's pricier.\" Cash or short, her smile never changes.",
         "star": [
           {"text": "TACO: TacoCoin lists Monday; vendors face rent today.", "teaser": true},
@@ -112,7 +112,7 @@ After: "Next one's pricier." Cash or short, her smile never changes.
         "lines": [{"who": "antonio", "text": "Leaked the NapPod midterm plans."}]
       },
       "10": {
-        "morning": "Rent day #2, $380 due. Spirit Parade freezes the trail for eight seconds.",
+        "morning": "Rent day #2, {rentL2} due. Spirit Parade freezes the trail for eight seconds.",
         "endOfDay": "West's $29 Pop-Up debuts at Boko's Bash. A Bobcats win would light the Victory Star.",
         "star": [
           "Spirit Parade Freezes Bobcat Trail (BOBA \u2191)",
@@ -146,7 +146,7 @@ After: "Next one's pricier." Cash or short, her smile never changes.
         "lines": [{"who": "antonio", "text": "That's not a typo. That's market research."}]
       },
       "15": {
-        "morning": "Halloween, $650 rent. Phillip is a tortilla. West is old money.",
+        "morning": "Halloween, {rentL3} rent. Phillip is a tortilla. West is old money.",
         "endOfDay": "The costumes come off. The rent stays real.",
         "star": ["Costume Crowd Eyes BOBA Viral Rumors"],
         "lines": [{"who": "west", "text": "Old money isn't a costume, sugar."}]
@@ -176,7 +176,7 @@ After: "Next one's pricier." Cash or short, her smile never changes.
         "lines": [{"who": "lukas", "text": "Five stars. The grackles deserve their own page."}]
       },
       "20": {
-        "morning": "Final rent, $1,000. Gala at Old Main. Aaron puts a blazer over his polo.",
+        "morning": "Final rent, {rentL4}. Gala at Old Main. Aaron puts a blazer over his polo.",
         "endOfDay": "West calls Aaron's card. The crew heads to the river. Eat 'em up, Cats!",
         "star": ["Gala Verdict Meets Portfolio Cash-Out"],
         "lines": [{"who": "west", "text": "Of course I shorted my own Pop-Ups, darlin'."}]
@@ -308,7 +308,7 @@ After: "Next one's pricier." Cash or short, her smile never changes.
         ],
         "Aaron (SIFE)": [
           "Still trying to get her to use the card.",
-          "$380 is not a small number.",
+          "{rentL2} is not a small number.",
           "SIFE said grow or get replaced.",
           "Business card is now slightly bent.",
           "Parade traffic is pure gold.",
@@ -321,7 +321,7 @@ After: "Next one's pricier." Cash or short, her smile never changes.
           "My Pop-Up starts at twenty-nine.",
           "Designer tacos taste like success.",
           "Card still makes excellent kindling.",
-          "$380 keeps the lights on, sugar.",
+          "{rentL2} keeps the lights on, sugar.",
           "WCO is the future of this promenade.",
           "Enjoy the parade while it lasts.",
           "Next rent will feel heavier."
@@ -334,7 +334,7 @@ After: "Next one's pricier." Cash or short, her smile never changes.
         "matt": ["One-day grackle truce. Get it in writing."],
         "phillip": ["The costume is also ammunition."],
         "aaron": ["LBJ understands networking."],
-        "west": ["Show me the $650, darlin'."]
+        "west": ["Show me the {rentL3}, darlin'."]
       },
       "L4": {
         "ali": ["Cooper Flagg is kinda nice."],
@@ -497,7 +497,7 @@ After: "Next one's pricier." Cash or short, her smile never changes.
       "L1": {
         "paid": [
           {"who": "west", "text": "Lovely little patch, isn't it?"},
-          {"who": "aaron", "text": "We made the $180."},
+          {"who": "aaron", "text": "We made the {rentL1}."},
           {"who": "west", "text": "Cash is always fashionable."},
           {"who": "ali", "text": "Grill stayed hot all week."},
           {"who": "west", "text": "I noticed the smoke."},
@@ -524,7 +524,7 @@ After: "Next one's pricier." Cash or short, her smile never changes.
       "L2": {
         "paid": [
           {"who": "west", "text": "Lovely little trail stand, isn't it?"},
-          {"who": "aaron", "text": "We have the full $380."},
+          {"who": "aaron", "text": "We have the full {rentL2}."},
           {"who": "west", "text": "Cash still looks good on you."},
           {"who": "ali", "text": "Grill never stopped once."},
           {"who": "west", "text": "My Pop-Up noticed."},
@@ -536,7 +536,7 @@ After: "Next one's pricier." Cash or short, her smile never changes.
         ],
         "short": [
           {"who": "west", "text": "Lovely little trail stand, isn't it?"},
-          {"who": "aaron", "text": "We're short on the $380."},
+          {"who": "aaron", "text": "We're short on the {rentL2}."},
           {"who": "west", "text": "How short is short this week?"},
           {"who": "aaron", "text": "Too short."},
           {"who": "west", "text": "Pop-Up starts at twenty-nine."},
@@ -550,14 +550,14 @@ After: "Next one's pricier." Cash or short, her smile never changes.
       },
       "L3": {
         "paid": [
-          {"who": "aaron", "text": "Full rent, $650. Every cent."},
+          {"who": "aaron", "text": "Full rent, {rentL3}. Every cent."},
           {"who": "west", "text": "Cash looks lovely under any lighting, sugar."}
         ],
         "short": [{"who": "aaron", "text": "We're short on rent."}, {"who": "west", "text": "Back to Monday, darlin'. Bring a better plan."}]
       },
       "L4": {
         "paid": [
-          {"who": "aaron", "text": "Full rent, $1,000. Every cent."},
+          {"who": "aaron", "text": "Full rent, {rentL4}. Every cent."},
           {"who": "west", "text": "Cash looks lovely under any lighting, sugar."}
         ],
         "short": [{"who": "aaron", "text": "We're short on rent."}, {"who": "west", "text": "Back to Monday, darlin'. Bring a better plan."}]
@@ -608,5 +608,22 @@ After: "Next one's pricier." Cash or short, her smile never changes.
         text: "Rent checked. Trust scorecard ready. Show me Monday, darlin'." }
     ];
   });
+  // Rent amounts in the lines come from data/economy.js (Pass 7: they had drifted - Aaron said "We made the $180"
+  // while Mrs. West collected $60). {rentL1}..{rentL4} -> "$750"-style text for that level's rent.
+  var Econ = (typeof window !== 'undefined' && window.TF && window.TF.Economy) || null;
+  if (!Econ && typeof require === 'function') { try { Econ = require('./economy'); } catch (e) { Econ = null; } }
+  var FALLBACK_RENTS = [75000, 150000, 250000, 375000];   // keep equal to data/economy.js (tests/p7-catalog-earns)
+  function rentText(n) {
+    var lv = Econ && Econ.levels && Econ.levels[n - 1];
+    var cents = lv ? lv.rentCents : FALLBACK_RENTS[n - 1];   // no economy loaded: the same table data/calendar.js keeps
+    return '$' + String(Math.round(cents / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+  (function fill(o) {
+    Object.keys(o).forEach(function (k) {
+      var v = o[k];
+      if (typeof v === 'string') o[k] = v.replace(/\{rentL([1-4])\}/g, function (_, n) { return rentText(+n); });
+      else if (v && typeof v === 'object') fill(v);
+    });
+  })(story);
   return story;
 }));

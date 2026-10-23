@@ -554,7 +554,8 @@
         base *= (TF.Objects ? TF.Objects.litterMul(st) : 1) * (TF.Hacks ? TF.Hacks.buyMul : 1);
         willing = econ ? base * TF.Economy.elasticity(Sim.menuPrice(st) / fair) : base;
         if (econ && draw < Math.max(base, willing)) st.funnel.interested++;
-        if (econ && draw < base && draw >= willing) { loseSale(g, st, 'too pricey'); }
+        if (econ && draw < base && draw >= willing) { loseSale(g, st, 'too pricey'); if (TF.Objects && TF.Objects.drinkOnly) TF.Objects.drinkOnly(g, st, 'too pricey'); }
+        else if (econ && draw >= Math.max(base, willing) && TF.Objects && TF.Objects.drinkOnly && Math.hypot(g.x - st.geom.cx, g.y - st.geom.cy) < 6) TF.Objects.drinkOnly(g, st, 'hot');   // hot days: a cold drink, no taco
         if (draw < willing) {
           if (econ) g.maxPay = Math.max(fair, Sim.menuPrice(st)) * Math.pow(Math.max(0.001, Sim.rand()), -1/1.5);   // litter puts people off; TACO-NET pulls them in
           if (Sim.closing) { loseSale(g, st, 'closing time'); }
@@ -564,6 +565,7 @@
           else if (st.queue.length + enrouteCount(st) < st.cap) { if (goToQueue(g, st)) return; loseSale(g, st, 'no line'); }
           else {
             Sim.stats.balked++; noteBalk(st, 'longline'); loseSale(g, st, 'line full');
+            if (TF.Objects && TF.Objects.drinkOnly) TF.Objects.drinkOnly(g, st, 'line full');   // the cooler is self-serve
             if (Sim.recentBalks(st, 'longline') <= 1) think(g, 'longline'); else Sim.thoughts.longline++;   // grouped: one bubble, then the stand's warning
           }
         }

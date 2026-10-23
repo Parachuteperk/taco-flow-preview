@@ -108,9 +108,14 @@
         revenueCents: rev, profitCents: rev - Math.round(supplies * (sold ? ((st.sold || 0)-(st.daySold || 0))/sold : 1/Math.max(1,n))) - Math.round(fixed/Math.max(1,n)) };
     });
     if (n) out.stands[n-1].profitCents += activeProfit - out.stands.reduce(function (a,st) { return a+st.profitCents; },0);
+    // Mrs. West's weekly rent is a one-off Friday bill, not a daily running cost: keep it out of the
+    // history a stand replays every day once it goes remote (Pass 7: with $750-$3,750 rents the
+    // Friday share was charging remote stands phantom rent every day).
+    var weekRent = -rows.reduce(function (a,r) { return a + (r.cat === 'rent' ? r.cents : 0); },0);
+    var rentShare = n ? Math.round(weekRent/n) : 0;
     out.stands.forEach(function (r) {
       var st=Sim.stands[r.idx]; st.recent=st.recent || [];
-      st.recent.push({gross:r.revenueCents,cost:Math.max(0,r.revenueCents-r.profitCents)});
+      st.recent.push({gross:r.revenueCents,cost:Math.max(0,r.revenueCents-r.profitCents-rentShare)});
       if (st.recent.length>3) st.recent.shift();
     });
     var emergencyRepaid = 0;

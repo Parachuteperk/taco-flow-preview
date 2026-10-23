@@ -2,14 +2,14 @@
 (function (TF) {
   'use strict';
   var S = TF.Sim, O = TF.Objects, C = TF.Crew;
-  var P = TF.Empire = { cargo: [], event: null, eventIndex: 0, deliveryT: 0, deliverySeq: 0 };
+  var P = TF.Empire = { cargo: [], event: null, eventIndex: 0, deliveryT: 0, deliverySeq: 0, earnDay: {}, earnTotal: {} };
   var defs = {
     sandwichBoard: [25,3,1,1,'+2 draw tiles','banner'],
     merchTable: [50,2,2,1,'$8 merchandise; 5/day, 10 during Homecoming','table'],
     bikeRack: [30,0,2,1,'+5% conversion','bench'],
     chargeBench: [45,2,2,1,'+6s patience for the first 3 waiting','bench'],
     flyerKiosk: [30,1,1,1,'Two Star leads per PREP','banner'],
-    cornhole: [70,2,2,3,'Linger 20s; 40% chance of a second taco','table'],
+    cornhole: [70,2,2,3,'Linger 20s; 25% grab a second taco','table'],
     salsaBar: [35,2,1,1,'+$1 on 30% of tickets','counter'],
     stringLights: [40,1,2,1,'+30% night arrivals while working','banner'],
     spikeball: [30,1,2,2,'Linger 10s; +5% conversion','table'],
@@ -30,6 +30,23 @@
   function absolute() { return (level()-1)*5 + TF.Week.day; }
   function works(id, st) { var o = O.of(id, st); return o && !(TF.Handyman && TF.Handyman.faultedObj(o)); }
   P.works = works;
+  // Pass 7: what each catalog item actually made, so the day report and the Upgrades ROI show it
+  // (the Merch Table's $8 sales used to vanish into the taco ticket and the report said +$0).
+  P.tally = function (kind, dollars, n) {
+    var d = P.earnDay[kind] || (P.earnDay[kind] = { n: 0, dollars: 0 }), t = P.earnTotal[kind] || (P.earnTotal[kind] = { n: 0, dollars: 0 });
+    d.n += n || 1; d.dollars += dollars; t.n += n || 1; t.dollars += dollars;
+  };
+  P.UNIT = { merchTable: 'merch sold', salsaBar: 'salsa add-ons', cornhole: 'second tacos', deliveryBike: 'deliveries', cateringContract: 'catering order' };
+  P.dayRows = function () {
+    return Object.keys(P.earnDay).filter(function (k) { return P.earnDay[k].dollars > 0; }).map(function (k) {
+      return { kind: k, name: O.KINDS[k] ? O.KINDS[k].name : k, n: P.earnDay[k].n, dollars: P.earnDay[k].dollars, unit: P.UNIT[k] || 'sales' };
+    });
+  };
+  // Demand / patience items have no till of their own: the Upgrades ROI credits them a modeled share of
+  // the stand's later revenue, marked (est.), like the stand tiers. String lights: night arrivals.
+  P.EST_SHARE = function (id) {
+    return { sandwichBoard: 0.03, bikeRack: 0.03, spikeball: 0.03, chargeBench: 0.02, stringLights: level() === 4 ? 0.15 : 0.05 }[id];
+  };
   P.mods = function (st, m) { if (works('sandwichBoard',st)) m.zoneR += 2; };
   P.forecast = function () {
     var cal = TF.Calendar && TF.Calendar.day(absolute());
@@ -46,7 +63,7 @@
       drinkSales:TF.Econ && TF.Econ.last ? (TF.Econ.last.drinkSales || 0) : 0});
   };
   P.startDay = function () {
-    P.event=null; P.eventIndex=0; P.deliveryT=0; P.deliverySeq=0; P.merch=0;
+    P.event=null; P.eventIndex=0; P.deliveryT=0; P.deliverySeq=0; P.merch=0; P.earnDay={};
     P.deployCargo(); C.applyMods();
     if (level() === 3) SimToast('Hillside sites: prime access costs $12/stand/day; remote $3. Rain favors canopy and shade.');
     if (level() === 4) SimToast('Night market: lights lift arrivals. Rival pricing and sabotage can cut demand.');
@@ -80,7 +97,8 @@
   };
   P.arrivals = function () {
     var m=level()===2 ? (TF.Week.bell && TF.Week.bell.warn<=0 ? 1.8 : 0.65) : 1;
-    if (level()===4 && O.list.some(function (o) { return o.kind==='stringLights' && works('stringLights',o.st); }) && !(P.event && P.event.effect==='sabotage' && !C.hiredSet.antonio)) m*=1.3;
+    // String lights: +30% at the L4 night market; elsewhere the late-afternoon glow is worth +10% (was nothing before L4)
+    if (O.list.some(function (o) { return o.kind==='stringLights' && works('stringLights',o.st); }) && !(P.event && P.event.effect==='sabotage' && !C.hiredSet.antonio)) m*=level()===4?1.3:1.1;
     return m;
   };
   P.step = function (dt) {
@@ -101,6 +119,7 @@
         if (sale.dollars!==undefined) {
           st.sold=(st.sold||0)+1; st.served=(st.served||0)+1; st.rev=(st.rev||0)+sale.dollars;
           st.funnel.served++; S.stats.served++; w.earn(sale.dollars);
+          P.tally('deliveryBike', sale.dollars);
           SimToast('Delivery ticket: +$'+sale.dollars);
         }
       }
@@ -108,10 +127,10 @@
   };
   P.onPay = function (g, st) {
     var n=0;
-    if (works('salsaBar',st) && O.rng()<0.3) n++;
+    if (works('salsaBar',st) && O.rng()<0.3) { n++; P.tally('salsaBar', 1); }
     if (st.tier>=6) n++;
     if (P.event && P.event.effect==='bigTips') n++;
-    if (works('merchTable',st) && (P.merch||0)<(level()===2?10:5) && O.rng()<0.3) { n+=8; P.merch=(P.merch||0)+1; }
+    if (works('merchTable',st) && (P.merch||0)<(level()===2?10:5) && O.rng()<0.3) { n+=8; P.merch=(P.merch||0)+1; P.tally('merchTable', 8); }
     return n;
   };
   P.patience = function (g) { return works('chargeBench',g.st) && g.st.queue.indexOf(g)>=0 && g.st.queue.indexOf(g)<3 ? 6 : 0; };
@@ -121,12 +140,19 @@
     if (!corn && !spike) return false;
     g.state='LINGER'; g.lingerT=corn?20:10; g.cornReturn=!!corn; return true;
   };
+  // Cornhole: after the game, 25% grab a second taco at the side window (a new ticket, its own receipt,
+  // one kit). It used to send them back through the line, where a full line turned every one away.
   P.returnCustomer = function (g) {
-    if (!g.cornReturn || !works('cornhole',g.st) || O.rng()>=0.4 || S.closing || g.st.queue.length>=g.st.cap || TF.Econ.soldOutAll(g.st)) return false;
-    // Each repeat is a new ticket, with a unique receipt identity and one kit charged normally.
-    g.secondVisit=true; g.id=String(g.id)+'-second';
-    g.paid=false; g.econSale=false; g.hasTaco=false; g.drink=false; g.order=null; g.queuedStands={}; g.waitT=0; g.timer=0;
-    return S.returnToQueue(g);
+    var st=g.st;
+    if (!g.cornReturn || g.secondVisit || !works('cornhole',st) || O.rng()>=0.25 || S.closing || TF.Econ.soldOutAll(st)) return false;
+    g.secondVisit=true;
+    var sale=TF.Econ.sell({ id:String(g.id)+'-second', st:st, maxPay:Math.max(g.maxPay||0, TF.Econ.priceDollars ? TF.Econ.priceDollars() : 0) });
+    if (sale.dollars===undefined) return false;
+    st.sold=(st.sold||0)+1; st.served=(st.served||0)+1; st.rev=(st.rev||0)+sale.dollars;
+    st.funnel.served++; S.stats.served++; TF.Week.earn(sale.dollars);
+    P.tally('cornhole', sale.dollars);
+    var w=S.windowPos(st); S.floaters.push({ x:w.x, y:w.y, text:'+$'+sale.dollars, t:0 });
+    return false;   // then they leave as usual
   };
   P.deployCargo = function () {
     if (!S.stand.placed || !P.cargo.length) return;

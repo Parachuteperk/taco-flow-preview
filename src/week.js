@@ -233,7 +233,7 @@
     var r = {
       day: W.day, name: W.dayName(), goal: W.goal(), sold: b.served - a.served, cash: b.earn - a.earn,
       lost: diffLost(a.lost, b.lost),
-      neck: neck ? { name: neck, secs: Math.round(W.necks[neck]) } : null, betNet: betNet, hadBet: false, obj: objDay, econ: econDay, invest: TF.Invest ? TF.Invest.report() : []
+      neck: neck ? { name: neck, secs: Math.round(W.necks[neck]) } : null, betNet: betNet, hadBet: false, obj: objDay, econ: econDay, invest: TF.Invest ? TF.Invest.report() : [], catalog: TF.Empire && TF.Empire.dayRows ? TF.Empire.dayRows() : []
     };
     r.hit = r.sold >= r.goal;
     if (Sim.stands.length > 1) r.standSold = Sim.stands.map(function (st, i) { return (st.served || 0) - (a.stSold[i] || 0); });
