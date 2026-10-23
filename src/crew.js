@@ -40,9 +40,9 @@
     var ex = st.idx === 0 ? Crew.extras : {};
     m.orderT = C.ORDER_T; m.cookT = C.COOK_T; m.grill = C.GRILL; m.handT = C.HAND_T;
     m.zoneR = C.ZONE_R; m.buyP = C.BUY_P; m.spawnMul = 1; m.priceAdd = 0; m.serving = false; m.stockMax = C.STOCK_T0;
-    if (t >= 1) { m.cookT = 2.4; m.stockMax = C.STOCK_GRILL; }
+    if (t >= 1) { m.cookT = 1.2; m.stockMax = C.STOCK_GRILL; }
     if (t >= 2) m.zoneR += 2.5;
-    if (t >= 3) { m.serving = true; m.handT = 0.6; m.stockMax = 60; }
+    if (t >= 3) { m.serving = true; m.handT = 0.3; m.stockMax = 60; }
     if (t >= 5) { m.orderT /= 1.4; m.cookT /= 1.4; m.stockMax = 84; }
     if (t >= 6) m.priceAdd += 1;
     if (t >= 7) m.zoneR *= 1.25;
@@ -50,7 +50,7 @@
     if (h.ali) { m.cookT *= 0.6; m.grill += 1; }
     if (h.phillip) m.cookT *= 0.8;
     // Matt's fast hand-off only while he's at the counter (C4: off fixing a breakdown, Jared covers at x0.8)
-    if (h.matt) m.handT = TF.Handyman && TF.Handyman.away() ? TF.Handyman.coverHandT(m.handT) : 0.25;
+    if (h.matt) m.handT = TF.Handyman && TF.Handyman.away() ? TF.Handyman.coverHandT(m.handT) : 0.15;
     // In Taco Week Antonio makes demand only through his hacks (TF.Hacks), not as a passive boost.
     if (h.antonio && !(TF.Week && TF.Week.active())) { m.zoneR += 2; m.buyP = Math.min(0.95, m.buyP + 0.1); m.spawnMul *= 1.3; }
     if (ex.cooler2 && t === 0) m.stockMax *= 2;

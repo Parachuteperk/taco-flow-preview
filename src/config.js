@@ -25,13 +25,14 @@ window.TF.plugins = [];   // Pass 5 systems: { step(dt), items(items, alpha, ui)
     WEEK_DEMAND: 0.3,     // Taco Week: share of passing students who want a taco. Pass 5 item 10: at 0.3 line-full is
                           // 15-17% of lost sales and every goal is still hit (seeds 11/23/37); 1.0 was 67-69%. ?demand=x to experiment
     Q_SPACING: 0.5,       // 2 queue slots per line tile
-    ORDER_T: 2.6,         // base station times (tier 0, Jared alone)
-    COOK_T: 4.0,          // tier 0: cold-assembling a pre-made taco from the cooler
+    ORDER_T: 1.3,         // base station times (tier 0, Jared alone)
+    COOK_T: 2.0,          // tier 0: cold-assembling a pre-made taco from the cooler
     GRILL: 1,
-    HAND_T: 1.6,
+    HAND_T: 0.8,
     STOCK_T0: 10,         // pre-made tacos in the tier-0 cooler (x2 with the second cooler)
     STOCK_GRILL: 40,      // ingredients once there is a grill
-    RESTOCK_AWAY: 5,      // seconds off-map buying more
+    RESTOCK_AWAY: 2.5,    // seconds off-map buying more (Pass 7 tune: was 5)
+    RESTOCK_SPEED: 3.6,   // tiles / s for the cashier's restock walk (Pass 7 tune: was 1.8)
     PATIENCE: 22,         // seconds a queued guest waits while the stand is closed
     GOT_IT_T: 0.4,
     PRICE_MIN: 4,

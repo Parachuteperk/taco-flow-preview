@@ -167,7 +167,7 @@
       var history=st.recent || [], n=history.length;
       if (!n) return;
       var g=Math.round(history.reduce(function(a,r){return a+r.gross;},0)/n);
-      var c=Math.round(history.reduce(function(a,r){return a+r.cost;},0)/n) + Math.round(g * 0.12); // remote manager takes 12% of gross
+      var c=Math.round(history.reduce(function(a,r){return a+r.cost;},0)/n) + Math.round(g * 0.2); // remote manager takes 20% of gross (Pass 7 tune: was 12%)
       TF.postTransaction({day:EC.abs(day),phase:'report',cat:'portfolio',cents:g,ref:'Stand '+(st.idx+1)+' remote gross'});
       TF.postTransaction({day:EC.abs(day),phase:'report',cat:'portfolioExpense',cents:-c,ref:'Stand '+(st.idx+1)+' remote expenses'});
       gross+=g;cost+=c;

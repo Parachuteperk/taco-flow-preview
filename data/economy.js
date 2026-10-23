@@ -5,22 +5,24 @@
   'use strict';
   // Shared by live arrivals, the funnel, and the seeded acceptance run.
   function walkers(day) {
-    var points = [[1,70],[3,130],[5,180],[10,350],[20,550]];
+    var points = [[1,90],[3,170],[5,230],[10,440],[20,680]];
     for (var i = 1; i < points.length; i++) if (day <= points[i][0]) {
       var a = points[i-1], b = points[i];
       return Math.round(a[1] + (b[1]-a[1]) * (day-a[0]) / (b[0]-a[0]));
     }
-    return 550;
+    return 680;
   }
   function interest(o) {
     var visibility = Math.max(0.4, 1 - 0.35 * o.distance / o.radius);
-    var base = 0.27 + (o.banner ? 0.08 : 0) + (o.canopy ? 0.03 : 0) + 0.0045 * (o.reputation - 30);
-    return Math.max(0, Math.min(0.85, Math.min(0.55, base * visibility) * (o.event || 1)));
+    var base = 0.52 + (o.banner ? 0.1 : 0) + (o.canopy ? 0.04 : 0) + 0.005 * (o.reputation - 30);
+    return Math.max(0, Math.min(0.95, Math.min(0.85, base * visibility) * (o.event || 1)));
   }
   function elasticity(ratio) { return Math.pow(Math.max(0.1, ratio), -1.5); }
   // Aging equipment and coordination costs accelerate as the portfolio grows.
+  // Pass 7 tune: site rent and base maintenance x2 and the late multi-stand
+  // maintenance term 375 -> 1500 so the faster, busier service keeps a 25-35% late net margin.
   function costs(n, day) {
-    return { payroll: 1800 * Math.max(0, n-1), rent: n * (350 + 150 * (n-1)), maintenance: n * (100 + 40 * day + 150 * (n-1)) + n * (n-1) * 375 * Math.max(0,day-10) };
+    return { payroll: 1800 * Math.max(0, n-1), rent: 2 * n * (350 + 150 * (n-1)), maintenance: 2 * n * (100 + 40 * day + 150 * (n-1)) + n * (n-1) * 1500 * Math.max(0,day-10) };
   }
   return {
     walkers: walkers, interest: interest, elasticity: elasticity, shiftCosts: costs,

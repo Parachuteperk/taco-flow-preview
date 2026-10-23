@@ -921,7 +921,7 @@
       var d = cornerPos(st), ex = nearestExit(d);
       if (!ex) return;   // No route: stay sold out and retry; never refill through terrain.
       var r = st.trip = {
-        x: ex.x + 0.5, y: ex.y + 0.5, px: ex.x + 0.5, py: ex.y + 0.5, offX: 0, offY: 0, pOffX: 0, pOffY: 0, path: [], speed: 1.8,
+        x: ex.x + 0.5, y: ex.y + 0.5, px: ex.x + 0.5, py: ex.y + 0.5, offX: 0, offY: 0, pOffX: 0, pOffY: 0, path: [], speed: C.RESTOCK_SPEED || 1.8,
         hx: 1, hy: 0, facing: 0, moving: false, anim: 0, phase: 'out', exit: ex.e, access: { x: ex.x, y: ex.y }, timer: 0
       };
       r.path = ex.t.slice(1).map(center);
